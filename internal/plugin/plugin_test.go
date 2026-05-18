@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -302,6 +303,63 @@ time.sleep(60)
 	// Should contain "timed out" or context deadline
 	if !contains(err.Error(), "timed out") && !contains(err.Error(), "killed") && !contains(err.Error(), "signal") {
 		t.Errorf("expected timeout-related error, got: %v", err)
+	}
+}
+
+func TestBuildCommandRejectsTypeScriptEntryPoint(t *testing.T) {
+	p := &Plugin{
+		Manifest:  Manifest{ID: "ts-plugin", Name: "TS", EntryPoint: "capture.ts"},
+		EntryPath: filepath.Join(t.TempDir(), "capture.ts"),
+	}
+
+	if _, err := p.buildCommand(context.Background()); err == nil {
+		t.Fatal("expected TypeScript entry point to be rejected")
+	}
+}
+
+func TestPluginEnvironmentDropsUnapprovedSecrets(t *testing.T) {
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "do-not-leak")
+	t.Setenv("NIYANTRA_TEST_SECRET", "do-not-leak")
+
+	env := pluginEnvironment()
+	for _, item := range env {
+		if strings.HasPrefix(item, "AWS_SECRET_ACCESS_KEY=") || strings.HasPrefix(item, "NIYANTRA_TEST_SECRET=") {
+			t.Fatalf("unapproved secret environment variable leaked to plugin: %s", item)
+		}
+	}
+}
+
+func TestLimitedBufferCapsOutput(t *testing.T) {
+	buf := &limitedBuffer{limit: 5}
+	n, err := buf.Write([]byte("abcdef"))
+	if err != nil {
+		t.Fatalf("Write returned error: %v", err)
+	}
+	if n != 6 {
+		t.Fatalf("Write count = %d, want 6", n)
+	}
+	if got := buf.String(); got != "abcde" {
+		t.Fatalf("buffer = %q, want abcde", got)
+	}
+	if !buf.truncated {
+		t.Fatal("expected buffer to report truncation")
+	}
+}
+
+func TestPluginRedactsConfiguredSecrets(t *testing.T) {
+	p := &Plugin{
+		Config: map[string]string{
+			"api_key": "sk-secret-value",
+			"region":  "us-east-1",
+		},
+	}
+
+	got := p.redact("failed with sk-secret-value in us-east-1")
+	if strings.Contains(got, "sk-secret-value") {
+		t.Fatalf("secret was not redacted: %s", got)
+	}
+	if !strings.Contains(got, "us-east-1") {
+		t.Fatalf("non-secret config value should not be redacted: %s", got)
 	}
 }
 

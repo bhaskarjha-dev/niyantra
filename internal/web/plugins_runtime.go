@@ -48,7 +48,9 @@ func (s *Server) applyStoredPluginState(p *plugin.Plugin) {
 		}
 	}
 
-	s.ensurePluginDataSource(p)
+	if err := s.ensurePluginDataSource(p); err != nil {
+		s.logger.Warn("Failed to ensure plugin data source", "plugin", p.Manifest.ID, "error", err)
+	}
 }
 
 func (s *Server) pluginSourceIndex() map[string]*store.DataSource {
@@ -65,14 +67,13 @@ func (s *Server) pluginSourceIndex() map[string]*store.DataSource {
 	return index
 }
 
-func (s *Server) ensurePluginDataSource(p *plugin.Plugin) {
+func (s *Server) ensurePluginDataSource(p *plugin.Plugin) error {
 	sourceID := "plugin_" + p.Manifest.ID
 	if err := s.store.ExecRaw(`
 		INSERT OR IGNORE INTO data_sources (id, name, source_type, enabled, config_json)
 		VALUES (?, ?, 'plugin', ?, '{}')
 	`, sourceID, p.Manifest.Name, boolToSQLite(p.Enabled)); err != nil {
-		s.logger.Warn("Failed to create plugin data source", "plugin", p.Manifest.ID, "error", err)
-		return
+		return err
 	}
 
 	if err := s.store.ExecRaw(`
@@ -80,8 +81,9 @@ func (s *Server) ensurePluginDataSource(p *plugin.Plugin) {
 		SET name = ?, source_type = 'plugin', enabled = ?
 		WHERE id = ?
 	`, p.Manifest.Name, boolToSQLite(p.Enabled), sourceID); err != nil {
-		s.logger.Warn("Failed to update plugin data source", "plugin", p.Manifest.ID, "error", err)
+		return err
 	}
+	return nil
 }
 
 func boolToSQLite(v bool) int {

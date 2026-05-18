@@ -2,7 +2,9 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -99,6 +101,10 @@ func (s *Server) handlePluginRun(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "plugin not found", http.StatusNotFound)
 		return
 	}
+	if missing := missingRequiredPluginConfig(target, nil); len(missing) > 0 {
+		jsonError(w, fmt.Sprintf("missing required plugin config: %s", strings.Join(missing, ", ")), http.StatusBadRequest)
+		return
+	}
 
 	runStart := time.Now()
 	result, err := target.Run(r.Context(), s.logger)
@@ -164,25 +170,87 @@ func (s *Server) handlePluginConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	prospectiveEnabled := target.Enabled
 	if enabled, ok := body["enabled"]; ok {
-		s.store.SetConfig("plugin_"+pluginID+"_enabled", enabled)
-		target.Enabled = strings.EqualFold(enabled, "true")
-		delete(body, "enabled")
+		switch {
+		case strings.EqualFold(enabled, "true"):
+			prospectiveEnabled = true
+		case strings.EqualFold(enabled, "false"):
+			prospectiveEnabled = false
+		default:
+			jsonError(w, "enabled must be true or false", http.StatusBadRequest)
+			return
+		}
+	}
+
+	if prospectiveEnabled {
+		if missing := missingRequiredPluginConfig(target, body); len(missing) > 0 {
+			jsonError(w, fmt.Sprintf("missing required plugin config: %s", strings.Join(missing, ", ")), http.StatusBadRequest)
+			return
+		}
 	}
 
 	for key, val := range body {
+		if key == "enabled" {
+			continue
+		}
 		if _, exists := target.Manifest.Config[key]; !exists {
 			continue
 		}
-		s.store.SetConfig("plugin_"+pluginID+"_"+key, val)
+		if _, err := s.store.SetConfig("plugin_"+pluginID+"_"+key, val); err != nil {
+			jsonError(w, fmt.Sprintf("failed to save plugin config %q", key), http.StatusInternalServerError)
+			return
+		}
 		target.Config[key] = val
 	}
 
-	s.ensurePluginDataSource(target)
+	if enabled, ok := body["enabled"]; ok {
+		if _, err := s.store.SetConfig("plugin_"+pluginID+"_enabled", strings.ToLower(enabled)); err != nil {
+			jsonError(w, "failed to save plugin enabled state", http.StatusInternalServerError)
+			return
+		}
+		target.Enabled = prospectiveEnabled
+	}
+
+	if err := s.ensurePluginDataSource(target); err != nil {
+		jsonError(w, "failed to update plugin data source", http.StatusInternalServerError)
+		return
+	}
 	s.refreshRuntimePlugins()
 
 	writeJSON(w, map[string]any{
 		"status":  "ok",
 		"enabled": target.Enabled,
 	})
+}
+
+func missingRequiredPluginConfig(p *plugin.Plugin, overrides map[string]string) []string {
+	if p == nil {
+		return nil
+	}
+
+	config := make(map[string]string, len(p.Config)+len(overrides))
+	for key, val := range p.Config {
+		config[key] = val
+	}
+	for key, val := range overrides {
+		if key == "enabled" {
+			continue
+		}
+		if _, exists := p.Manifest.Config[key]; exists {
+			config[key] = val
+		}
+	}
+
+	var missing []string
+	for key, field := range p.Manifest.Config {
+		if !field.Required {
+			continue
+		}
+		if strings.TrimSpace(config[key]) == "" {
+			missing = append(missing, key)
+		}
+	}
+	sort.Strings(missing)
+	return missing
 }

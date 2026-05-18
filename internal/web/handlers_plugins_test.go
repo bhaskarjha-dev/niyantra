@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -132,6 +133,62 @@ func TestHandlePluginConfigRefreshesRuntimeAndDataSource(t *testing.T) {
 	}
 }
 
+func TestHandlePluginConfigRejectsEnableWithMissingRequiredConfig(t *testing.T) {
+	home := t.TempDir()
+	setPluginHomeEnv(t, home)
+	createTestPlugin(t, home, "fixture-plugin")
+
+	st := openTestStore(t)
+	srv := &Server{
+		logger:   slog.Default(),
+		store:    st,
+		agentMgr: agent.NewManager(slog.Default()),
+	}
+
+	req := httptest.NewRequest(http.MethodPut, "/api/plugins/fixture-plugin/config", bytes.NewBufferString(`{"enabled":"true"}`))
+	req.SetPathValue("id", "fixture-plugin")
+	rec := httptest.NewRecorder()
+	srv.handlePluginConfig(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if st.GetConfigBool("plugin_fixture-plugin_enabled") {
+		t.Fatal("plugin should not be enabled when required config is missing")
+	}
+}
+
+func TestHandlePluginConfigSurfacesSecretWriteFailure(t *testing.T) {
+	home := t.TempDir()
+	setPluginHomeEnv(t, home)
+	createTestPlugin(t, home, "fixture-plugin")
+
+	dbPath := filepath.Join(t.TempDir(), "niyantra-test.db")
+	st, err := store.Open(dbPath, store.WithSecretBackend(failingSecretBackend{}))
+	if err != nil {
+		t.Fatalf("store.Open(%q): %v", dbPath, err)
+	}
+	t.Cleanup(func() { st.Close() })
+
+	srv := &Server{
+		logger:   slog.Default(),
+		store:    st,
+		agentMgr: agent.NewManager(slog.Default()),
+	}
+
+	req := httptest.NewRequest(http.MethodPut, "/api/plugins/fixture-plugin/config", bytes.NewBufferString(`{"api_key":"sekret"}`))
+	req.SetPathValue("id", "fixture-plugin")
+	rec := httptest.NewRecorder()
+	srv.handlePluginConfig(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if got := st.GetConfig("plugin_fixture-plugin_api_key"); got != "" {
+		t.Fatalf("api key should not be persisted after secret backend failure, got %q", got)
+	}
+}
+
 func TestHandlePluginRunDoesNotPersistSnapshots(t *testing.T) {
 	if _, err := exec.LookPath("pwsh"); err != nil {
 		t.Skip("pwsh not available")
@@ -184,6 +241,31 @@ func TestHandlePluginRunDoesNotPersistSnapshots(t *testing.T) {
 	}
 	if _, err := st.LatestPluginSnapshot("fixture-plugin"); err == nil {
 		t.Fatal("expected no persisted plugin snapshot after manual test run")
+	}
+}
+
+func TestHandlePluginRunRejectsMissingRequiredConfig(t *testing.T) {
+	home := t.TempDir()
+	setPluginHomeEnv(t, home)
+	createTestPlugin(t, home, "fixture-plugin")
+
+	st := openTestStore(t)
+	srv := &Server{
+		logger:   slog.Default(),
+		store:    st,
+		agentMgr: agent.NewManager(slog.Default()),
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/plugins/fixture-plugin/run", nil)
+	req.SetPathValue("id", "fixture-plugin")
+	rec := httptest.NewRecorder()
+	srv.handlePluginRun(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if st.PluginSnapshotCount() != 0 {
+		t.Fatalf("expected no plugin snapshots after rejected run, got %d", st.PluginSnapshotCount())
 	}
 }
 
@@ -314,5 +396,19 @@ func findDataSourceByID(sources []*store.DataSource, id string) *store.DataSourc
 			return source
 		}
 	}
+	return nil
+}
+
+type failingSecretBackend struct{}
+
+func (failingSecretBackend) Set(string, string) error {
+	return errors.New("secret backend unavailable")
+}
+
+func (failingSecretBackend) Get(string) (string, error) {
+	return "", errors.New("secret backend unavailable")
+}
+
+func (failingSecretBackend) Delete(string) error {
 	return nil
 }
