@@ -218,7 +218,8 @@ func (s *Server) ListenAndServe() error {
 	// Phase 9 routes
 	mux.HandleFunc("GET /api/claude/status", s.handleClaudeStatus)
 	mux.HandleFunc("GET /api/claude/usage", s.handleClaudeUsage)
-	mux.HandleFunc("GET /api/backup", s.handleBackup)
+	mux.HandleFunc("GET /api/backup", s.handleBackupDeprecated)
+	mux.HandleFunc("POST /api/backup/create", rl.rateMiddleware("mutate", s.handleBackupCreate))
 	mux.HandleFunc("POST /api/notify/test", s.handleNotifyTest)
 	mux.HandleFunc("POST /api/notify/test-email", s.handleNotifyTestEmail)
 	mux.HandleFunc("POST /api/notify/test-webhook", s.handleNotifyTestWebhook)

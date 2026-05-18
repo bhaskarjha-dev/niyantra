@@ -42,6 +42,7 @@ func main() {
 	auth := fs.String("auth", envString("NIYANTRA_AUTH", ""), "HTTP basic auth (user:pass)")
 	bind := fs.String("bind", envString("NIYANTRA_BIND", "127.0.0.1"), "Bind address")
 	allowRemote := fs.Bool("allow-remote", envBool("NIYANTRA_ALLOW_REMOTE", false), "Allow non-local bind addresses")
+	behindHTTPSProxy := fs.Bool("behind-https-proxy", envBool("NIYANTRA_BEHIND_HTTPS_PROXY", false), "Acknowledge that non-local HTTP is protected by an HTTPS reverse proxy")
 	httpMCP := fs.Bool("mcp-http", envBool("NIYANTRA_MCP_HTTP", false), "Enable Streamable HTTP MCP at /mcp")
 	insecurePlaintextSecrets := fs.Bool("insecure-plaintext-secrets", envBool("NIYANTRA_INSECURE_PLAINTEXT_SECRETS", false), "Allow sensitive config values to remain plaintext in SQLite when secure OS secret storage is unavailable")
 	fs.Parse(os.Args[2:])
@@ -59,7 +60,7 @@ func main() {
 	case "status":
 		cmdStatus(logger, *dbPath, *insecurePlaintextSecrets)
 	case "serve":
-		cmdServe(logger, *dbPath, *port, *auth, *bind, *allowRemote, *httpMCP, *insecurePlaintextSecrets)
+		cmdServe(logger, *dbPath, *port, *auth, *bind, *allowRemote, *behindHTTPSProxy, *httpMCP, *insecurePlaintextSecrets)
 	case "mcp":
 		cmdMCP(logger, *dbPath, *insecurePlaintextSecrets)
 	case "backup":
@@ -240,13 +241,13 @@ func cmdStatus(logger *slog.Logger, dbPath string, allowPlaintextSecrets bool) {
 }
 
 // cmdServe starts the web dashboard.
-func cmdServe(logger *slog.Logger, dbPath string, port int, auth string, bind string, allowRemote bool, httpMCP bool, allowPlaintextSecrets bool) {
+func cmdServe(logger *slog.Logger, dbPath string, port int, auth string, bind string, allowRemote bool, behindHTTPSProxy bool, httpMCP bool, allowPlaintextSecrets bool) {
 	authEnabled, authErr := validateServeAuthConfig(auth)
 	if authErr != nil {
 		fmt.Fprintf(os.Stderr, "Error: invalid --auth / NIYANTRA_AUTH value: %v\n", authErr)
 		os.Exit(1)
 	}
-	if err := validateServeExposure(bind, authEnabled, allowRemote, httpMCP); err != nil {
+	if err := validateServeExposure(bind, authEnabled, allowRemote, httpMCP, behindHTTPSProxy); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
@@ -298,11 +299,11 @@ func cmdServe(logger *slog.Logger, dbPath string, port int, auth string, bind st
 	// Security warning: explicit non-local binds expose the dashboard to any
 	// client that can reach the listener. Docker users should prefer host
 	// loopback publishing unless remote access is genuinely required.
-	if shouldWarnInsecureBind(bind, authEnabled, allowRemote) {
+	if shouldWarnInsecureBind(bind, authEnabled, allowRemote, behindHTTPSProxy) {
 		fmt.Println()
 		fmt.Println("  ⚠️  WARNING: Dashboard is bound to " + bind + " without authentication!")
 		fmt.Println("  Anyone who can reach this listener can read dashboard data and downloads.")
-		fmt.Println("  Prefer localhost-only publishing or add --auth user:pass before wider exposure.")
+		fmt.Println("  Prefer localhost-only publishing, or use --auth with --behind-https-proxy behind TLS.")
 	}
 
 	fmt.Println()
@@ -587,6 +588,7 @@ Flags:
   --port     Dashboard port (default: 9222)
   --bind     Bind address (default: 127.0.0.1)
   --allow-remote  Allow non-local bind addresses
+  --behind-https-proxy  Required with --allow-remote; confirms TLS is handled by a reverse proxy
   --mcp-http  Enable Streamable HTTP MCP on /mcp
   --insecure-plaintext-secrets  Allow secrets to stay plaintext in SQLite when OS keychain storage is unavailable
   --db       Database path (default: ~/.niyantra/niyantra.db)
@@ -597,6 +599,7 @@ Environment Variables:
   NIYANTRA_PORT   Dashboard port (overridden by --port)
   NIYANTRA_BIND   Bind address (overridden by --bind)
   NIYANTRA_ALLOW_REMOTE  Allow non-local bind addresses
+  NIYANTRA_BEHIND_HTTPS_PROXY  Confirm non-local HTTP is protected by HTTPS reverse proxy
   NIYANTRA_MCP_HTTP  Enable Streamable HTTP MCP on /mcp
   NIYANTRA_INSECURE_PLAINTEXT_SECRETS  Allow plaintext SQLite secret storage
   NIYANTRA_DB     Database path (overridden by --db)

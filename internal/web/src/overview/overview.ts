@@ -1,7 +1,7 @@
 // Niyantra Dashboard — Overview Tab Renderer
 import { serverConfig, latestQuotaData } from '../core/state';
 import { esc, formatTimeAgo, formatDurationSec } from '../core/utils';
-import { fetchOverview, fetchSubscriptions, fetchUsage } from '../core/api';
+import { downloadBackup, fetchOverview, fetchSubscriptions, fetchUsage } from '../core/api';
 import { openBudgetModal } from './budget';
 import { renderServerInsights, loadAdvisorCard } from './insights';
 import { loadCostKPI } from './cost';
@@ -102,7 +102,7 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
     '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
     '<a class="btn-add" href="/api/export/csv" download style="text-decoration:none;display:inline-flex;padding:6px 12px;font-size:12px">📥 CSV</a>' +
     '<a class="btn-add" href="/api/export/json" download style="text-decoration:none;display:inline-flex;padding:6px 12px;font-size:12px">📦 Redacted JSON</a>' +
-    '<a class="btn-add" href="/api/backup" download style="text-decoration:none;display:inline-flex;padding:6px 12px;font-size:12px">💾 DB Backup</a>' +
+    '<button class="btn-add" id="download-backup-btn" style="padding:6px 12px;font-size:12px">💾 DB Backup</button>' +
     '<button class="btn-add" id="generate-report-btn" style="padding:6px 12px;font-size:12px">📊 Monthly Report</button>' +
     '</div></div>';
 
@@ -211,6 +211,14 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
   var reportBtn = document.getElementById('generate-report-btn');
   if (reportBtn) {
     reportBtn.addEventListener('click', function() { downloadReport(); });
+  }
+  var backupBtn = document.getElementById('download-backup-btn');
+  if (backupBtn) {
+    backupBtn.addEventListener('click', function() {
+      downloadBackup().catch(function(err) {
+        alert(err.message || 'Backup failed');
+      });
+    });
   }
 
   if (serverConfig['claude_bridge'] === 'true') {

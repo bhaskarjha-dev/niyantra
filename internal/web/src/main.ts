@@ -21,7 +21,7 @@ import {
 import {
   fetchStatus, triggerSnap,
   fetchSubscriptions, createSubscription, updateSubscription, deleteSubscription,
-  fetchOverview, fetchPresets, fetchUsage,
+  fetchOverview, fetchPresets, fetchUsage, downloadBackup,
 } from './core/api';
 
 import { initTheme, initTabs } from './core/theme';
@@ -100,6 +100,14 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   document.getElementById('snap-btn')!.addEventListener('click', handleSnap);
+  var settingsBackupBtn = document.getElementById('settings-backup-btn');
+  if (settingsBackupBtn) {
+    settingsBackupBtn.addEventListener('click', function() {
+      downloadBackup().catch(function(err) {
+        alert(err.message || 'Backup failed');
+      });
+    });
+  }
   initSnapDropdown();
 
   // Chart controls

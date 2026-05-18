@@ -59,18 +59,20 @@ func TestValidateServeExposure(t *testing.T) {
 		authEnabled    bool
 		allowRemote    bool
 		httpMCPEnabled bool
+		behindHTTPS    bool
 		wantErr        bool
 	}{
 		{name: "localhost default", bind: "127.0.0.1", wantErr: false},
 		{name: "remote bind requires opt in", bind: "0.0.0.0", wantErr: true},
-		{name: "remote dashboard allowed with explicit opt in", bind: "0.0.0.0", allowRemote: true, wantErr: false},
-		{name: "remote http mcp requires auth", bind: "0.0.0.0", allowRemote: true, httpMCPEnabled: true, wantErr: true},
-		{name: "remote http mcp with auth", bind: "0.0.0.0", allowRemote: true, authEnabled: true, httpMCPEnabled: true, wantErr: false},
+		{name: "remote dashboard requires auth", bind: "0.0.0.0", allowRemote: true, behindHTTPS: true, wantErr: true},
+		{name: "remote dashboard requires https proxy acknowledgement", bind: "0.0.0.0", allowRemote: true, authEnabled: true, wantErr: true},
+		{name: "remote dashboard allowed with explicit auth and https proxy", bind: "0.0.0.0", allowRemote: true, authEnabled: true, behindHTTPS: true, wantErr: false},
+		{name: "remote http mcp follows same remote policy", bind: "0.0.0.0", allowRemote: true, authEnabled: true, behindHTTPS: true, httpMCPEnabled: true, wantErr: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateServeExposure(tt.bind, tt.authEnabled, tt.allowRemote, tt.httpMCPEnabled)
+			err := validateServeExposure(tt.bind, tt.authEnabled, tt.allowRemote, tt.httpMCPEnabled, tt.behindHTTPS)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("validateServeExposure(%q, %v, %v, %v) err = %v, wantErr %v", tt.bind, tt.authEnabled, tt.allowRemote, tt.httpMCPEnabled, err, tt.wantErr)
 			}
@@ -84,18 +86,20 @@ func TestShouldWarnInsecureBind(t *testing.T) {
 		bind        string
 		authEnabled bool
 		allowRemote bool
+		behindHTTPS bool
 		want        bool
 	}{
 		{name: "localhost no auth", bind: "127.0.0.1", authEnabled: false, want: false},
 		{name: "localhost named no auth", bind: "localhost", authEnabled: false, want: false},
 		{name: "remote bind without explicit opt in", bind: "0.0.0.0", authEnabled: false, want: false},
 		{name: "remote bind no auth", bind: "0.0.0.0", authEnabled: false, allowRemote: true, want: true},
-		{name: "remote bind with auth", bind: "0.0.0.0", authEnabled: true, allowRemote: true, want: false},
+		{name: "remote bind with auth but no https proxy", bind: "0.0.0.0", authEnabled: true, allowRemote: true, want: true},
+		{name: "remote bind with auth and https proxy", bind: "0.0.0.0", authEnabled: true, allowRemote: true, behindHTTPS: true, want: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := shouldWarnInsecureBind(tt.bind, tt.authEnabled, tt.allowRemote)
+			got := shouldWarnInsecureBind(tt.bind, tt.authEnabled, tt.allowRemote, tt.behindHTTPS)
 			if got != tt.want {
 				t.Fatalf("shouldWarnInsecureBind(%q, %v, %v) = %v, want %v", tt.bind, tt.authEnabled, tt.allowRemote, got, tt.want)
 			}

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/bhaskarjha-com/niyantra/internal/store"
@@ -62,8 +63,8 @@ func TestHandleExportJSONMasksSensitiveConfig(t *testing.T) {
 	if !export.RedactedSecrets {
 		t.Fatal("expected export to mark secrets as redacted")
 	}
-	if export.FullBackupPath != "/api/backup" {
-		t.Fatalf("fullBackupPath = %q, want %q", export.FullBackupPath, "/api/backup")
+	if export.FullBackupPath != "/api/backup/create" {
+		t.Fatalf("fullBackupPath = %q, want %q", export.FullBackupPath, "/api/backup/create")
 	}
 
 	values := make(map[string]string, len(export.Config))
@@ -79,6 +80,39 @@ func TestHandleExportJSONMasksSensitiveConfig(t *testing.T) {
 	}
 	if values["budget_monthly"] != "200" {
 		t.Fatalf("budget_monthly = %q, want %q", values["budget_monthly"], "200")
+	}
+}
+
+func TestHandleBackupDeprecatedGetReturnsGone(t *testing.T) {
+	srv := &Server{logger: slog.Default(), store: openTestStore(t)}
+	req := httptest.NewRequest(http.MethodGet, "/api/backup", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleBackupDeprecated(rec, req)
+
+	if rec.Code != http.StatusGone {
+		t.Fatalf("expected 410, got %d (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleBackupCreateDownloadsDatabase(t *testing.T) {
+	srv := &Server{logger: slog.Default(), store: openTestStore(t)}
+	req := httptest.NewRequest(http.MethodPost, "/api/backup/create", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleBackupCreate(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); got != "application/octet-stream" {
+		t.Fatalf("Content-Type = %q, want application/octet-stream", got)
+	}
+	if got := rec.Header().Get("Content-Disposition"); !strings.Contains(got, "niyantra-") || !strings.Contains(got, ".db") {
+		t.Fatalf("unexpected Content-Disposition: %q", got)
+	}
+	if rec.Body.Len() == 0 {
+		t.Fatal("expected non-empty backup body")
 	}
 }
 

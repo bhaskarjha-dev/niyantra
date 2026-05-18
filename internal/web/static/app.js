@@ -189,6 +189,33 @@
       return data;
     });
   }
+  function downloadBackup() {
+    return fetch("/api/backup/create", { method: "POST" }).then(function(res) {
+      if (!res.ok) {
+        return res.json().catch(function() {
+          return {};
+        }).then(function(data) {
+          throw new Error(data.error || "Backup failed");
+        });
+      }
+      return res.blob().then(function(blob) {
+        var filename = filenameFromDisposition(res.headers.get("Content-Disposition")) || "niyantra-backup.db";
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      });
+    });
+  }
+  function filenameFromDisposition(header) {
+    if (!header) return null;
+    var match = /filename="([^"]+)"/.exec(header);
+    return match ? match[1] : null;
+  }
 
   // internal/web/src/core/theme.ts
   function initTheme() {
@@ -3102,7 +3129,7 @@
         linksHTML += "</div></div>";
       }
     }
-    var exportHTML = '<div class="overview-card full-width"><h3>Export</h3><p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Download a redacted JSON report or a full database backup.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn-add" href="/api/export/csv" download style="text-decoration:none;display:inline-flex;padding:6px 12px;font-size:12px">\u{1F4E5} CSV</a><a class="btn-add" href="/api/export/json" download style="text-decoration:none;display:inline-flex;padding:6px 12px;font-size:12px">\u{1F4E6} Redacted JSON</a><a class="btn-add" href="/api/backup" download style="text-decoration:none;display:inline-flex;padding:6px 12px;font-size:12px">\u{1F4BE} DB Backup</a><button class="btn-add" id="generate-report-btn" style="padding:6px 12px;font-size:12px">\u{1F4CA} Monthly Report</button></div></div>';
+    var exportHTML = '<div class="overview-card full-width"><h3>Export</h3><p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Download a redacted JSON report or a full database backup.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn-add" href="/api/export/csv" download style="text-decoration:none;display:inline-flex;padding:6px 12px;font-size:12px">\u{1F4E5} CSV</a><a class="btn-add" href="/api/export/json" download style="text-decoration:none;display:inline-flex;padding:6px 12px;font-size:12px">\u{1F4E6} Redacted JSON</a><button class="btn-add" id="download-backup-btn" style="padding:6px 12px;font-size:12px">\u{1F4BE} DB Backup</button><button class="btn-add" id="generate-report-btn" style="padding:6px 12px;font-size:12px">\u{1F4CA} Monthly Report</button></div></div>';
     var providerHTML = '<div class="overview-card full-width"><h3>Provider Status Signals</h3><p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">Rows below use provider-specific counters and are not a normalized cross-provider health score.</p>';
     providerHTML += '<div class="provider-health-grid">';
     if (latestQuotaData && latestQuotaData.accounts && latestQuotaData.accounts.length > 0) {
@@ -3162,6 +3189,14 @@
     if (reportBtn) {
       reportBtn.addEventListener("click", function() {
         downloadReport();
+      });
+    }
+    var backupBtn = document.getElementById("download-backup-btn");
+    if (backupBtn) {
+      backupBtn.addEventListener("click", function() {
+        downloadBackup().catch(function(err) {
+          alert(err.message || "Backup failed");
+        });
       });
     }
     if (serverConfig["claude_bridge"] === "true") {
@@ -4721,7 +4756,9 @@
       window.location.href = "/api/export/json";
     } },
     { name: "Download Backup", icon: "\u{1F4BE}", action: function() {
-      window.location.href = "/api/backup";
+      downloadBackup().catch(function(err) {
+        alert(err.message || "Backup failed");
+      });
     } },
     { name: "Search Subscriptions", key: "/", icon: "\u{1F50D}", action: function() {
       switchToTab("subscriptions");
@@ -4931,6 +4968,14 @@
       loadOverview();
     });
     document.getElementById("snap-btn").addEventListener("click", handleSnap);
+    var settingsBackupBtn = document.getElementById("settings-backup-btn");
+    if (settingsBackupBtn) {
+      settingsBackupBtn.addEventListener("click", function() {
+        downloadBackup().catch(function(err) {
+          alert(err.message || "Backup failed");
+        });
+      });
+    }
     initSnapDropdown();
     document.getElementById("chart-account").addEventListener("change", loadHistoryChart);
     document.getElementById("chart-range").addEventListener("change", loadHistoryChart);

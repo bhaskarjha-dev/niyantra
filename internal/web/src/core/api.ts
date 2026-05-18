@@ -87,3 +87,30 @@ export function fetchUsage(accountId?: number): Promise<any> {
     return data;
   });
 }
+
+export function downloadBackup(): Promise<void> {
+  return fetch('/api/backup/create', { method: 'POST' }).then(function(res) {
+    if (!res.ok) {
+      return res.json().catch(function() { return {}; }).then(function(data: any) {
+        throw new Error(data.error || 'Backup failed');
+      });
+    }
+    return res.blob().then(function(blob) {
+      var filename = filenameFromDisposition(res.headers.get('Content-Disposition')) || 'niyantra-backup.db';
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+  });
+}
+
+function filenameFromDisposition(header: string | null): string | null {
+  if (!header) return null;
+  var match = /filename="([^"]+)"/.exec(header);
+  return match ? match[1] : null;
+}

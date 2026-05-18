@@ -84,9 +84,27 @@ func (s *Server) handleClaudeStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, result)
 }
 
-// handleBackup serves a consistent database backup as a download.
+// handleBackupDeprecated rejects the legacy GET backup route. A full SQLite
+// backup is a sensitive state export and must use the protected POST flow.
+func (s *Server) handleBackupDeprecated(w http.ResponseWriter, r *http.Request) {
+	jsonError(w, "GET /api/backup is disabled; use POST /api/backup/create", http.StatusGone)
+}
+
+// handleBackupCreate serves a consistent database backup as a download.
 // Uses VACUUM INTO for WAL-safe snapshot instead of raw file copy.
-func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleBackupCreate(w http.ResponseWriter, r *http.Request) {
+	issues, err := s.store.IntegrityCheck()
+	if err != nil {
+		s.logger.Error("Backup integrity check failed", "error", err)
+		jsonError(w, "database integrity check failed", http.StatusInternalServerError)
+		return
+	}
+	if len(issues) > 0 {
+		s.logger.Error("Backup refused due to database integrity issues", "issues", len(issues))
+		jsonError(w, "database integrity check failed", http.StatusInternalServerError)
+		return
+	}
+
 	// Create temp file for VACUUM INTO
 	backupPath := s.store.Path() + ".backup-" + time.Now().Format("20060102-150405")
 	if err := s.store.VacuumInto(backupPath); err != nil {
@@ -250,8 +268,8 @@ func (s *Server) handleExportJSON(w http.ResponseWriter, r *http.Request) {
 		"niyantraVersion":  s.Version,
 		"redactedSecrets":  true,
 		"historyScope":     "recent",
-		"fullBackupPath":   "/api/backup",
-		"exportDisclaimer": "Secrets are redacted and snapshot history is limited. Use /api/backup for a full local database backup.",
+		"fullBackupPath":   "/api/backup/create",
+		"exportDisclaimer": "Secrets are redacted and snapshot history is limited. Use POST /api/backup/create for a full local database backup.",
 	}
 
 	// Accounts
