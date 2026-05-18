@@ -29,6 +29,51 @@ func TestCORSBlocksCrossOrigin(t *testing.T) {
 	}
 }
 
+// TestAPIMutationBlocksCrossOrigin verifies that browser-originated REST
+// mutations from another origin are rejected, not merely hidden by CORS.
+func TestAPIMutationBlocksCrossOrigin(t *testing.T) {
+	srv := &Server{port: 9222}
+
+	handler := srv.securityMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("next handler should not be called for cross-origin API mutation")
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/config", strings.NewReader(`{"key":"budget_monthly","value":"1"}`))
+	req.Header.Set("Origin", "http://evil.example")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for cross-origin API mutation, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "cross-origin API mutations") {
+		t.Fatalf("expected cross-origin error body, got %q", rec.Body.String())
+	}
+}
+
+// TestAPIPreflightBlocksCrossOrigin verifies that cross-origin API preflights
+// fail closed instead of returning a generic 204.
+func TestAPIPreflightBlocksCrossOrigin(t *testing.T) {
+	srv := &Server{port: 9222}
+
+	handler := srv.securityMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("next handler should not be called for cross-origin API preflight")
+	}))
+
+	req := httptest.NewRequest(http.MethodOptions, "/api/config", nil)
+	req.Header.Set("Origin", "http://evil.example")
+	req.Header.Set("Access-Control-Request-Method", "PUT")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for cross-origin API preflight, got %d", rec.Code)
+	}
+}
+
 // TestCORSAllowsLocalhost verifies that localhost origin gets CORS headers.
 func TestCORSAllowsLocalhost(t *testing.T) {
 	srv := &Server{port: 9222}
@@ -299,6 +344,26 @@ func TestContentTypeEmptyAllowed(t *testing.T) {
 	}
 }
 
+// TestContentTypeEmptyPostAllowed keeps bodyless same-origin actions such as
+// Snap Now compatible while body-bearing mutations still require JSON.
+func TestContentTypeEmptyPostAllowed(t *testing.T) {
+	srv := &Server{port: 9222}
+
+	handler := srv.securityMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/snap", nil)
+	req.Header.Set("Origin", "http://localhost:9222")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 for bodyless same-origin POST, got %d", rec.Code)
+	}
+}
+
 // TestContentTypeMultipartRejected verifies that multipart uploads are rejected on API routes.
 func TestContentTypeMultipartRejected(t *testing.T) {
 	srv := &Server{port: 9222}
@@ -526,5 +591,27 @@ func TestSecurityHeadersOnHealthz(t *testing.T) {
 	}
 	if rec.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Error("X-Content-Type-Options should be set on /healthz too")
+	}
+}
+
+func TestHealthzMinimalPayload(t *testing.T) {
+	srv := &Server{port: 9222, Version: "test"}
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+
+	srv.handleHealthz(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"status":"ok"`) {
+		t.Fatalf("expected ok body, got %q", body)
+	}
+	for _, leaked := range []string{"schemaVersion", "accounts", "snapshots", "version"} {
+		if strings.Contains(body, leaked) {
+			t.Fatalf("/healthz leaked %q in %s", leaked, body)
+		}
 	}
 }

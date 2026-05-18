@@ -191,6 +191,7 @@ func (s *Server) ListenAndServe() error {
 
 	// Operational endpoints (no auth required — registered on inner mux)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.HandleFunc("GET /api/health", s.handleHealthDetail)
 
 	// Quota API routes (auto-tracked)
 	mux.HandleFunc("GET /api/status", s.handleStatus)

@@ -26,6 +26,7 @@ desktop.ini
 
 # Go
 vendor/
+.gocache/
 *.test
 *.out
 coverage.html
@@ -36,6 +37,7 @@ build/
 
 # Private drafts (internal research, deferred plans)
 draft/
+.audit-runtime*
 
 # Antigravity payload dump
 antigravity_payload_dump.json

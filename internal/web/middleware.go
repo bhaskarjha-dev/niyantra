@@ -8,6 +8,19 @@ import (
 	"strings"
 )
 
+func isUnsafeMethod(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	default:
+		return false
+	}
+}
+
+func hasRequestBody(r *http.Request) bool {
+	return r.ContentLength > 0 || len(r.TransferEncoding) > 0
+}
+
 // basicAuth wraps a handler with HTTP basic authentication.
 func (s *Server) basicAuth(next http.Handler) http.Handler {
 	user, pass, enabled, err := parseBasicAuthConfig(s.auth)
@@ -78,10 +91,12 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 		allowedOrigin2 := fmt.Sprintf("http://127.0.0.1:%d", s.port)
 		origin := r.Header.Get("Origin")
 
+		sameOrigin := origin == allowedOrigin || origin == allowedOrigin2
+		crossOrigin := origin != "" && !sameOrigin
+
 		// MCP endpoint: enforce strict Origin check to prevent cross-site exfiltration.
 		// Requests without Origin header are allowed (CLI tools, MCP SDK clients).
-		if r.URL.Path == "/mcp" && origin != "" &&
-			origin != allowedOrigin && origin != allowedOrigin2 {
+		if r.URL.Path == "/mcp" && crossOrigin {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
 			json.NewEncoder(w).Encode(map[string]string{
@@ -90,7 +105,21 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if origin == allowedOrigin || origin == allowedOrigin2 {
+		// REST API mutation endpoints also reject browser cross-origin requests.
+		// CORS alone only controls response visibility; it does not stop a
+		// browser from sending a state-changing request to localhost. Rejecting
+		// unsafe methods with a foreign Origin closes that CSRF/dns-rebind path
+		// while preserving CLI clients, which normally send no Origin header.
+		if strings.HasPrefix(r.URL.Path, "/api/") && isUnsafeMethod(r.Method) && crossOrigin {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "cross-origin API mutations are not allowed",
+			})
+			return
+		}
+
+		if sameOrigin {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
@@ -98,6 +127,14 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 
 		// Handle preflight
 		if r.Method == http.MethodOptions {
+			if crossOrigin && (strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/mcp") {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]string{
+					"error": "cross-origin requests are not allowed",
+				})
+				return
+			}
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -105,11 +142,10 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 		// ── Content-Type Enforcement ──────────────────────────────────
 		// Enforce Content-Type: application/json on mutation endpoints.
 		// Skip for /mcp — the MCP SDK handler manages its own content negotiation.
-		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch || r.Method == http.MethodDelete {
+		if isUnsafeMethod(r.Method) {
 			if strings.HasPrefix(r.URL.Path, "/api/") {
 				ct := r.Header.Get("Content-Type")
-				// Allow empty content-type for DELETE and requests with no body
-				if ct != "" && !strings.HasPrefix(ct, "application/json") {
+				if hasRequestBody(r) && !strings.HasPrefix(ct, "application/json") {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusUnsupportedMediaType)
 					json.NewEncoder(w).Encode(map[string]string{"error": "Content-Type must be application/json"})

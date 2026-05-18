@@ -25,6 +25,15 @@ import (
 // handleHealthz returns basic health/liveness data for monitoring.
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{
+		"status": "ok",
+	})
+}
+
+// handleHealthDetail returns detailed authenticated health data for the UI and
+// local diagnostics. The public /healthz endpoint intentionally stays minimal
+// so remote/container probes do not leak schema or usage inventory.
+func (s *Server) handleHealthDetail(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]interface{}{
 		"status":        "ok",
 		"version":       s.Version,
 		"uptime":        time.Since(s.startTime).Truncate(time.Second).String(),
