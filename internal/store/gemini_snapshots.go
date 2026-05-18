@@ -28,7 +28,7 @@ func (s *Store) InsertGeminiSnapshot(snap *GeminiSnapshot) (int64, error) {
 			(account_id, email, tier, overall_pct, models_json, project_id,
 			 captured_at, capture_method, capture_source)
 		VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?)`,
-		snap.AccountID, snap.Email, snap.Tier, snap.OverallPct,
+		nullableAccountID(snap.AccountID), snap.Email, snap.Tier, snap.OverallPct,
 		snap.ModelsJSON, snap.ProjectID,
 		snap.CaptureMethod, snap.CaptureSource,
 	)

@@ -70,6 +70,38 @@ func TestOpenAndMigrate(t *testing.T) {
 	}
 }
 
+func TestOpenEnablesForeignKeys(t *testing.T) {
+	s := openTestDB(t)
+
+	var enabled int
+	if err := s.db.QueryRow("PRAGMA foreign_keys").Scan(&enabled); err != nil {
+		t.Fatalf("PRAGMA foreign_keys: %v", err)
+	}
+	if enabled != 1 {
+		t.Fatalf("foreign key enforcement = %d, want 1", enabled)
+	}
+
+	_, err := s.db.Exec(`
+		INSERT INTO snapshots (account_id, captured_at, email, models_json)
+		VALUES (999999, datetime('now'), 'orphan@example.com', '[]')
+	`)
+	if err == nil {
+		t.Fatal("expected foreign key enforcement to reject orphan snapshot")
+	}
+}
+
+func TestIntegrityCheckCleanDatabase(t *testing.T) {
+	s := openTestDB(t)
+
+	issues, err := s.IntegrityCheck()
+	if err != nil {
+		t.Fatalf("IntegrityCheck: %v", err)
+	}
+	if len(issues) != 0 {
+		t.Fatalf("expected clean database, got issues: %#v", issues)
+	}
+}
+
 func TestBusyTimeoutSet(t *testing.T) {
 	s := openTestDB(t)
 

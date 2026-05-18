@@ -333,6 +333,15 @@ func (s *Server) handleImportJSON(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.store.ImportJSON(body)
 	if err != nil {
+		if result != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":  fmt.Sprintf("import failed: %v", err),
+				"result": result,
+			})
+			return
+		}
 		jsonError(w, fmt.Sprintf("import failed: %v", err), http.StatusBadRequest)
 		return
 	}

@@ -102,6 +102,34 @@ func TestImportJSON_AccountsDedup(t *testing.T) {
 	}
 }
 
+func TestImportJSON_RowErrorRollsBackTransaction(t *testing.T) {
+	s := testImportStore(t)
+	data := buildExportJSON(t, map[string]interface{}{
+		"accounts": []map[string]string{
+			{"email": "rollback@example.com", "plan_name": "Pro", "provider": "antigravity"},
+		},
+		"snapshots": []map[string]interface{}{
+			{
+				"email":       "rollback@example.com",
+				"captured_at": "not-a-time",
+				"models_json": "[]",
+				"plan_name":   "Pro",
+			},
+		},
+	})
+
+	result, err := s.ImportJSON(data)
+	if err == nil {
+		t.Fatal("expected import to abort on row error")
+	}
+	if result == nil || len(result.Errors) != 1 {
+		t.Fatalf("expected one row error result, got result=%#v err=%v", result, err)
+	}
+	if count := s.AccountCount(); count != 0 {
+		t.Fatalf("transaction should roll back created account, count=%d", count)
+	}
+}
+
 func TestImportJSON_SameEmailDifferentProvidersStayDistinct(t *testing.T) {
 	s := testImportStore(t)
 	capturedAt := time.Now().UTC().Format(time.RFC3339)

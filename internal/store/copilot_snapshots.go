@@ -41,7 +41,7 @@ func (s *Store) InsertCopilotSnapshot(snap *CopilotSnapshot) (int64, error) {
 			(account_id, email, username, plan, premium_pct, chat_pct,
 			 models_json, captured_at, capture_method, capture_source)
 		VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, ?)`,
-		snap.AccountID, snap.Email, snap.Username, snap.Plan,
+		nullableAccountID(snap.AccountID), snap.Email, snap.Username, snap.Plan,
 		snap.PremiumPct, snap.ChatPct,
 		formatCopilotModelsJSON(snap),
 		snap.CaptureMethod, snap.CaptureSource,

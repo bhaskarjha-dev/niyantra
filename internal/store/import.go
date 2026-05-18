@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -42,6 +43,11 @@ type importEnvelope struct {
 	GeminiSnaps   []json.RawMessage `json:"geminiSnapshots"`
 	CopilotSnaps  []json.RawMessage `json:"copilotSnapshots"`
 	PluginSnaps   []json.RawMessage `json:"pluginSnapshots"`
+}
+
+type importDB interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	QueryRow(query string, args ...any) *sql.Row
 }
 
 type importAccount struct {
@@ -98,7 +104,7 @@ func importAccountKey(provider, email string) string {
 	return provider + "\x00" + email
 }
 
-func resolveImportAccountID(s *Store, accountKeyToID map[string]int64, provider, email, planName string) (int64, bool, error) {
+func resolveImportAccountID(db importDB, accountKeyToID map[string]int64, provider, email, planName string) (int64, bool, error) {
 	if email == "" {
 		return 0, false, nil
 	}
@@ -107,12 +113,23 @@ func resolveImportAccountID(s *Store, accountKeyToID map[string]int64, provider,
 		return id, false, nil
 	}
 	var existingID int64
-	err := s.db.QueryRow(`SELECT id FROM accounts WHERE email = ? AND provider = ?`, email, provider).Scan(&existingID)
+	err := db.QueryRow(`SELECT id FROM accounts WHERE email = ? AND provider = ?`, email, provider).Scan(&existingID)
 	if err == nil {
 		accountKeyToID[key] = existingID
 		return existingID, false, nil
 	}
-	id, err := s.GetOrCreateAccount(email, planName, provider)
+	_, err = db.Exec(`
+		INSERT INTO accounts (email, plan_name, provider)
+		VALUES (?, ?, ?)
+		ON CONFLICT(email, provider) DO UPDATE SET
+			plan_name = excluded.plan_name,
+			updated_at = datetime('now')
+	`, email, planName, provider)
+	if err != nil {
+		return 0, false, fmt.Errorf("store: upsert import account: %w", err)
+	}
+	var id int64
+	err = db.QueryRow("SELECT id FROM accounts WHERE email = ? AND provider = ?", email, provider).Scan(&id)
 	if err != nil {
 		return 0, false, err
 	}
@@ -136,6 +153,13 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 		return nil, fmt.Errorf("import: unsupported export version %q (expected 1.0 or niyantra-export-v1)", envelope.Version)
 	}
 
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("import: begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+	db := importDB(tx)
+
 	// ── Import accounts (dedup by email) ──
 	accountKeyToID := make(map[string]int64)
 	for _, raw := range envelope.Accounts {
@@ -156,14 +180,14 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 
 		// Check if exists (dedup by email + provider)
 		var existingID int64
-		err := s.db.QueryRow(`SELECT id FROM accounts WHERE email = ? AND provider = ?`, acct.Email, provider).Scan(&existingID)
+		err := db.QueryRow(`SELECT id FROM accounts WHERE email = ? AND provider = ?`, acct.Email, provider).Scan(&existingID)
 		if err == nil {
 			accountKeyToID[importAccountKey(provider, acct.Email)] = existingID
 			result.AccountsSkipped++
 			continue
 		}
 
-		res, err := s.db.Exec(`INSERT INTO accounts (email, plan_name, provider) VALUES (?, ?, ?)`,
+		res, err := db.Exec(`INSERT INTO accounts (email, plan_name, provider) VALUES (?, ?, ?)`,
 			acct.Email, acct.PlanName, provider)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("account insert %q: %v", acct.Email, err))
@@ -187,14 +211,14 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 
 		// Check if exists (platform + email combo)
 		var count int
-		s.db.QueryRow(`SELECT COUNT(*) FROM subscriptions WHERE platform = ? AND email = ?`,
+		db.QueryRow(`SELECT COUNT(*) FROM subscriptions WHERE platform = ? AND email = ?`,
 			sub.Platform, sub.Email).Scan(&count)
 		if count > 0 {
 			result.SubsSkipped++
 			continue
 		}
 
-		_, err := s.db.Exec(`
+		_, err := db.Exec(`
 			INSERT INTO subscriptions (platform, email, category, plan_name, status,
 			                          cost_amount, cost_currency, billing_cycle, next_renewal, notes)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -217,7 +241,7 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 
 		// Resolve account ID — antigravity snapshots belong to the antigravity
 		// provider namespace even when the same email exists elsewhere.
-		accountID, created, err := resolveImportAccountID(s, accountKeyToID, "antigravity", snap.Email, snap.PlanName)
+		accountID, created, err := resolveImportAccountID(db, accountKeyToID, "antigravity", snap.Email, snap.PlanName)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("snapshot account resolve %q: %v", snap.Email, err))
 			continue
@@ -238,7 +262,7 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 		windowStart, windowEnd := dedupWindow(capturedAt)
 
 		var dupeCount int
-		s.db.QueryRow(`
+		db.QueryRow(`
 			SELECT COUNT(*) FROM snapshots
 			WHERE account_id = ? AND captured_at BETWEEN ? AND ?`,
 			accountID, windowStart, windowEnd).Scan(&dupeCount)
@@ -247,7 +271,7 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 			continue
 		}
 
-		_, err = s.db.Exec(`
+		_, err = db.Exec(`
 			INSERT INTO snapshots (account_id, captured_at, email, plan_name, models_json,
 			                      capture_method, capture_source, source_id)
 			VALUES (?, ?, ?, ?, ?, 'imported', 'json', 'import')`,
@@ -283,7 +307,7 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 		}
 		wStart, wEnd := dedupWindow(capturedAt)
 		var dupeCount int
-		s.db.QueryRow(`SELECT COUNT(*) FROM claude_snapshots WHERE captured_at BETWEEN ? AND ?`,
+		db.QueryRow(`SELECT COUNT(*) FROM claude_snapshots WHERE captured_at BETWEEN ? AND ?`,
 			wStart, wEnd).Scan(&dupeCount)
 		if dupeCount > 0 {
 			result.ClaudeDuped++
@@ -293,7 +317,7 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 		if source == "" {
 			source = "imported"
 		}
-		_, err = s.db.Exec(`
+		_, err = db.Exec(`
 			INSERT INTO claude_snapshots (five_hour_pct, seven_day_pct, five_hour_reset, seven_day_reset, captured_at, source)
 			VALUES (?, ?, ?, ?, ?, ?)`,
 			snap.FiveHourPct, snap.SevenDayPct, snap.FiveHourReset, snap.SevenDayReset,
@@ -332,7 +356,7 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 		}
 		wStart, wEnd := dedupWindow(capturedAt)
 		var dupeCount int
-		s.db.QueryRow(`SELECT COUNT(*) FROM codex_snapshots WHERE captured_at BETWEEN ? AND ?`,
+		db.QueryRow(`SELECT COUNT(*) FROM codex_snapshots WHERE captured_at BETWEEN ? AND ?`,
 			wStart, wEnd).Scan(&dupeCount)
 		if dupeCount > 0 {
 			result.CodexDuped++
@@ -345,7 +369,7 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 		ownerAccountID := snap.OwnerAccountID
 		if ownerAccountID == 0 && snap.Email != "" {
 			var created bool
-			ownerAccountID, created, err = resolveImportAccountID(s, accountKeyToID, "codex", snap.Email, snap.PlanType)
+			ownerAccountID, created, err = resolveImportAccountID(db, accountKeyToID, "codex", snap.Email, snap.PlanType)
 			if err != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("codex owner resolve %q: %v", snap.Email, err))
 				continue
@@ -354,11 +378,11 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 				result.AccountsCreated++
 			}
 		}
-		_, err = s.db.Exec(`
+		_, err = db.Exec(`
 			INSERT INTO codex_snapshots (account_id, owner_account_id, email, five_hour_pct, seven_day_pct,
 				plan_type, credits_balance, captured_at, capture_method, capture_source)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'json')`,
-			snap.AccountID, ownerAccountID, snap.Email, snap.FiveHourPct, snap.SevenDayPct,
+			snap.AccountID, nullableAccountID(ownerAccountID), snap.Email, snap.FiveHourPct, snap.SevenDayPct,
 			snap.PlanType, snap.CreditsBalance, snap.CapturedAt, method)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("codex snap insert: %v", err))
@@ -391,13 +415,13 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 		}
 		wStart, wEnd := dedupWindow(capturedAt)
 		var dupeCount int
-		s.db.QueryRow(`SELECT COUNT(*) FROM cursor_snapshots WHERE captured_at BETWEEN ? AND ?`,
+		db.QueryRow(`SELECT COUNT(*) FROM cursor_snapshots WHERE captured_at BETWEEN ? AND ?`,
 			wStart, wEnd).Scan(&dupeCount)
 		if dupeCount > 0 {
 			result.CursorDuped++
 			continue
 		}
-		accountID, created, err := resolveImportAccountID(s, accountKeyToID, "cursor", snap.Email, snap.PlanType)
+		accountID, created, err := resolveImportAccountID(db, accountKeyToID, "cursor", snap.Email, snap.PlanType)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("cursor owner resolve %q: %v", snap.Email, err))
 			continue
@@ -405,11 +429,11 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 		if created {
 			result.AccountsCreated++
 		}
-		_, err = s.db.Exec(`
+		_, err = db.Exec(`
 			INSERT INTO cursor_snapshots (account_id, email, premium_used, premium_limit, usage_pct,
 				plan_type, captured_at, capture_method, capture_source)
 			VALUES (?, ?, ?, ?, ?, ?, ?, 'imported', 'json')`,
-			accountID, snap.Email, snap.PremiumUsed, snap.PremiumLimit, snap.UsagePct,
+			nullableAccountID(accountID), snap.Email, snap.PremiumUsed, snap.PremiumLimit, snap.UsagePct,
 			snap.PlanType, snap.CapturedAt)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("cursor snap insert: %v", err))
@@ -442,13 +466,13 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 		}
 		wStart, wEnd := dedupWindow(capturedAt)
 		var dupeCount int
-		s.db.QueryRow(`SELECT COUNT(*) FROM gemini_snapshots WHERE captured_at BETWEEN ? AND ?`,
+		db.QueryRow(`SELECT COUNT(*) FROM gemini_snapshots WHERE captured_at BETWEEN ? AND ?`,
 			wStart, wEnd).Scan(&dupeCount)
 		if dupeCount > 0 {
 			result.GeminiDuped++
 			continue
 		}
-		accountID, created, err := resolveImportAccountID(s, accountKeyToID, "gemini", snap.Email, snap.Tier)
+		accountID, created, err := resolveImportAccountID(db, accountKeyToID, "gemini", snap.Email, snap.Tier)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("gemini owner resolve %q: %v", snap.Email, err))
 			continue
@@ -456,11 +480,11 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 		if created {
 			result.AccountsCreated++
 		}
-		_, err = s.db.Exec(`
+		_, err = db.Exec(`
 			INSERT INTO gemini_snapshots (account_id, email, tier, overall_pct, models_json, project_id,
 				captured_at, capture_method, capture_source)
 			VALUES (?, ?, ?, ?, ?, ?, ?, 'imported', 'json')`,
-			accountID, snap.Email, snap.Tier, snap.OverallPct, snap.ModelsJSON,
+			nullableAccountID(accountID), snap.Email, snap.Tier, snap.OverallPct, snap.ModelsJSON,
 			snap.ProjectID, snap.CapturedAt)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("gemini snap insert: %v", err))
@@ -493,13 +517,13 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 		}
 		wStart, wEnd := dedupWindow(capturedAt)
 		var dupeCount int
-		s.db.QueryRow(`SELECT COUNT(*) FROM copilot_snapshots WHERE captured_at BETWEEN ? AND ?`,
+		db.QueryRow(`SELECT COUNT(*) FROM copilot_snapshots WHERE captured_at BETWEEN ? AND ?`,
 			wStart, wEnd).Scan(&dupeCount)
 		if dupeCount > 0 {
 			result.CopilotDuped++
 			continue
 		}
-		accountID, created, err := resolveImportAccountID(s, accountKeyToID, "copilot", snap.Email, snap.Plan)
+		accountID, created, err := resolveImportAccountID(db, accountKeyToID, "copilot", snap.Email, snap.Plan)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("copilot owner resolve %q: %v", snap.Email, err))
 			continue
@@ -507,11 +531,11 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 		if created {
 			result.AccountsCreated++
 		}
-		_, err = s.db.Exec(`
+		_, err = db.Exec(`
 			INSERT INTO copilot_snapshots (account_id, email, username, plan, premium_pct, chat_pct,
 				captured_at, capture_method, capture_source)
 			VALUES (?, ?, ?, ?, ?, ?, ?, 'imported', 'json')`,
-			accountID, snap.Email, snap.Username, snap.Plan, snap.PremiumPct,
+			nullableAccountID(accountID), snap.Email, snap.Username, snap.Plan, snap.PremiumPct,
 			snap.ChatPct, snap.CapturedAt)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("copilot snap insert: %v", err))
@@ -548,13 +572,13 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 		}
 		wStart, wEnd := dedupWindow(capturedAt)
 		var dupeCount int
-		s.db.QueryRow(`SELECT COUNT(*) FROM plugin_snapshots WHERE plugin_id = ? AND captured_at BETWEEN ? AND ?`,
+		db.QueryRow(`SELECT COUNT(*) FROM plugin_snapshots WHERE plugin_id = ? AND captured_at BETWEEN ? AND ?`,
 			snap.PluginID, wStart, wEnd).Scan(&dupeCount)
 		if dupeCount > 0 {
 			result.PluginDuped++
 			continue
 		}
-		_, err = s.db.Exec(`
+		_, err = db.Exec(`
 			INSERT INTO plugin_snapshots (plugin_id, provider, label, email, usage_pct,
 				usage_display, plan, models_json, metadata_json, captured_at, capture_method)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'imported')`,
@@ -568,5 +592,11 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 		result.PluginImported++
 	}
 
+	if len(result.Errors) > 0 {
+		return result, fmt.Errorf("import: aborted with %d row error(s)", len(result.Errors))
+	}
+	if err := tx.Commit(); err != nil {
+		return result, fmt.Errorf("import: commit transaction: %w", err)
+	}
 	return result, nil
 }

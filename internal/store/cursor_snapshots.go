@@ -36,7 +36,7 @@ func (s *Store) InsertCursorSnapshot(snap *CursorSnapshot) (int64, error) {
 			 plan_type, start_of_month, models_json,
 			 captured_at, capture_method, capture_source)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, ?)`,
-		snap.AccountID, snap.Email, snap.RequestsUsed, snap.RequestsMax, snap.UsagePct,
+		nullableAccountID(snap.AccountID), snap.Email, snap.RequestsUsed, snap.RequestsMax, snap.UsagePct,
 		snap.PlanTier, snap.CycleStart,
 		formatCursorModelsJSON(snap),
 		snap.CaptureMethod, snap.CaptureSource,

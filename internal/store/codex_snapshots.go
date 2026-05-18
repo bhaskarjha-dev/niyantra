@@ -44,7 +44,7 @@ func (s *Store) InsertCodexSnapshot(snap *CodexSnapshot) (int64, error) {
 			 five_hour_reset, seven_day_reset, plan_type, credits_balance,
 			 captured_at, capture_method, capture_source)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, ?)`,
-		snap.AccountID, snap.OwnerAccountID, snap.Email, snap.FiveHourPct, snap.SevenDayPct, snap.CodeReviewPct,
+		snap.AccountID, nullableAccountID(snap.OwnerAccountID), snap.Email, snap.FiveHourPct, snap.SevenDayPct, snap.CodeReviewPct,
 		fiveReset, sevenReset, snap.PlanType, snap.CreditsBalance,
 		snap.CaptureMethod, snap.CaptureSource,
 	)

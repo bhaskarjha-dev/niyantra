@@ -33,7 +33,7 @@ func Open(dbPath string, opts ...OpenOption) (*Store, error) {
 		return nil, fmt.Errorf("store: creating directory %s: %w", dir, err)
 	}
 
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", sqliteDSN(dbPath))
 	if err != nil {
 		return nil, fmt.Errorf("store: opening database: %w", err)
 	}
@@ -48,6 +48,14 @@ func Open(dbPath string, opts ...OpenOption) (*Store, error) {
 	if _, err := db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("store: setting busy_timeout: %w", err)
+	}
+	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("store: enabling foreign keys: %w", err)
+	}
+	if err := verifyForeignKeysEnabled(db); err != nil {
+		db.Close()
+		return nil, err
 	}
 
 	s := &Store{
@@ -71,6 +79,82 @@ func Open(dbPath string, opts ...OpenOption) (*Store, error) {
 	}
 
 	return s, nil
+}
+
+func sqliteDSN(dbPath string) string {
+	sep := "?"
+	if strings.Contains(dbPath, "?") {
+		sep = "&"
+	}
+	return dbPath + sep + "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
+}
+
+func verifyForeignKeysEnabled(db *sql.DB) error {
+	var enabled int
+	if err := db.QueryRow("PRAGMA foreign_keys").Scan(&enabled); err != nil {
+		return fmt.Errorf("store: verifying foreign keys: %w", err)
+	}
+	if enabled != 1 {
+		return fmt.Errorf("store: foreign key enforcement is disabled")
+	}
+	return nil
+}
+
+// IntegrityIssue describes one SQLite integrity or foreign-key failure.
+type IntegrityIssue struct {
+	Check  string `json:"check"`
+	Table  string `json:"table,omitempty"`
+	RowID  int64  `json:"rowid,omitempty"`
+	Parent string `json:"parent,omitempty"`
+	FKID   int    `json:"fkid,omitempty"`
+	Detail string `json:"detail,omitempty"`
+}
+
+// IntegrityCheck verifies database structural and relationship integrity.
+func (s *Store) IntegrityCheck() ([]IntegrityIssue, error) {
+	var issues []IntegrityIssue
+
+	rows, err := s.db.Query("PRAGMA foreign_key_check")
+	if err != nil {
+		return nil, fmt.Errorf("store: foreign_key_check: %w", err)
+	}
+	for rows.Next() {
+		var issue IntegrityIssue
+		issue.Check = "foreign_key"
+		if err := rows.Scan(&issue.Table, &issue.RowID, &issue.Parent, &issue.FKID); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("store: scan foreign_key_check: %w", err)
+		}
+		issues = append(issues, issue)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, fmt.Errorf("store: iterate foreign_key_check: %w", err)
+	}
+	rows.Close()
+
+	rows, err = s.db.Query("PRAGMA integrity_check")
+	if err != nil {
+		return nil, fmt.Errorf("store: integrity_check: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var detail string
+		if err := rows.Scan(&detail); err != nil {
+			return nil, fmt.Errorf("store: scan integrity_check: %w", err)
+		}
+		if detail != "ok" {
+			issues = append(issues, IntegrityIssue{
+				Check:  "integrity",
+				Detail: detail,
+			})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: iterate integrity_check: %w", err)
+	}
+
+	return issues, nil
 }
 
 // Close closes the database connection.
@@ -846,6 +930,15 @@ func (s *Store) migrate() error {
 		if err := s.setUserVersion(20); err != nil {
 			return err
 		}
+	}
+
+	if _, err := s.db.Exec(`
+		UPDATE codex_snapshots SET owner_account_id = NULL WHERE owner_account_id = 0;
+		UPDATE cursor_snapshots SET account_id = NULL WHERE account_id = 0;
+		UPDATE gemini_snapshots SET account_id = NULL WHERE account_id = 0;
+		UPDATE copilot_snapshots SET account_id = NULL WHERE account_id = 0;
+	`); err != nil {
+		return fmt.Errorf("store: normalize nullable foreign keys: %w", err)
 	}
 
 	return nil
