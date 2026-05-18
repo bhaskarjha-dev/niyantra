@@ -9,11 +9,19 @@ import (
 
 // basicAuth wraps a handler with HTTP basic authentication.
 func (s *Server) basicAuth(next http.Handler) http.Handler {
-	parts := strings.SplitN(s.auth, ":", 2)
-	if len(parts) != 2 {
+	user, pass, enabled, err := parseBasicAuthConfig(s.auth)
+	if err != nil {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "server authentication is misconfigured",
+			})
+		})
+	}
+	if !enabled {
 		return next
 	}
-	user, pass := parts[0], parts[1]
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Skip auth for health check only
@@ -31,7 +39,6 @@ func (s *Server) basicAuth(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-
 
 // securityMiddleware enforces CORS, Content-Type, and browser security policies.
 func (s *Server) securityMiddleware(next http.Handler) http.Handler {

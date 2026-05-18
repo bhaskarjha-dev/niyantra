@@ -282,6 +282,7 @@ func (s *Server) handleExportJSON(w http.ResponseWriter, r *http.Request) {
 
 	// Config
 	config, _ := s.store.AllConfig("")
+	maskConfigEntries(config)
 	export["config"] = config
 
 	// Activity log (last 500)

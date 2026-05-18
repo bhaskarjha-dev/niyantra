@@ -172,11 +172,11 @@ func TestSecurityHeaders(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	headers := map[string]string{
-		"Content-Security-Policy":   "default-src 'self'",  // check prefix
-		"X-Frame-Options":          "DENY",
-		"X-Content-Type-Options":   "nosniff",
-		"Referrer-Policy":          "strict-origin-when-cross-origin",
-		"Permissions-Policy":       "camera=(), microphone=(), geolocation=(), payment=()",
+		"Content-Security-Policy": "default-src 'self'", // check prefix
+		"X-Frame-Options":         "DENY",
+		"X-Content-Type-Options":  "nosniff",
+		"Referrer-Policy":         "strict-origin-when-cross-origin",
+		"Permissions-Policy":      "camera=(), microphone=(), geolocation=(), payment=()",
 	}
 
 	for name, expected := range headers {
@@ -448,6 +448,28 @@ func TestBasicAuthDisabledWithoutConfig(t *testing.T) {
 
 	if !called {
 		t.Error("handler should be called when auth is not configured")
+	}
+}
+
+// TestBasicAuthFailsClosedOnMalformedConfig verifies that a malformed auth
+// string never falls through to the protected handler.
+func TestBasicAuthFailsClosedOnMalformedConfig(t *testing.T) {
+	srv := &Server{port: 9222, auth: "admin-only"}
+
+	handler := srv.basicAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("handler should not be called with malformed auth config")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for malformed auth config, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "misconfigured") {
+		t.Fatalf("expected misconfigured auth message, got %q", rec.Body.String())
 	}
 }
 

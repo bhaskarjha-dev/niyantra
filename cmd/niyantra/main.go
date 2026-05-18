@@ -239,6 +239,12 @@ func cmdStatus(logger *slog.Logger, dbPath string) {
 
 // cmdServe starts the web dashboard.
 func cmdServe(logger *slog.Logger, dbPath string, port int, auth string, bind string) {
+	authEnabled, authErr := validateServeAuthConfig(auth)
+	if authErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: invalid --auth / NIYANTRA_AUTH value: %v\n", authErr)
+		os.Exit(1)
+	}
+
 	db, err := store.Open(dbPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
@@ -268,20 +274,20 @@ func cmdServe(logger *slog.Logger, dbPath string, port int, auth string, bind st
 	fmt.Println("  ╔══════════════════════════════════════╗")
 	fmt.Printf("  ║  Niyantra %-27s ║\n", version)
 	fmt.Println("  ╠══════════════════════════════════════╣")
-	fmt.Printf("  ║  Dashboard: http://localhost:%-8d ║\n", port)
+	fmt.Printf("  ║  Dashboard: %-26s ║\n", truncate(displayDashboardAddress(bind, port), 26))
 	fmt.Printf("  ║  Database:  %-26s ║\n", truncate(dbPath, 26))
 	fmt.Printf("  ║  Mode:      %-26s ║\n", mode)
 	if autoCapture {
 		fmt.Printf("  ║  Polling:   every %-20s ║\n", fmt.Sprintf("%ds", pollInterval))
 	}
-	if auth != "" {
+	if authEnabled {
 		fmt.Println("  ║  Auth:      enabled                  ║")
 	}
 	fmt.Println("  ╚══════════════════════════════════════╝")
 
 	// Security warning: binding to non-localhost without auth exposes the
 	// dashboard (and all quota/config data) to any machine on the network.
-	if bind != "127.0.0.1" && bind != "localhost" && auth == "" {
+	if shouldWarnInsecureBind(bind, authEnabled) {
 		fmt.Println()
 		fmt.Println("  ⚠️  WARNING: Dashboard is bound to " + bind + " without authentication!")
 		fmt.Println("     Any device on your network can access your data.")
