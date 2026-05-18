@@ -15,14 +15,14 @@
 | Cursor session token | File read from `~/.cursor-server/` | HTTP API authentication |
 | Gemini CLI credentials | File read from `~/.config/gemini/` | OAuth for GCP API polling |
 | GitHub Copilot PAT | User-provided in Settings UI | GitHub billing API authentication |
-| Plugin scripts | Subprocess execution from `~/.niyantra/plugins/` | Execute external scripts in sandboxed subprocess |
+| Plugin scripts | Subprocess execution from `~/.niyantra/plugins/` | Execute trusted local scripts with the current user's OS permissions (not sandboxed) |
 
 ## What Niyantra Does NOT Access
 
 - No programmatic account switching (see "Why Not Account Switching" below)
-- No user credentials stored or transmitted (except opt-in provider tokens stored locally)
+- Provider and notification secrets are stored in the OS credential manager by default; SQLite keeps only opaque references unless the operator explicitly enables the insecure plaintext fallback
 - No telemetry, analytics, or phone-home
-- No file system writes outside its own database directory
+- Core Niyantra writes stay inside its own database directory; trusted plugins can read/write anywhere their subprocess permissions allow
 
 ## Network Behavior
 
@@ -91,7 +91,7 @@ All HTTP responses include the following security headers:
 
 Optional HTTP basic auth via `--auth user:pass` flag or `NIYANTRA_AUTH` environment variable. No session tokens, no cookies. The auth is per-request and not persisted.
 
-**LAN Exposure Warning:** If `--bind 0.0.0.0` is used without `--auth`, Niyantra prints a visible warning to stderr advising the user to enable authentication before exposing the dashboard to the network.
+**Non-local Bind Gate:** Niyantra binds to `127.0.0.1` by default. To bind a non-loopback address you must opt in with `--allow-remote` / `NIYANTRA_ALLOW_REMOTE=true`. Streamable HTTP MCP also requires `--mcp-http`, and non-local HTTP MCP requires `--auth`.
 
 ## Rate Limiting
 
@@ -103,7 +103,7 @@ Per-IP in-memory token bucket rate limiter protects all mutation endpoints from 
 | `mutate` | `PUT /api/config`, `PATCH /api/snap/adjust` | 30 requests | 1 minute |
 | `import` | `POST /api/import/json` | 2 requests | 1 minute |
 
-When exceeded: `429 Too Many Requests` with `Retry-After` header. Zero external dependencies — uses `sync.Mutex` + background cleanup goroutine (stale buckets cleaned every 10 minutes).
+When exceeded: `429 Too Many Requests` with `Retry-After` header. Zero external dependencies — uses `sync.Mutex` + background cleanup goroutine (stale buckets cleaned every 5 minutes).
 
 ## Config Type Validation
 
@@ -120,12 +120,12 @@ Rejects malformed input with `400 Bad Request` and a descriptive error message.
 
 ## Data Storage
 
-- All data stored in a single SQLite file (default: `~/.niyantra/niyantra.db`)
-- No encryption at rest (the database contains quota percentages, not credentials)
-- Provider tokens stored in config table (masked in API, plaintext in SQLite)
-- Backup/restore via `niyantra backup` / `niyantra restore`
+- All operational data is stored in a single SQLite file (default: `~/.niyantra/niyantra.db`)
+- Provider and notification secrets are stored in the OS credential manager by default via `go-keyring`
+- SQLite stores opaque secret references rather than plaintext credentials unless `--insecure-plaintext-secrets` / `NIYANTRA_INSECURE_PLAINTEXT_SECRETS=true` is explicitly enabled
+- Database backups created by `niyantra backup` or `/api/backup` contain operational data but not keychain-managed secret material
 - WebPush VAPID keys auto-generated on first subscribe (P-256 ECDSA)
-- Plugin API keys stored in config table (masked in API, same treatment as other secrets)
+- Plugin API keys follow the same keychain-backed storage path as other secrets when their config key suffix matches the supported secret patterns
 
 ## Cloud Sync Security (Planned — ADR-0002)
 

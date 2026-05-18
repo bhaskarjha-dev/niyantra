@@ -473,7 +473,7 @@ Lightweight endpoint for the header mode badge. Returns current capture mode, ag
 
 ### `GET /api/usage`
 
-Returns per-model usage intelligence and budget burn rate forecast. Requires at least 30 minutes of auto-capture data for rate/projection calculations.
+Returns per-model usage intelligence plus a recurring-subscription budget headroom summary. Requires at least 30 minutes of auto-capture data for rate/projection calculations.
 
 **Query Parameters:**
 
@@ -503,13 +503,16 @@ Returns per-model usage intelligence and budget burn rate forecast. Requires at 
 | `models[].peakCycle` | float | Highest peak usage observed in any cycle |
 | `models[].cycleAge` | string | How long the current cycle has been active |
 | `models[].cycleSnapshots` | int | Number of snapshots in the current cycle |
-| `budgetForecast` | object? | Budget projection (null if no budget set) |
+| `budgetForecast` | object? | Budget headroom summary against recurring subscriptions (null if no budget set) |
 | `budgetForecast.monthlyBudget` | float | Configured monthly budget |
-| `budgetForecast.currentSpend` | float | Current month's spend from subscriptions |
-| `budgetForecast.projectedMonthlySpend` | float | Projected spend at current burn rate |
-| `budgetForecast.burnRate` | float | Dollars per day |
-| `budgetForecast.daysUntilBudgetExhausted` | int? | When budget runs out (null if on track) |
-| `budgetForecast.onTrack` | bool | Whether projected spend is within budget |
+| `budgetForecast.currentSpend` | float | Current recurring monthly subscription total |
+| `budgetForecast.recurringMonthlySpend` | float | Same as `currentSpend`; explicit recurring-commitment field |
+| `budgetForecast.projectedMonthlySpend` | float | Compatibility alias for the recurring monthly total until observed spend exists |
+| `budgetForecast.burnRate` | float | Daily equivalent of recurring commitments (`currentSpend / daysInMonth`), not observed spend |
+| `budgetForecast.daysUntilBudgetExhausted` | int? | Reserved for future observed-spend forecasting; currently null |
+| `budgetForecast.dataMode` | string | Current budget basis (`recurring_subscriptions`) |
+| `budgetForecast.observedSpendAvailable` | bool | Whether a trustworthy observed spend ledger exists (currently `false`) |
+| `budgetForecast.onTrack` | bool | Whether recurring commitments are within budget |
 
 ---
 
@@ -1003,7 +1006,7 @@ Generated from `/api/overview` + `/api/subscriptions` data:
 - Top spending category
 - Imminent renewal alerts (≤3 days)
 - Pay-as-you-go unbounded cost warnings
-- Annual billing savings potential (~17%)
+- Budget exceeded warnings and overlap/renewal/trial signals derived from current stored data
 
 ### Keyboard Shortcuts
 
@@ -1060,14 +1063,14 @@ Add to Claude Desktop `claude_desktop_config.json`:
 | `quota_status` | none | All accounts with per-group readiness, remaining %, reset timers, **estimated cost** (F8) |
 | `model_availability` | `model` (string) | Check specific model by name/keyword (fuzzy match) |
 | `usage_intelligence` | none | Per-model rates, projections, exhaustion, cycle history |
-| `budget_forecast` | none | Monthly burn rate, projected spend, on-track status |
+| `budget_forecast` | none | Recurring subscription headroom versus configured budget |
 | `best_model` | `group` (string) | Recommend least-exhausted model in a quota group |
 | `analyze_spending` | none | Category breakdown, budget status, savings detection, insights |
 | `switch_recommendation` | none | Account switch advice (stay/switch/wait) with scores |
 | `codex_status` | none | Codex CLI detection, plan, token expiry, latest snapshot |
 | `quota_forecast` | none | Antigravity TTX forecasts with per-group estimated cost and $/hr |
-| `token_usage_stats` | none | Claude Code JSONL token analytics plus any persisted non-Claude token rows |
-| `git_commit_costs` | `repo?`, `days?` | Git commit to Claude Code token/cost correlation |
+| `token_usage_stats` | none | Observed Claude Code token analytics plus any persisted `token_usage` rows |
+| `git_commit_costs` | `repo?`, `days?` | Heuristic git-to-Claude attribution with no double-counted commit windows |
 | `copilot_status` | none | GitHub Copilot plan and latest premium/chat usage snapshot |
 | `plugin_status` | `plugin_id?` | Latest data from installed plugins |
 
@@ -1492,7 +1495,7 @@ Updates the full pricing configuration. Replaces all existing entries.
 
 ### `GET /api/token-usage` (Phase 15: F13)
 
-Returns token usage analytics aggregating Claude Code JSONL sessions (full per-turn granularity) with any persisted non-Claude `token_usage` rows.
+Returns observed token usage analytics aggregating Claude Code JSONL sessions (full per-turn granularity) with any provider rows that have actually been persisted into `token_usage`.
 
 **Query Parameters:**
 
@@ -1530,19 +1533,19 @@ Returns token usage analytics aggregating Claude Code JSONL sessions (full per-t
 }
 ```
 
-> **Data Source:** Primary: Claude Code JSONL (`~/.claude/projects/*/sessions/*.jsonl`). Secondary: persisted `token_usage` rows when non-Claude providers write them. If that table is empty, Claude Code will dominate the result.
+> **Data Source:** Primary: Claude Code JSONL (`~/.claude/projects/*/sessions/*.jsonl`). Secondary: persisted `token_usage` rows when a provider explicitly writes them. If that table is empty, Claude Code will dominate the result.
 
 ---
 
 ### `GET /api/git-costs` (Phase 15: F16)
 
-Correlates git commits with actual AI token consumption from Claude Code sessions. For each commit, finds overlapping Claude sessions within a ±30 min time window and reports real per-commit cost.
+Heuristically correlates git commits with nearby Claude Code token usage. Each Claude event is assigned to at most one subsequent commit within the lookback window so totals do not double-count overlapping commit windows.
 
 **Query Parameters:**
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `repo` | `string` | CWD | Path to git repository |
+| `repo` | `string` | CWD | Path to a git repository under the current working tree |
 | `days` | `int` | 30 | Number of days to analyze (max 365) |
 
 **Response:** `200 OK`
@@ -1588,12 +1591,12 @@ Correlates git commits with actual AI token consumption from Claude Code session
 |-------|------|-------------|
 | `hash` | string | Full commit SHA |
 | `shortHash` | string | 7-char abbreviated SHA |
-| `totalTokens` | int | Input + output tokens consumed during this commit's time window |
+| `totalTokens` | int | Input + output tokens heuristically attributed to this commit |
 | `costUSD` | float | Estimated cost from F5 model pricing |
-| `sessions` | int | Number of distinct Claude Code sessions correlated |
-| `turns` | int | Number of AI assistant turns in the time window |
+| `sessions` | int | Number of distinct Claude Code sessions attributed to the commit |
+| `turns` | int | Number of AI assistant turns attributed to the commit |
 
-> **Algorithm:** Runs `git log --all --no-merges --format` to extract commits, then for each commit timestamp finds Claude Code JSONL session records in `[commit_time - 30min, commit_time]`. Cost computed via `store.GetModelPrice()` with fuzzy prefix matching. No database writes — pure computation.
+> **Algorithm:** Runs `git log --all --no-merges --format` to extract commits, then walks Claude Code JSONL session records in timestamp order. Each usage event is assigned to the nearest subsequent commit inside `[usage_time, usage_time + 30min]`. Cost is computed via `store.GetModelPrice()` with fuzzy prefix matching. No database writes -- pure computation.
 
 > **Unique Feature:** No competitor does cost correlation with actual token data. `semcod/costs` estimates from diff size; Niyantra uses real Claude Code session telemetry.
 
@@ -1873,9 +1876,9 @@ Updates configuration for a plugin. Supports setting arbitrary key-value pairs (
 
 ### `POST /mcp` — Streamable HTTP MCP (Phase 15: F14)
 
-Exposes all 13 MCP tools over HTTP using the MCP Streamable HTTP transport protocol. This enables remote MCP clients (Claude Desktop on another machine, CI/CD pipelines, cross-machine AI agents) to connect without stdio.
+Exposes all 13 MCP tools over HTTP using the MCP Streamable HTTP transport protocol. This endpoint is disabled by default and is only mounted when the dashboard starts with `--mcp-http` / `NIYANTRA_MCP_HTTP=true`.
 
-**Authentication:** If Niyantra basic auth is enabled, `/mcp` is protected by the same HTTP Basic Auth gate as the rest of the dashboard. The MCP SDK still handles transport-level session and content-type validation.
+**Authentication:** If Niyantra basic auth is enabled, `/mcp` is protected by the same HTTP Basic Auth gate as the rest of the dashboard. For non-local binds, Niyantra requires basic auth before enabling HTTP MCP. The MCP SDK still handles transport-level session and content-type validation.
 
 **Protocol:** MCP JSON-RPC 2.0 over HTTP, with optional SSE streaming for server-to-client notifications.
 
@@ -1906,20 +1909,20 @@ curl -X POST http://localhost:9222/mcp \
 | `quota_status` | All tracked accounts' quota status with readiness |
 | `model_availability` | Check a specific model's remaining quota |
 | `usage_intelligence` | Consumption rates and projections for all models |
-| `budget_forecast` | Monthly budget burn rate and projections |
+| `budget_forecast` | Recurring subscription headroom versus configured budget |
 | `best_model` | Recommend optimal model by remaining quota |
 | `analyze_spending` | Subscription spending patterns and insights |
 | `switch_recommendation` | Which account to use right now |
 | `codex_status` | Codex/ChatGPT detection and usage state |
 | `quota_forecast` | Antigravity time-to-exhaustion predictions with severity |
-| `token_usage_stats` | Claude Code JSONL token analytics plus any persisted non-Claude token rows |
-| `git_commit_costs` | Git commit ↔ AI token cost correlation |
+| `token_usage_stats` | Observed Claude Code token analytics plus any persisted `token_usage` rows |
+| `git_commit_costs` | Heuristic git-to-Claude attribution |
 | `copilot_status` | GitHub Copilot plan and latest premium/chat usage |
 | `plugin_status` | Latest data from all installed external plugins |
 
-> **Transport Note:** The same 13 tools are available via both stdio (`niyantra mcp`) and HTTP (`/mcp` on the web dashboard). The HTTP transport uses the MCP Go SDK's `NewStreamableHTTPHandler` with session management and SSE support built in.
+> **Transport Note:** The same 13 tools are available via both stdio (`niyantra mcp`) and HTTP (`/mcp` on the web dashboard when `--mcp-http` is enabled). The HTTP transport uses the MCP Go SDK's `NewStreamableHTTPHandler` with session management and SSE support built in.
 
-> **Claude Desktop Config:** To connect Claude Desktop to a remote Niyantra instance, configure the MCP server URL as `http://<host>:9222/mcp` using the Streamable HTTP transport type.
+> **Claude Desktop Config:** To connect Claude Desktop to a remote Niyantra instance, configure the MCP server URL as `http://<host>:9222/mcp` using the Streamable HTTP transport type, and start Niyantra with `--mcp-http --allow-remote --auth user:pass`.
 
 ---
 

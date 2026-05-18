@@ -77,7 +77,11 @@ Or run directly:
 
 ```bash
 docker build -t niyantra:latest .
-docker run -p 9222:9222 -v ./niyantra-data:/data niyantra:latest
+docker run -p 127.0.0.1:9222:9222 \
+  -e NIYANTRA_BIND=0.0.0.0 \
+  -e NIYANTRA_ALLOW_REMOTE=true \
+  -v ./niyantra-data:/data \
+  niyantra:latest
 ```
 
 Two image variants: **distroless** (default, ~15 MB, no shell) and **alpine** (`--target runtime-shell`, includes shell for `docker exec`).
@@ -148,9 +152,9 @@ SQLite database. No cloud. No telemetry. Full provenance audit trail on every sn
 
 | Tab | What it shows |
 |-----|---------------|
-| **Quotas** | Provider-sectioned layout (Antigravity/Codex/Claude/Cursor/Gemini/Copilot), per-model progress bars with reset timers, Quick Adjust (±5%/±10%), provider, status & tag filters, split-button snap, twin-axis history chart with event annotations, activity heatmap, AI Credits tracking |
+| **Quotas** | Provider-sectioned layout (Antigravity/Codex/Claude/Cursor/Gemini/Copilot), per-model progress bars with reset timers, Quick Adjust (±5%/±10%), provider, status and tag filters, split-button snap, twin-axis history chart with event annotations, activity heatmap, AI Credits tracking |
 | **Subscriptions** | Hybrid card + provider layout with spend summary, search, 26 platform presets, CSV export |
-| **Overview** | Safe to Spend guardrail, anomaly status card, monthly budget vs actual, switch advisor, provider health cards, estimated cost tracking, Git commit costs, token usage analytics, sessions timeline, renewal calendar, shareable PNG report, redacted JSON/CSV export + DB backup |
+| **Overview** | Budget headroom against recurring subscriptions, switch advisor, provider status signals, heuristic cost tracking, heuristic git attribution, observed token analytics, sessions timeline, renewal calendar, shareable PNG report, redacted JSON/CSV export + DB backup |
 | **Settings** | Auto-capture (7 providers), polling interval, notifications (4 channels + digest mode), plugin management, model pricing, Claude bridge, backup/restore, command palette (`Ctrl+K`) |
 
 ---
@@ -169,9 +173,9 @@ SQLite database. No cloud. No telemetry. Full provenance audit trail on every sn
 | `niyantra healthcheck` | Docker health probe (GET /healthz) |
 | `niyantra version` | Print version |
 
-**Flags:** `--port 9222` `--bind 127.0.0.1` `--db ~/.niyantra/niyantra.db` `--auth user:pass` `--debug`
+**Flags:** `--port 9222` `--bind 127.0.0.1` `--allow-remote` `--mcp-http` `--db ~/.niyantra/niyantra.db` `--auth user:pass` `--insecure-plaintext-secrets` `--debug`
 
-**Environment Variables:** `NIYANTRA_PORT` `NIYANTRA_BIND` `NIYANTRA_DB` `NIYANTRA_AUTH` (CLI flags take precedence)
+**Environment Variables:** `NIYANTRA_PORT` `NIYANTRA_BIND` `NIYANTRA_ALLOW_REMOTE` `NIYANTRA_MCP_HTTP` `NIYANTRA_DB` `NIYANTRA_AUTH` `NIYANTRA_INSECURE_PLAINTEXT_SECRETS` (CLI flags take precedence)
 
 ## MCP Integration
 
@@ -191,9 +195,9 @@ Niyantra exposes quota intelligence to AI coding agents via the [Model Context P
 }
 ```
 
-**Streamable HTTP transport** (remote agents): `POST /mcp` on the running dashboard server. SSE streaming, session management.
+**Streamable HTTP transport** (opt-in): `POST /mcp` on the running dashboard server after starting `niyantra serve --mcp-http`. For non-local binds, combine it with `--allow-remote` and `--auth user:pass`. SSE streaming and session management are handled by the MCP SDK.
 
-Then ask: *"What's my quota?"* or *"Which account should I use?"* or *"How much did my last feature branch cost?"*
+Then ask: *"What's my quota?"* or *"Which account should I use?"* or *"How much Claude activity landed near my recent commits?"*
 
 ---
 

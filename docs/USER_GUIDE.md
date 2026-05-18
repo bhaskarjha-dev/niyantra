@@ -181,10 +181,10 @@ Hybrid card + provider layout with inline spend summary.
 
 The intelligence hub combining data from all sources.
 
-**Budget & Forecast section:**
-- Monthly budget vs actual spending (set budget in Settings)
-- Projected end-of-month spend based on current burn rate
-- Days remaining in billing period
+**Budget & Headroom section:**
+- Monthly budget versus recurring subscription commitments (set budget in Settings)
+- Remaining recurring budget headroom
+- Explicit note that observed usage spend is not available yet
 
 **Switch Advisor:**
 - Recommends which account to use right now
@@ -192,9 +192,9 @@ The intelligence hub combining data from all sources.
 - Shows score breakdown: remaining% (60% weight), burn rate (20%), reset time (20%)
 - Detects "All Ready" state and shows "Stay" recommendation when overall health > 80%
 
-**Provider Health Cards:**
+**Provider Status Signals:**
 - Per-provider status summary (Antigravity, Codex, Claude, Cursor, Gemini, Copilot)
-- Shows accounts tracked, overall health percentage, and last capture time
+- Shows provider-specific counters and labels without pretending they are a normalized cross-provider score
 
 **Codex Status** (if configured):
 - Shows Codex/ChatGPT quota across 5-hour, 7-day, and code review windows
@@ -212,12 +212,11 @@ The intelligence hub combining data from all sources.
 - DPR-aware rendering for Retina displays
 
 **Anomaly Detection (F5):**
-- Z-score statistical engine flags cost spikes > 2σ above the 30-day rolling average
-- Dismissible alert cards with severity classification (Warning / Critical)
-- Budget projection shows estimated monthly spend at the anomalous rate
+- The endpoint remains disabled until Niyantra has trustworthy persisted daily spend history
+- Disabled anomaly surfaces should stay hidden rather than implying live protection
 
 **Sparkline KPIs (F2):**
-- Monthly AI Spend card shows a 7-day trend sparkline with direction indicator
+- Monthly recurring spend card shows a 7-day trend sparkline with direction indicator
 - Token Analytics KPIs include mini trend lines for at-a-glance monitoring
 
 **Renewal Calendar:**
@@ -240,7 +239,7 @@ The intelligence hub combining data from all sources.
 - Copilot toggle + PAT input (masked in API)
 
 **Budget & Display:**
-- Monthly budget amount (used for forecasting on Overview tab)
+- Monthly budget amount (used for recurring commitment headroom on Overview tab)
 - Default currency selector
 - Theme toggle
 
@@ -302,13 +301,13 @@ Click any subscription card to edit its details. Use the delete button to remove
 1. Go to **Settings** tab
 2. Enter your monthly AI budget (e.g., $150)
 3. The Overview tab will now show:
-   - Current spend vs budget
-   - Projected end-of-month spend
-   - Warning if you're on track to exceed budget
+   - Recurring subscription total versus budget
+   - Remaining recurring budget headroom
+   - Warning if recurring commitments exceed the configured budget
 
-### How Forecasting Works
+### How Budget Headroom Works
 
-Niyantra calculates your daily burn rate from active subscriptions and projects it across the remaining days in the month. This is a simple linear projection — it doesn't account for variable usage-based billing.
+Niyantra currently compares your configured monthly budget against recurring subscription commitments. It does not project true usage-based end-of-month spend because Niyantra does not yet persist a trustworthy observed daily spend ledger.
 
 ---
 
@@ -390,9 +389,9 @@ Add to your MCP client config:
 }
 ```
 
-**Streamable HTTP Transport** (remote agents):
+**Streamable HTTP Transport** (opt-in):
 
-Connect to `POST /mcp` on the running dashboard server. Supports SSE streaming and session management via `Mcp-Session-Id` header.
+Start the dashboard with `niyantra serve --mcp-http` to mount `POST /mcp`. For non-local binds, also use `--allow-remote` and `--auth user:pass`. The transport supports SSE streaming and session management via `Mcp-Session-Id` header.
 
 ### Available Tools (12)
 
@@ -401,7 +400,7 @@ Connect to `POST /mcp` on the running dashboard server. Supports SSE streaming a
 | `quota_status` | "What's my Antigravity quota and AI Credits balance?" |
 | `model_availability` | "Is Claude Sonnet available?" |
 | `usage_intelligence` | "How fast am I burning quota?" |
-| `budget_forecast` | "Will I stay under budget this month?" |
+| `budget_forecast` | "How much recurring subscription headroom remains relative to my budget?" |
 | `best_model` | "Which model has the most quota?" |
 | `analyze_spending` | "Break down my AI spending by category" |
 | `switch_recommendation` | "Should I switch accounts?" |
@@ -409,7 +408,7 @@ Connect to `POST /mcp` on the running dashboard server. Supports SSE streaming a
 | `quota_forecast` | "When will my Antigravity quota groups exhaust at current rate?" |
 | `token_usage_stats` | "How many Claude Code tokens did I use today?" |
 | `copilot_status` | "What is my GitHub Copilot premium/chat usage?" |
-| `git_commit_costs` | "What did my last feature branch cost?" |
+| `git_commit_costs` | "What Claude activity landed near my last feature branch commits?" |
 | `plugin_status` | "What's the latest data from my plugins?" |
 
 ### Running

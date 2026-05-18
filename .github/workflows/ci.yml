@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  backend:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -29,7 +29,61 @@ jobs:
         run: go vet ./...
 
       - name: Test
+        run: go test -count=1 ./...
+
+  race:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Race Test
         run: go test -race -count=1 ./...
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Type Check
+        run: npm run check
+
+      - name: Bundle App
+        run: npm run build
+
+      - name: Bundle CSS
+        run: npm run css
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Docs Sanity
+        run: go run ./scripts/checkdocs
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Docker Build
+        run: docker build -t niyantra:test .
 
   lint:
     runs-on: ubuntu-latest
