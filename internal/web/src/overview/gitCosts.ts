@@ -1,5 +1,4 @@
-// Niyantra Dashboard — Git Commit Correlation (F16)
-// Correlates git commits with AI token consumption from Claude Code sessions.
+// Heuristic git-to-AI attribution.
 
 export function loadGitCosts(): void {
   var container = document.getElementById('git-costs-container');
@@ -22,7 +21,7 @@ export function loadGitCosts(): void {
 
 function renderGitCostsError(container: HTMLElement, message: string): void {
   container.innerHTML = '<div class="overview-card full-width git-costs-card">' +
-    '<h3>⚡ Git × AI Cost Correlation</h3>' +
+    '<h3>Git to AI Attribution</h3>' +
     '<div class="git-costs-empty">' +
     '<p>Unable to analyze git costs.</p>' +
     '<p style="font-size:12px;color:var(--text-secondary)">' + escapeHtml(message) + '</p>' +
@@ -32,7 +31,7 @@ function renderGitCostsError(container: HTMLElement, message: string): void {
 function renderGitCosts(container: HTMLElement, data: any): void {
   if (!data || !data.commits || data.commits.length === 0) {
     container.innerHTML = '<div class="overview-card full-width git-costs-card">' +
-      '<h3>⚡ Git × AI Cost Correlation</h3>' +
+      '<h3>Git to AI Attribution</h3>' +
       '<div class="git-costs-empty">' +
       '<p>No git commit data available.</p>' +
       '<p style="font-size:12px;color:var(--text-secondary)">Ensure you are running Niyantra from within a git repository, ' +
@@ -44,24 +43,20 @@ function renderGitCosts(container: HTMLElement, data: any): void {
   var totals = data.totals || {};
   var commits = data.commits || [];
   var branches = data.branches || [];
-
-  // Check if there's any AI cost data (not just commits)
   var hasAICosts = totals.totalTokens > 0;
 
-  // ── KPI Row ──
   var kpiHTML = '<div class="git-kpi-row">';
-  kpiHTML += buildKpi('Commits', String(totals.commitCount || 0), '📝');
-  kpiHTML += buildKpi('AI Cost', '$' + (totals.costUSD || 0).toFixed(2), '💰');
-  kpiHTML += buildKpi('Avg/Commit', '$' + (totals.avgPerCommit || 0).toFixed(2), '📊');
-  kpiHTML += buildKpi('Top Branch', truncate(totals.topBranch || '—', 18), '🌿');
+  kpiHTML += buildKpi('Commits', String(totals.commitCount || 0), 'Commits');
+  kpiHTML += buildKpi('AI Cost', '$' + (totals.costUSD || 0).toFixed(2), 'Cost');
+  kpiHTML += buildKpi('Avg/Commit', '$' + (totals.avgPerCommit || 0).toFixed(2), 'Avg');
+  kpiHTML += buildKpi('Top Branch', truncate(totals.topBranch || '-', 18), 'Branch');
   kpiHTML += '</div>';
+  kpiHTML += '<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">Claude token events are heuristically assigned to the nearest subsequent commit inside the lookback window. This is guidance, not ground truth.</p>';
 
   if (!hasAICosts) {
-    kpiHTML += '<div class="git-no-ai-banner">No Claude Code session data found in the commit time windows. ' +
-      'AI costs will appear when commits overlap with Claude Code usage.</div>';
+    kpiHTML += '<div class="git-no-ai-banner">No nearby Claude Code session data was attributable inside the commit lookback windows.</div>';
   }
 
-  // ── Cost per Commit Sparkline ──
   var chartHTML = '';
   if (commits.length > 0 && hasAICosts) {
     chartHTML = '<div class="git-section">';
@@ -73,17 +68,12 @@ function renderGitCosts(container: HTMLElement, data: any): void {
       if (commits[ci].costUSD > maxCost) maxCost = commits[ci].costUSD;
     }
 
-    // Show last 40 commits max
-    var displayCommits = commits;
-    if (displayCommits.length > 40) {
-      displayCommits = displayCommits.slice(0, 40);
-    }
-
+    var displayCommits = commits.length > 40 ? commits.slice(0, 40) : commits;
     for (var di = 0; di < displayCommits.length; di++) {
       var c = displayCommits[di];
       var barH = maxCost > 0 ? Math.max(3, (c.costUSD / maxCost) * 100) : 3;
       var barColor = c.costUSD > 0 ? 'var(--accent)' : 'var(--border)';
-      chartHTML += '<div class="git-bar-col" title="' + escapeAttr(c.shortHash) + ': ' + escapeAttr(c.message) + '\n$' + c.costUSD.toFixed(2) + ' · ' + formatTokens(c.totalTokens) + ' tokens">' +
+      chartHTML += '<div class="git-bar-col" title="' + escapeAttr(c.shortHash) + ': ' + escapeAttr(c.message) + '\n$' + c.costUSD.toFixed(2) + ' | ' + formatTokens(c.totalTokens) + ' tokens">' +
         '<div class="git-bar" style="height:' + barH + '%;background:' + barColor + '"></div>' +
         '<span class="git-bar-hash">' + c.shortHash + '</span>' +
         '</div>';
@@ -92,7 +82,6 @@ function renderGitCosts(container: HTMLElement, data: any): void {
     chartHTML += '</div></div>';
   }
 
-  // ── Branch Cost Table ──
   var branchHTML = '';
   if (branches.length > 0 && hasAICosts) {
     branchHTML = '<div class="git-section">';
@@ -117,7 +106,6 @@ function renderGitCosts(container: HTMLElement, data: any): void {
     branchHTML += '</div></div>';
   }
 
-  // ── Recent Commits Table ──
   var commitsHTML = '<div class="git-section">';
   commitsHTML += '<h4>Recent Commits</h4>';
   commitsHTML += '<div class="git-commits-list">';
@@ -127,7 +115,7 @@ function renderGitCosts(container: HTMLElement, data: any): void {
     var rc = showCommits[ri];
     var costBadge = rc.costUSD > 0
       ? '<span class="git-cost-badge">$' + rc.costUSD.toFixed(2) + '</span>'
-      : '<span class="git-cost-badge git-cost-zero">—</span>';
+      : '<span class="git-cost-badge git-cost-zero">-</span>';
     var tokenBadge = rc.totalTokens > 0
       ? '<span class="git-token-badge">' + formatTokens(rc.totalTokens) + '</span>'
       : '';
@@ -141,10 +129,9 @@ function renderGitCosts(container: HTMLElement, data: any): void {
 
   commitsHTML += '</div></div>';
 
-  // ── Assemble ──
   container.innerHTML = '<div class="overview-card full-width git-costs-card">' +
     '<div class="git-costs-header">' +
-    '<h3>⚡ Git × AI Cost Correlation</h3>' +
+    '<h3>Git to AI Attribution</h3>' +
     '<span class="git-repo-path" title="' + escapeAttr(data.repoPath || '') + '">' +
     escapeHtml(shortenPath(data.repoPath || '')) + '</span>' +
     '</div>' +
@@ -167,12 +154,12 @@ function formatTokens(n: number): string {
 }
 
 function truncate(s: string, max: number): string {
-  return s.length > max ? s.substring(0, max - 1) + '…' : s;
+  return s.length > max ? s.substring(0, max - 1) + '...' : s;
 }
 
 function shortenPath(p: string): string {
   var parts = p.replace(/\\/g, '/').split('/');
-  return parts.length > 2 ? '…/' + parts.slice(-2).join('/') : p;
+  return parts.length > 2 ? '.../' + parts.slice(-2).join('/') : p;
 }
 
 function escapeHtml(s: string): string {

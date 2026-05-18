@@ -73,7 +73,7 @@ func New(s *store.Store, t *tracker.Tracker, logger *slog.Logger, version string
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "budget_forecast",
-		Description: "Get budget burn rate forecast including daily burn rate, projected monthly spend, and whether spending is on track relative to the configured monthly budget.",
+		Description: "Compare the configured monthly budget against recurring subscription commitments. This surface does not project true usage-based spend because Niyantra does not yet persist a trustworthy daily spend ledger.",
 	}, m.handleBudgetForecast)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -103,12 +103,12 @@ func New(s *store.Store, t *tracker.Tracker, logger *slog.Logger, version string
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "token_usage_stats",
-		Description: "Get token usage analytics from Claude Code JSONL sessions plus any persisted non-Claude token_usage rows. Returns total token counts (input/output/cache), estimated costs, per-model breakdowns, daily trends, and KPIs. Supports time range filtering (default 30 days).",
+		Description: "Get observed token usage analytics from Claude Code JSONL sessions plus any provider rows already persisted into Niyantra's token_usage table. Coverage is Claude-heavy unless other providers have actually written token rows.",
 	}, m.handleTokenUsageStats)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "git_commit_costs",
-		Description: "Correlate git commits with actual AI token consumption. For each recent commit, finds overlapping Claude Code sessions within a 30-minute window and reports real token usage and cost — not estimated from diffs. Returns per-commit costs, branch-level aggregation, and totals. Provide a repo path or defaults to the current working directory.",
+		Description: "Heuristically correlate git commits with nearby Claude Code token events. Each Claude event is assigned to at most one commit within the lookback window to avoid double counting, but the result remains attribution guidance rather than ground truth.",
 	}, m.handleGitCommitCosts)
 
 	mcp.AddTool(srv, &mcp.Tool{

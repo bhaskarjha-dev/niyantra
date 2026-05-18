@@ -36,6 +36,8 @@ type QuotaStatusOutput struct {
 
 // AccountSummary is a single account in quota_status output.
 type AccountSummary struct {
+	AccountID     int64          `json:"accountId"`
+	Provider      string         `json:"provider"`
 	Email         string         `json:"email"`
 	Plan          string         `json:"plan"`
 	IsReady       bool           `json:"isReady"`
@@ -75,6 +77,9 @@ type IntelligenceOutput struct {
 
 // ModelIntel is per-model intelligence data.
 type ModelIntel struct {
+	AccountID           int64  `json:"accountId"`
+	AccountEmail        string `json:"accountEmail"`
+	Provider            string `json:"provider"`
 	ModelID             string `json:"modelId"`
 	Label               string `json:"label"`
 	Group               string `json:"group"`
@@ -121,6 +126,8 @@ func (m *MCPServer) handleQuotaStatus(_ context.Context, _ *mcp.CallToolRequest,
 
 	for _, acc := range accounts {
 		a := AccountSummary{
+			AccountID: acc.AccountID,
+			Provider:  "antigravity",
 			Email:     acc.Email,
 			Plan:      acc.PlanName,
 			IsReady:   acc.IsReady,
@@ -222,7 +229,7 @@ func (m *MCPServer) handleUsageIntelligence(_ context.Context, _ *mcp.CallToolRe
 		return nil, IntelligenceOutput{}, fmt.Errorf("failed to load snapshots: %w", err)
 	}
 
-	out := IntelligenceOutput{Message: "Usage intelligence for all tracked models."}
+	out := IntelligenceOutput{Message: "Usage intelligence for tracked Antigravity accounts."}
 
 	for _, snap := range snapshots {
 		if m.tracker == nil {
@@ -235,6 +242,9 @@ func (m *MCPServer) handleUsageIntelligence(_ context.Context, _ *mcp.CallToolRe
 		}
 		for _, s := range summaries {
 			mi := ModelIntel{
+				AccountID:        s.AccountID,
+				AccountEmail:     s.AccountEmail,
+				Provider:         s.Provider,
 				ModelID:          s.ModelID,
 				Label:            s.Label,
 				Group:            s.Group,
@@ -264,7 +274,7 @@ func (m *MCPServer) handleUsageIntelligence(_ context.Context, _ *mcp.CallToolRe
 	}
 
 	if len(out.Models) == 0 {
-		out.Message = "No usage data available. Ensure auto-capture is enabled and has been running for at least a few minutes."
+		out.Message = "No Antigravity usage data is available. Ensure auto-capture is enabled and has been running for at least a few minutes."
 	}
 
 	return nil, out, nil

@@ -193,8 +193,8 @@ func (s *Server) handleSnapshotByID(w http.ResponseWriter, r *http.Request) {
 //	{
 //	  "snapshotId": 42,
 //	  "adjustments": [
-//	    {"label": "Gemini 3.1 Pro (High)", "remainingPercent": 80},
-//	    {"label": "Claude Sonnet 4.6",     "remainingPercent": 45}
+//	    {"modelId": "gemini-3.1-pro",    "remainingPercent": 80},
+//	    {"modelId": "claude-sonnet-4.6", "remainingPercent": 45}
 //	  ]
 //	}
 func (s *Server) handleSnapAdjust(w http.ResponseWriter, r *http.Request) {
@@ -202,6 +202,7 @@ func (s *Server) handleSnapAdjust(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		SnapshotID  int64 `json:"snapshotId"`
 		Adjustments []struct {
+			ModelID          string  `json:"modelId"`
 			Label            string  `json:"label"`
 			RemainingPercent float64 `json:"remainingPercent"`
 		} `json:"adjustments"`
@@ -230,7 +231,13 @@ func (s *Server) handleSnapAdjust(w http.ResponseWriter, r *http.Request) {
 	adjustCount := 0
 	for i := range targetSnap.Models {
 		for _, adj := range req.Adjustments {
-			if targetSnap.Models[i].Label == adj.Label {
+			modelMatch := adj.ModelID != "" &&
+				targetSnap.Models[i].ModelID != "" &&
+				targetSnap.Models[i].ModelID == adj.ModelID
+			labelMatch := adj.Label != "" &&
+				targetSnap.Models[i].Label == adj.Label &&
+				(adj.ModelID == "" || targetSnap.Models[i].ModelID == "")
+			if modelMatch || labelMatch {
 				pct := adj.RemainingPercent
 				if pct < 0 {
 					pct = 0

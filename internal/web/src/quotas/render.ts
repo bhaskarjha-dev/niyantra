@@ -242,13 +242,16 @@ export function renderAccounts(data: any): void {
 
     var groupCells = '';
     // Pre-index models by group for Quick Adjust
-    var modelsByGroup: Record<string, string[]> = {};
+    var modelIdsByGroup: Record<string, string[]> = {};
+    var modelLabelsByGroup: Record<string, string[]> = {};
     if (acc.models) {
       for (var mi2 = 0; mi2 < acc.models.length; mi2++) {
         var mm = acc.models[mi2];
         var gk = mm.groupKey || 'claude_gpt';
-        if (!modelsByGroup[gk]) modelsByGroup[gk] = [];
-        modelsByGroup[gk].push(mm.label || mm.modelId);
+        if (!modelIdsByGroup[gk]) modelIdsByGroup[gk] = [];
+        if (!modelLabelsByGroup[gk]) modelLabelsByGroup[gk] = [];
+        modelIdsByGroup[gk].push(mm.modelId || '');
+        modelLabelsByGroup[gk].push(mm.label || mm.modelId);
       }
     }
 
@@ -284,10 +287,12 @@ export function renderAccounts(data: any): void {
       var barCls = cls;
 
       // Group-level Quick Adjust — ±5 buttons, appear on hover
-      var groupLabels = (modelsByGroup[key] || []).join('|||');
+      var groupModelIds = (modelIdsByGroup[key] || []).join('|||');
+      var groupModelLabels = (modelLabelsByGroup[key] || []).join('|||');
       var groupAdjust = '<span class="group-adjust" data-snap-id="' + acc.latestSnapshotId +
         '" data-group-key="' + key +
-        '" data-group-labels="' + esc(groupLabels) +
+        '" data-group-model-ids="' + esc(groupModelIds) +
+        '" data-group-model-labels="' + esc(groupModelLabels) +
         '" data-current-pct="' + pct + '">' +
         '<button class="gadj-btn" data-delta="-5" title="−5% all models in group">−5</button>' +
         '<button class="gadj-btn" data-delta="5" title="+5% all models in group">+5</button>' +
@@ -404,7 +409,7 @@ export function renderAccounts(data: any): void {
         if (usageModels) {
           for (var ui = 0; ui < usageModels.length; ui++) {
             var um = usageModels[ui];
-            if (um.modelId === m.modelId && um.hasIntelligence) {
+            if (um.modelId === m.modelId && um.accountId === acc.accountId && um.hasIntelligence) {
               var rateStr = (um.currentRate * 100).toFixed(1) + '%/hr';
               intellBadges += '<span class="rate-badge" title="Current consumption rate">' + rateStr + '</span>';
               if (um.projectedUsage > 0) {
@@ -425,7 +430,7 @@ export function renderAccounts(data: any): void {
         }
 
         // Quick Adjust controls — visible on hover
-        var adjustBtns = '<span class="adjust-controls" data-snap-id="' + acc.latestSnapshotId + '" data-model-label="' + esc(m.label || m.modelId) + '" data-current-pct="' + mpct + '">' +
+        var adjustBtns = '<span class="adjust-controls" data-snap-id="' + acc.latestSnapshotId + '" data-model-id="' + esc(m.modelId || '') + '" data-model-label="' + esc(m.label || m.modelId) + '" data-current-pct="' + mpct + '">' +
           '<button class="adj-btn" data-delta="-10" title="−10%">−10</button>' +
           '<button class="adj-btn" data-delta="-5" title="−5%">−5</button>' +
           '<button class="adj-btn" data-delta="5" title="+5%">+5</button>' +
@@ -788,7 +793,7 @@ export function renderGeminiProviderSection(gs: any): string {
     '<div class="account-card"><div class="account-row grid-gemini">' +
     '<div class="account-info"><div class="account-email">' + esc(displayName) + '</div></div>' +
     '<div>' + (gs.tier ? '<span class="plan-badge">' + esc(gs.tier) + '</span>' : String.fromCharCode(8212)) + '</div>' +
-    '<div class="quota-cell"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span>' +
+    '<div class="quota-cell" title="Arithmetic mean across reported Gemini model buckets"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span>' +
     '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div>' +
     '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
     '<div style="text-align:center"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +

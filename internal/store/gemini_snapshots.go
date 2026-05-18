@@ -12,10 +12,10 @@ type GeminiSnapshot struct {
 	ID            int64     `json:"id"`
 	AccountID     int64     `json:"accountId"`
 	Email         string    `json:"email,omitempty"`
-	Tier          string    `json:"tier"`          // standard/enterprise/unknown
-	OverallPct    float64   `json:"overallPct"`    // overall usage % (0-100)
-	ModelsJSON    string    `json:"modelsJson"`    // per-model quota breakdown
-	ProjectID     string    `json:"projectId"`     // cloudaicompanionProject
+	Tier          string    `json:"tier"`       // standard/enterprise/unknown
+	OverallPct    float64   `json:"overallPct"` // arithmetic mean usage % across reported model buckets
+	ModelsJSON    string    `json:"modelsJson"` // per-model quota breakdown
+	ProjectID     string    `json:"projectId"`  // cloudaicompanionProject
 	CapturedAt    time.Time `json:"capturedAt"`
 	CaptureMethod string    `json:"captureMethod"` // auto/manual
 	CaptureSource string    `json:"captureSource"` // server/ui

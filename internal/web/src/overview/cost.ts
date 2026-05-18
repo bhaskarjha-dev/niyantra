@@ -1,4 +1,4 @@
-// Niyantra Dashboard — Estimated Cost KPI
+// Niyantra Dashboard - Heuristic Cost KPI
 import { esc } from '../core/utils';
 
 export function loadCostKPI(): void {
@@ -13,18 +13,16 @@ export function loadCostKPI(): void {
 
     var total = data.totalCost || 0;
     if (total < 0.01) {
-      // No meaningful cost — hide the card entirely
       container!.innerHTML = '';
       return;
     }
     var totalLabel = data.totalLabel || '$0.00';
 
     var html = '<div class="cost-kpi-card overview-card">' +
-      '<h3>Estimated Spend (Current Cycle)</h3>' +
+      '<h3>Heuristic Cost (Current Cycle)</h3>' +
       '<div class="cost-kpi-amount">' + esc(totalLabel) + '</div>' +
-      '<div class="cost-kpi-label">Estimated cost based on quota consumption × model pricing</div>';
+      '<div class="cost-kpi-label">Heuristic cost from quota consumption and configured model pricing</div>';
 
-    // Per-account breakdown chips (only accounts with meaningful cost)
     var hasChips = false;
     var chipsHTML = '<div class="cost-kpi-breakdown">';
     if (data.accounts && data.accounts.length > 0) {
@@ -34,7 +32,7 @@ export function loadCostKPI(): void {
           hasChips = true;
           var emailShort = acct.email;
           if (emailShort && emailShort.length > 20) {
-            emailShort = emailShort.split('@')[0] + '@…';
+            emailShort = emailShort.split('@')[0] + '@...';
           }
           chipsHTML += '<span class="cost-kpi-chip" title="' + esc(acct.email) + '">' +
             esc(emailShort) + ': ' + esc(acct.totalLabel) + '</span>';
@@ -51,4 +49,3 @@ export function loadCostKPI(): void {
     container!.innerHTML = '';
   });
 }
-

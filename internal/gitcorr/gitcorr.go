@@ -29,11 +29,11 @@ import (
 type CommitCost struct {
 	Hash         string  `json:"hash"`
 	ShortHash    string  `json:"shortHash"`
-	Date         string  `json:"date"`     // ISO 8601
-	DateStr      string  `json:"dateStr"`  // YYYY-MM-DD
+	Date         string  `json:"date"`    // ISO 8601
+	DateStr      string  `json:"dateStr"` // YYYY-MM-DD
 	Message      string  `json:"message"`
 	Author       string  `json:"author"`
-	Branch       string  `json:"branch"`   // branch name if available
+	Branch       string  `json:"branch"` // branch name if available
 	InputTokens  int64   `json:"inputTokens"`
 	OutputTokens int64   `json:"outputTokens"`
 	CacheTokens  int64   `json:"cacheTokens"`
@@ -58,7 +58,7 @@ type Summary struct {
 	Branches []BranchCost `json:"branches"`
 	Totals   Totals       `json:"totals"`
 	Period   Period       `json:"period"`
-	RepoPath string      `json:"repoPath"`
+	RepoPath string       `json:"repoPath"`
 }
 
 // Totals holds aggregate stats.
@@ -277,55 +277,85 @@ func loadClaudeUsages(days int) ([]sessionUsage, error) {
 	return all, nil
 }
 
-// correlateCommits matches each commit with Claude sessions that occurred
-// within the time window before the commit.
+// correlateCommits assigns each Claude usage event to at most one commit: the
+// nearest subsequent commit within the configured lookback window. This keeps
+// aggregate commit totals bounded by the underlying usage total even when
+// adjacent commit windows overlap.
 func correlateCommits(commits []*CommitCost, usages []sessionUsage, window time.Duration, priceFn PriceFn) {
-	if len(usages) == 0 {
+	if len(usages) == 0 || len(commits) == 0 {
 		return
 	}
 
-	for _, c := range commits {
+	type commitRef struct {
+		index int
+		time  time.Time
+	}
+
+	ordered := make([]commitRef, 0, len(commits))
+	for i, c := range commits {
 		commitTime, err := time.Parse(time.RFC3339, c.Date)
 		if err != nil {
 			continue
 		}
+		ordered = append(ordered, commitRef{index: i, time: commitTime})
+	}
+	if len(ordered) == 0 {
+		return
+	}
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].time.Before(ordered[j].time) })
 
-		// Window: [commitTime - window, commitTime]
-		windowStart := commitTime.Add(-window)
-		windowEnd := commitTime
+	sessionSets := make([]map[string]struct{}, len(commits))
 
-		sessionSet := make(map[string]bool)
+	for _, u := range usages {
+		target := -1
+		bestDelta := time.Duration(1<<63 - 1)
 
-		for _, u := range usages {
-			if u.timestamp.Before(windowStart) {
+		for _, ref := range ordered {
+			if ref.time.Before(u.timestamp) {
 				continue
 			}
-			if u.timestamp.After(windowEnd) {
-				// Since usages are sorted, no more matches possible
-				// (but commits aren't sorted the same way, so we can't break)
-				continue
+			delta := ref.time.Sub(u.timestamp)
+			if delta > window {
+				break
 			}
-
-			c.InputTokens += u.inputTokens
-			c.OutputTokens += u.outputTokens
-			c.CacheTokens += u.cacheRead + u.cacheCreate
-			c.Turns++
-			sessionSet[u.sessionID] = true
-
-			// Cost calculation
-			if priceFn != nil {
-				inPrice, outPrice, cachePrice, found := priceFn(u.model)
-				if found {
-					c.CostUSD += float64(u.inputTokens) / 1_000_000 * inPrice
-					c.CostUSD += float64(u.outputTokens) / 1_000_000 * outPrice
-					c.CostUSD += float64(u.cacheRead+u.cacheCreate) / 1_000_000 * cachePrice
-				}
+			if delta < bestDelta {
+				bestDelta = delta
+				target = ref.index
 			}
 		}
 
+		if target < 0 {
+			continue
+		}
+
+		c := commits[target]
+		c.InputTokens += u.inputTokens
+		c.OutputTokens += u.outputTokens
+		c.CacheTokens += u.cacheRead + u.cacheCreate
+		c.Turns++
+		if sessionSets[target] == nil {
+			sessionSets[target] = make(map[string]struct{})
+		}
+		sessionSets[target][u.sessionID] = struct{}{}
+
+		if priceFn != nil {
+			inPrice, outPrice, cachePrice, found := priceFn(u.model)
+			if found {
+				c.CostUSD += float64(u.inputTokens) / 1_000_000 * inPrice
+				c.CostUSD += float64(u.outputTokens) / 1_000_000 * outPrice
+				c.CostUSD += float64(u.cacheRead+u.cacheCreate) / 1_000_000 * cachePrice
+			}
+		}
+	}
+
+	for i, c := range commits {
 		c.TotalTokens = c.InputTokens + c.OutputTokens
 		c.CostUSD = round2(c.CostUSD)
-		c.Sessions = len(sessionSet)
+		if sessionSets[i] != nil {
+			c.Sessions = len(sessionSets[i])
+		} else {
+			c.Sessions = 0
+		}
 	}
 }
 

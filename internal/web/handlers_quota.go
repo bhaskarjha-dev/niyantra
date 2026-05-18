@@ -260,7 +260,7 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
 	// Get latest snapshot(s) for the account(s)
 	// N3b: When no account filter is specified, aggregate across all accounts
 	snapshots, _ := s.store.LatestPerAccount()
-	var allModels []interface{}
+	var allModels []*tracker.UsageSummary
 	for _, snap := range snapshots {
 		if accountID > 0 && snap.AccountID != accountID {
 			continue
@@ -278,9 +278,7 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 				// Aggregate across all accounts
-				for _, s := range summaries {
-					allModels = append(allModels, s)
-				}
+				allModels = append(allModels, summaries...)
 			}
 		}
 	}

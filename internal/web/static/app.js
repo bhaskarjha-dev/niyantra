@@ -703,13 +703,16 @@
         var accId = "acc-" + acc.accountId;
         var isExpanded = expandedAccounts.has(accId);
         var groupCells = "";
-        var modelsByGroup = {};
+        var modelIdsByGroup = {};
+        var modelLabelsByGroup = {};
         if (acc.models) {
           for (var mi2 = 0; mi2 < acc.models.length; mi2++) {
             var mm = acc.models[mi2];
             var gk = mm.groupKey || "claude_gpt";
-            if (!modelsByGroup[gk]) modelsByGroup[gk] = [];
-            modelsByGroup[gk].push(mm.label || mm.modelId);
+            if (!modelIdsByGroup[gk]) modelIdsByGroup[gk] = [];
+            if (!modelLabelsByGroup[gk]) modelLabelsByGroup[gk] = [];
+            modelIdsByGroup[gk].push(mm.modelId || "");
+            modelLabelsByGroup[gk].push(mm.label || mm.modelId);
           }
         }
         var pinnedKey = acc.pinnedGroup || (acc.groups && acc.groups.length > 0 ? acc.groups[0].groupKey : "claude_gpt");
@@ -745,8 +748,9 @@
             reset = '<span class="quota-reset">\u21BB ' + formatSeconds(g.timeUntilResetSec) + "</span>";
           }
           var barCls = cls;
-          var groupLabels = (modelsByGroup[key] || []).join("|||");
-          var groupAdjust = '<span class="group-adjust" data-snap-id="' + acc.latestSnapshotId + '" data-group-key="' + key + '" data-group-labels="' + esc(groupLabels) + '" data-current-pct="' + pct + '"><button class="gadj-btn" data-delta="-5" title="\u22125% all models in group">\u22125</button><button class="gadj-btn" data-delta="5" title="+5% all models in group">+5</button></span>';
+          var groupModelIds = (modelIdsByGroup[key] || []).join("|||");
+          var groupModelLabels = (modelLabelsByGroup[key] || []).join("|||");
+          var groupAdjust = '<span class="group-adjust" data-snap-id="' + acc.latestSnapshotId + '" data-group-key="' + key + '" data-group-model-ids="' + esc(groupModelIds) + '" data-group-model-labels="' + esc(groupModelLabels) + '" data-current-pct="' + pct + '"><button class="gadj-btn" data-delta="-5" title="\u22125% all models in group">\u22125</button><button class="gadj-btn" data-delta="5" title="+5% all models in group">+5</button></span>';
           var ttxBadge = "";
           if (data.forecasts && data.forecasts[acc.accountId]) {
             var acctForecasts = data.forecasts[acc.accountId];
@@ -837,7 +841,7 @@
               if (usageModels) {
                 for (var ui = 0; ui < usageModels.length; ui++) {
                   var um = usageModels[ui];
-                  if (um.modelId === m.modelId && um.hasIntelligence) {
+                  if (um.modelId === m.modelId && um.accountId === acc.accountId && um.hasIntelligence) {
                     var rateStr = (um.currentRate * 100).toFixed(1) + "%/hr";
                     intellBadges += '<span class="rate-badge" title="Current consumption rate">' + rateStr + "</span>";
                     if (um.projectedUsage > 0) {
@@ -856,7 +860,7 @@
                   }
                 }
               }
-              var adjustBtns = '<span class="adjust-controls" data-snap-id="' + acc.latestSnapshotId + '" data-model-label="' + esc(m.label || m.modelId) + '" data-current-pct="' + mpct + '"><button class="adj-btn" data-delta="-10" title="\u221210%">\u221210</button><button class="adj-btn" data-delta="-5" title="\u22125%">\u22125</button><button class="adj-btn" data-delta="5" title="+5%">+5</button><button class="adj-btn" data-delta="10" title="+10%">+10</button></span>';
+              var adjustBtns = '<span class="adjust-controls" data-snap-id="' + acc.latestSnapshotId + '" data-model-id="' + esc(m.modelId || "") + '" data-model-label="' + esc(m.label || m.modelId) + '" data-current-pct="' + mpct + '"><button class="adj-btn" data-delta="-10" title="\u221210%">\u221210</button><button class="adj-btn" data-delta="-5" title="\u22125%">\u22125</button><button class="adj-btn" data-delta="5" title="+5%">+5</button><button class="adj-btn" data-delta="10" title="+10%">+10</button></span>';
               modelRows += '<div class="model-row"><div class="model-indicator" style="background:' + color + '"></div><span class="model-label">' + esc(m.label || m.modelId) + '</span><div class="model-bar-track"><div class="model-bar-fill ' + mcls + '" style="width:' + mpct + '%"></div></div><span class="model-pct ' + mcls + '">' + mpct + "%</span>" + adjustBtns + '<span class="model-reset">' + resetStr + "</span>" + intellBadges + "</div>";
             }
           }
@@ -1059,7 +1063,7 @@
       } catch (e) {
       }
     }
-    return '<div class="provider-section" data-provider="gemini"><div class="provider-header" data-toggle-provider="section-gemini"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-gemini">' + gmChevron + '</span><span class="provider-name">\u2728 Gemini CLI</span><span class="provider-count">1 account</span></div></div><div class="provider-body' + gmCollapseClass + '" id="section-gemini"><div class="grid-header grid-gemini"><div>Account</div><div>Tier</div><div>Usage</div><div>Last Snap</div><div>Status</div></div><div class="account-card"><div class="account-row grid-gemini"><div class="account-info"><div class="account-email">' + esc(displayName) + "</div></div><div>" + (gs.tier ? '<span class="plan-badge">' + esc(gs.tier) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span><div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div style="text-align:center"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div>" + modelRows + "</div></div></div>";
+    return '<div class="provider-section" data-provider="gemini"><div class="provider-header" data-toggle-provider="section-gemini"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-gemini">' + gmChevron + '</span><span class="provider-name">\u2728 Gemini CLI</span><span class="provider-count">1 account</span></div></div><div class="provider-body' + gmCollapseClass + '" id="section-gemini"><div class="grid-header grid-gemini"><div>Account</div><div>Tier</div><div>Usage</div><div>Last Snap</div><div>Status</div></div><div class="account-card"><div class="account-row grid-gemini"><div class="account-info"><div class="account-email">' + esc(displayName) + "</div></div><div>" + (gs.tier ? '<span class="plan-badge">' + esc(gs.tier) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell" title="Arithmetic mean across reported Gemini model buckets"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span><div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div style="text-align:center"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div>" + modelRows + "</div></div></div>";
   }
   function getCopilotStatus(snap) {
     var premiumPct = snap.premiumPct || 0;
@@ -1112,7 +1116,7 @@
         e.stopPropagation();
         var accountId2 = deleteBtn.getAttribute("data-delete-account");
         var email2 = deleteBtn.getAttribute("data-delete-email");
-        if (confirm("Remove account " + email2 + "?\n\nThis will permanently delete the account and ALL associated data (snapshots, cycles, codex data). This cannot be undone.")) {
+        if (confirm("Remove account " + email2 + "?\n\nThis deletes the account record plus data explicitly tied to its local account ID, such as Antigravity snapshots and reset cycles. Provider-native records may require separate cleanup. This cannot be undone.")) {
           fetch("/api/accounts/" + accountId2, { method: "DELETE" }).then(function(res) {
             return res.json();
           }).then(function(data) {
@@ -1133,7 +1137,8 @@
         if (!gControls) return;
         var gSnapId = parseInt(gControls.getAttribute("data-snap-id"), 10);
         var gGroupKey = gControls.getAttribute("data-group-key");
-        var gLabelsStr = gControls.getAttribute("data-group-labels");
+        var gModelIdsStr = gControls.getAttribute("data-group-model-ids");
+        var gModelLabelsStr = gControls.getAttribute("data-group-model-labels");
         var gCurrentPct = parseFloat(gControls.getAttribute("data-current-pct"));
         var gDelta = parseFloat(gadjBtn.getAttribute("data-delta"));
         var gNewPct = Math.max(0, Math.min(100, gCurrentPct + gDelta));
@@ -1151,12 +1156,12 @@
           }
         }
         gControls.setAttribute("data-current-pct", String(gNewPct));
-        var gLabels = gLabelsStr.split("|||").filter(function(l) {
-          return l.length > 0;
-        });
+        var gModelIds = gModelIdsStr.split("|||");
+        var gModelLabels = gModelLabelsStr.split("|||");
         var adjustments = [];
-        for (var li = 0; li < gLabels.length; li++) {
-          adjustments.push({ label: gLabels[li], remainingPercent: gNewPct });
+        for (var li = 0; li < gModelLabels.length; li++) {
+          if (!gModelIds[li] && !gModelLabels[li]) continue;
+          adjustments.push({ modelId: gModelIds[li] || "", label: gModelLabels[li] || "", remainingPercent: gNewPct });
         }
         if (adjustments.length === 0) return;
         fetch("/api/snap/adjust", {
@@ -1184,7 +1189,8 @@
         var controls = adjBtn.closest(".adjust-controls");
         if (!controls) return;
         var snapId = parseInt(controls.getAttribute("data-snap-id"), 10);
-        var label = controls.getAttribute("data-model-label");
+        var modelId = controls.getAttribute("data-model-id");
+        var modelLabel = controls.getAttribute("data-model-label");
         var currentPct = parseFloat(controls.getAttribute("data-current-pct"));
         var delta = parseFloat(adjBtn.getAttribute("data-delta"));
         var newPct = Math.max(0, Math.min(100, currentPct + delta));
@@ -1207,7 +1213,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             snapshotId: snapId,
-            adjustments: [{ label, remainingPercent: newPct }]
+            adjustments: [{ modelId, label: modelLabel, remainingPercent: newPct }]
           })
         }).then(function(res) {
           return res.json();
@@ -1216,7 +1222,7 @@
             showToast("\u274C " + data.error, "error");
             return;
           }
-          showToast("\u270E Adjusted " + label + " \u2192 " + Math.round(newPct) + "%", "info");
+          showToast("\u270E Adjusted " + (modelLabel || modelId) + " \u2192 " + Math.round(newPct) + "%", "info");
           fetchStatus().then(renderAccounts);
         }).catch(function(err) {
           showToast("\u274C " + err.message, "error");
@@ -1821,21 +1827,23 @@
   // internal/web/src/overview/insights.ts
   function renderServerInsights(insights) {
     if (!insights || insights.length === 0) return "";
-    var html = '<div class="insight-panel"><h3>\u{1F9E0} Intelligence Insights</h3><div class="insight-list">';
+    var html = '<div class="insight-panel"><h3>Intelligence Insights</h3><div class="insight-list">';
     var iconMap = {
-      renewal_imminent: "\u{1F534}",
-      trial_expiring: "\u23F3",
-      unused_subscription: "\u{1F4A4}",
-      spending_anomaly: "\u{1F4C8}",
-      category_overlap: "\u{1F501}",
-      annual_savings: "\u{1F4A1}",
-      budget_exceeded: "\u{1F6A8}"
+      renewal_imminent: "Renewal",
+      trial_expiring: "Trial",
+      unused_subscription: "Unused",
+      category_overlap: "Overlap",
+      budget_exceeded: "Budget",
+      renewal: "Renewal",
+      trial: "Trial",
+      unused: "Unused",
+      overlap: "Overlap"
     };
     for (var i = 0; i < insights.length; i++) {
       var ins = insights[i];
-      var icon = iconMap[ins.type] || "\u{1F4A1}";
+      var icon = iconMap[ins.type] || "Info";
       var cls = ins.severity === "critical" ? "critical" : ins.severity === "warning" ? "warning" : "info";
-      html += '<div class="insight-item ' + cls + '"><span class="insight-item-icon">' + icon + '</span><div class="insight-item-content"><div class="insight-item-title">' + esc(ins.type.replace(/_/g, " ")) + '</div><div class="insight-item-msg">' + esc(ins.message) + "</div></div></div>";
+      html += '<div class="insight-item ' + cls + '"><span class="insight-item-icon">' + esc(icon) + '</span><div class="insight-item-content"><div class="insight-item-title">' + esc(ins.title || ins.type.replace(/_/g, " ")) + '</div><div class="insight-item-msg">' + esc(ins.message) + "</div></div></div>";
     }
     html += "</div></div>";
     return html;
@@ -1894,23 +1902,21 @@
       "all": "All Models (avg)"
     };
     var best = ranked[0];
-    var worst = ranked[ranked.length - 1];
     var allHealthy = ranked.every(function(a) {
       return a.pct > 80;
     });
-    var actionIcon = allHealthy ? "\u2705" : best.pct > 20 ? "\u26A1" : "\u23F3";
+    var actionIcon = allHealthy ? "READY" : best.pct > 20 ? "SWITCH" : "WAIT";
     var actionLabel = allHealthy ? "ALL READY" : best.pct > 20 ? "SWITCH" : "WAIT";
-    var bestLabel = best.email.split("@")[0] + "@...";
-    var html = '<div class="advisor-card"><h3>\u26A1 Antigravity Account Advisor</h3><div class="advisor-group-select"><label>Optimize for:</label><select id="advisor-group-filter" class="filter-select" style="margin-left:8px;font-size:12px"><option value="claude_gpt"' + (groupKey === "claude_gpt" ? " selected" : "") + '>Claude + GPT</option><option value="gemini_pro"' + (groupKey === "gemini_pro" ? " selected" : "") + '>Gemini Pro</option><option value="gemini_flash"' + (groupKey === "gemini_flash" ? " selected" : "") + '>Gemini Flash</option><option value="all"' + (groupKey === "all" ? " selected" : "") + ">All Models (avg)</option></select></div>";
+    var html = '<div class="advisor-card"><h3>Antigravity Account Advisor</h3><div class="advisor-group-select"><label>Optimize for:</label><select id="advisor-group-filter" class="filter-select" style="margin-left:8px;font-size:12px"><option value="claude_gpt"' + (groupKey === "claude_gpt" ? " selected" : "") + '>Claude + GPT</option><option value="gemini_pro"' + (groupKey === "gemini_pro" ? " selected" : "") + '>Gemini Pro</option><option value="gemini_flash"' + (groupKey === "gemini_flash" ? " selected" : "") + '>Gemini Flash</option><option value="all"' + (groupKey === "all" ? " selected" : "") + ">All Models (avg)</option></select></div>";
     var actionCls = allHealthy ? "stay" : best.pct > 20 ? "switch" : "wait";
-    html += '<div class="advisor-action ' + actionCls + '">' + actionIcon + " " + actionLabel + '</div><div class="advisor-reason">' + (allHealthy ? "All accounts have healthy quotas \u2014 no switch needed" : "Best: " + esc(best.email) + " (" + best.pct + "% " + esc(groupNames[groupKey] || groupKey) + " remaining)") + (best.stale ? " \u26A0\uFE0F stale data" : "") + "</div>";
+    html += '<div class="advisor-action ' + actionCls + '">' + actionIcon + " " + actionLabel + '</div><div class="advisor-reason">' + (allHealthy ? "All accounts have healthy quotas - no switch needed" : "Best: " + esc(best.email) + " (" + best.pct + "% " + esc(groupNames[groupKey] || groupKey) + " remaining)") + (best.stale ? " [stale data]" : "") + "</div>";
     html += '<div class="advisor-scores">';
     var initialShow = Math.min(ranked.length, 5);
     for (var s = 0; s < ranked.length; s++) {
       var acct = ranked[s];
       var isBest = s === 0;
       var barCls = acct.pct > 50 ? "good" : acct.pct > 20 ? "ok" : "low";
-      var staleIcon = acct.stale ? ' <span class="stale-icon" title="Data ' + esc(acct.label) + '">\u26A0</span>' : "";
+      var staleIcon = acct.stale ? ' <span class="stale-icon" title="Data ' + esc(acct.label) + '">STALE</span>' : "";
       var hidden = s >= initialShow ? ' style="display:none" data-advisor-extra' : "";
       html += '<div class="advisor-score-row' + (isBest ? " best" : "") + '"' + hidden + '><span class="advisor-score-email" title="' + esc(acct.email) + '">' + esc(acct.email) + '</span><div class="advisor-score-bar"><div class="advisor-score-fill ' + barCls + '" style="width:' + acct.pct + '%"></div></div><span class="advisor-score-val">' + acct.pct + "%" + staleIcon + "</span></div>";
     }
@@ -1957,7 +1963,7 @@
         return;
       }
       var totalLabel = data.totalLabel || "$0.00";
-      var html = '<div class="cost-kpi-card overview-card"><h3>Estimated Spend (Current Cycle)</h3><div class="cost-kpi-amount">' + esc(totalLabel) + '</div><div class="cost-kpi-label">Estimated cost based on quota consumption \xD7 model pricing</div>';
+      var html = '<div class="cost-kpi-card overview-card"><h3>Heuristic Cost (Current Cycle)</h3><div class="cost-kpi-amount">' + esc(totalLabel) + '</div><div class="cost-kpi-label">Heuristic cost from quota consumption and configured model pricing</div>';
       var hasChips = false;
       var chipsHTML = '<div class="cost-kpi-breakdown">';
       if (data.accounts && data.accounts.length > 0) {
@@ -1967,7 +1973,7 @@
             hasChips = true;
             var emailShort = acct.email;
             if (emailShort && emailShort.length > 20) {
-              emailShort = emailShort.split("@")[0] + "@\u2026";
+              emailShort = emailShort.split("@")[0] + "@...";
             }
             chipsHTML += '<span class="cost-kpi-chip" title="' + esc(acct.email) + '">' + esc(emailShort) + ": " + esc(acct.totalLabel) + "</span>";
           }
@@ -2465,7 +2471,7 @@
   }
   function renderTokenAnalytics(container, data, days) {
     if (!data || !data.totals || data.totals.totalTokens === 0) {
-      container.innerHTML = '<div class="overview-card full-width token-analytics-card"><h3>\u{1F525} Token Usage Analytics</h3><div class="token-analytics-empty"><p>No token usage data available yet.</p><p style="font-size:12px;color:var(--text-secondary)">Use Claude Code to generate token usage data. Session files are parsed from <code>~/.claude/projects/</code>.</p></div></div>';
+      container.innerHTML = '<div class="overview-card full-width token-analytics-card"><h3>Observed Token Usage</h3><div class="token-analytics-empty"><p>No observed token usage data is available yet.</p><p style="font-size:12px;color:var(--text-secondary)">Current observed sources are Claude Code session files in <code>~/.claude/projects/</code> plus any provider rows already persisted into Niyantra&apos;s <code>token_usage</code> table.</p></div></div>';
       return;
     }
     var totals = data.totals;
@@ -2497,11 +2503,11 @@
     var tokenSpark = tokenSparkData.length >= 3 ? sparkline(tokenSparkData, { width: 50, height: 18, color: "#6366f1", direction: trendDirection(tokenSparkData) }) : "";
     var costSpark = costSparkData.length >= 3 ? sparkline(costSparkData, { width: 50, height: 18, color: "#f59e0b", direction: trendDirection(costSparkData) }) : "";
     var kpiHTML = '<div class="token-kpi-row">';
-    kpiHTML += buildKpiCard("Total Tokens", formatTokens2(totals.totalTokens), "\u{1F4CA}", tokenSpark);
-    kpiHTML += buildKpiCard("Est. Cost", "$" + (totals.estimatedCostUSD || 0).toFixed(2), "\u{1F4B0}", costSpark);
-    kpiHTML += buildKpiCard("Active Days", String(kpis.daysActive || 0), "\u{1F4C5}");
-    kpiHTML += buildKpiCard("Avg/Day", formatTokens2(kpis.avgTokensPerDay || 0), "\u{1F4C8}");
-    kpiHTML += buildKpiCard("Cache Rate", Math.round((kpis.cacheHitRate || 0) * 100) + "%", "\u26A1");
+    kpiHTML += buildKpiCard("Total Tokens", formatTokens2(totals.totalTokens), "Usage", tokenSpark);
+    kpiHTML += buildKpiCard("Heuristic Cost", "$" + (totals.estimatedCostUSD || 0).toFixed(2), "Cost", costSpark);
+    kpiHTML += buildKpiCard("Active Days", String(kpis.daysActive || 0), "Days");
+    kpiHTML += buildKpiCard("Avg/Day", formatTokens2(kpis.avgTokensPerDay || 0), "Rate");
+    kpiHTML += buildKpiCard("Cache Rate", Math.round((kpis.cacheHitRate || 0) * 100) + "%", "Cache");
     kpiHTML += "</div>";
     var chipsHTML = '<div class="token-breakdown-chips">';
     chipsHTML += '<span class="token-chip token-chip-input">Input: ' + formatTokens2(totals.inputTokens) + "</span>";
@@ -2522,7 +2528,7 @@
         var model = topModels[mi];
         var color = colors[mi % colors.length];
         var pct = model.percentage || 0;
-        var costLabel = model.costUSD > 0 ? " \xB7 $" + model.costUSD.toFixed(2) : "";
+        var costLabel = model.costUSD > 0 ? " | $" + model.costUSD.toFixed(2) : "";
         modelHTML += '<div class="token-model-row"><div class="token-model-header"><span class="token-model-name" style="color:' + color + '">' + escapeHtml(model.model) + '</span><span class="token-model-stats">' + formatTokens2(model.totalTokens) + " (" + pct.toFixed(1) + "%)" + costLabel + '</span></div><div class="token-model-bar-track"><div class="token-model-bar-fill" style="width:' + pct + "%;background:" + color + '"></div></div></div>';
       }
       modelHTML += "</div></div>";
@@ -2554,9 +2560,9 @@
     }
     var peakHTML = "";
     if (kpis.peakDay) {
-      peakHTML = '<div class="token-peak-badge">\u{1F525} Peak: ' + kpis.peakDay + " \u2014 " + formatTokens2(kpis.peakDayTokens) + " tokens</div>";
+      peakHTML = '<div class="token-peak-badge">Peak: ' + kpis.peakDay + " | " + formatTokens2(kpis.peakDayTokens) + " tokens</div>";
     }
-    container.innerHTML = '<div class="overview-card full-width token-analytics-card"><div class="token-analytics-header"><h3>\u{1F525} Token Usage Analytics</h3>' + rangeHTML + "</div>" + kpiHTML + chipsHTML + peakHTML + modelHTML + chartHTML + "</div>";
+    container.innerHTML = '<div class="overview-card full-width token-analytics-card"><div class="token-analytics-header"><h3>Observed Token Usage</h3>' + rangeHTML + '</div><p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">Observed sources are Claude session files plus any provider rows already persisted into <code>token_usage</code>.</p>' + kpiHTML + chipsHTML + peakHTML + modelHTML + chartHTML + "</div>";
     var rangeBtns = container.querySelectorAll(".token-range-btn");
     for (var bi = 0; bi < rangeBtns.length; bi++) {
       rangeBtns[bi].addEventListener("click", function() {
@@ -2604,11 +2610,11 @@
     });
   }
   function renderGitCostsError(container, message) {
-    container.innerHTML = '<div class="overview-card full-width git-costs-card"><h3>\u26A1 Git \xD7 AI Cost Correlation</h3><div class="git-costs-empty"><p>Unable to analyze git costs.</p><p style="font-size:12px;color:var(--text-secondary)">' + escapeHtml2(message) + "</p></div></div>";
+    container.innerHTML = '<div class="overview-card full-width git-costs-card"><h3>Git to AI Attribution</h3><div class="git-costs-empty"><p>Unable to analyze git costs.</p><p style="font-size:12px;color:var(--text-secondary)">' + escapeHtml2(message) + "</p></div></div>";
   }
   function renderGitCosts(container, data) {
     if (!data || !data.commits || data.commits.length === 0) {
-      container.innerHTML = '<div class="overview-card full-width git-costs-card"><h3>\u26A1 Git \xD7 AI Cost Correlation</h3><div class="git-costs-empty"><p>No git commit data available.</p><p style="font-size:12px;color:var(--text-secondary)">Ensure you are running Niyantra from within a git repository, or pass <code>?repo=/path</code> to the API.</p></div></div>';
+      container.innerHTML = '<div class="overview-card full-width git-costs-card"><h3>Git to AI Attribution</h3><div class="git-costs-empty"><p>No git commit data available.</p><p style="font-size:12px;color:var(--text-secondary)">Ensure you are running Niyantra from within a git repository, or pass <code>?repo=/path</code> to the API.</p></div></div>';
       return;
     }
     var totals = data.totals || {};
@@ -2616,13 +2622,14 @@
     var branches = data.branches || [];
     var hasAICosts = totals.totalTokens > 0;
     var kpiHTML = '<div class="git-kpi-row">';
-    kpiHTML += buildKpi("Commits", String(totals.commitCount || 0), "\u{1F4DD}");
-    kpiHTML += buildKpi("AI Cost", "$" + (totals.costUSD || 0).toFixed(2), "\u{1F4B0}");
-    kpiHTML += buildKpi("Avg/Commit", "$" + (totals.avgPerCommit || 0).toFixed(2), "\u{1F4CA}");
-    kpiHTML += buildKpi("Top Branch", truncate(totals.topBranch || "\u2014", 18), "\u{1F33F}");
+    kpiHTML += buildKpi("Commits", String(totals.commitCount || 0), "Commits");
+    kpiHTML += buildKpi("AI Cost", "$" + (totals.costUSD || 0).toFixed(2), "Cost");
+    kpiHTML += buildKpi("Avg/Commit", "$" + (totals.avgPerCommit || 0).toFixed(2), "Avg");
+    kpiHTML += buildKpi("Top Branch", truncate(totals.topBranch || "-", 18), "Branch");
     kpiHTML += "</div>";
+    kpiHTML += '<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">Claude token events are heuristically assigned to the nearest subsequent commit inside the lookback window. This is guidance, not ground truth.</p>';
     if (!hasAICosts) {
-      kpiHTML += '<div class="git-no-ai-banner">No Claude Code session data found in the commit time windows. AI costs will appear when commits overlap with Claude Code usage.</div>';
+      kpiHTML += '<div class="git-no-ai-banner">No nearby Claude Code session data was attributable inside the commit lookback windows.</div>';
     }
     var chartHTML = "";
     if (commits.length > 0 && hasAICosts) {
@@ -2633,15 +2640,12 @@
       for (var ci = 0; ci < commits.length; ci++) {
         if (commits[ci].costUSD > maxCost) maxCost = commits[ci].costUSD;
       }
-      var displayCommits = commits;
-      if (displayCommits.length > 40) {
-        displayCommits = displayCommits.slice(0, 40);
-      }
+      var displayCommits = commits.length > 40 ? commits.slice(0, 40) : commits;
       for (var di = 0; di < displayCommits.length; di++) {
         var c = displayCommits[di];
         var barH = maxCost > 0 ? Math.max(3, c.costUSD / maxCost * 100) : 3;
         var barColor = c.costUSD > 0 ? "var(--accent)" : "var(--border)";
-        chartHTML += '<div class="git-bar-col" title="' + escapeAttr(c.shortHash) + ": " + escapeAttr(c.message) + "\n$" + c.costUSD.toFixed(2) + " \xB7 " + formatTokens3(c.totalTokens) + ' tokens"><div class="git-bar" style="height:' + barH + "%;background:" + barColor + '"></div><span class="git-bar-hash">' + c.shortHash + "</span></div>";
+        chartHTML += '<div class="git-bar-col" title="' + escapeAttr(c.shortHash) + ": " + escapeAttr(c.message) + "\n$" + c.costUSD.toFixed(2) + " | " + formatTokens3(c.totalTokens) + ' tokens"><div class="git-bar" style="height:' + barH + "%;background:" + barColor + '"></div><span class="git-bar-hash">' + c.shortHash + "</span></div>";
       }
       chartHTML += "</div></div>";
     }
@@ -2665,12 +2669,12 @@
     var showCommits = commits.slice(0, 15);
     for (var ri = 0; ri < showCommits.length; ri++) {
       var rc = showCommits[ri];
-      var costBadge = rc.costUSD > 0 ? '<span class="git-cost-badge">$' + rc.costUSD.toFixed(2) + "</span>" : '<span class="git-cost-badge git-cost-zero">\u2014</span>';
+      var costBadge = rc.costUSD > 0 ? '<span class="git-cost-badge">$' + rc.costUSD.toFixed(2) + "</span>" : '<span class="git-cost-badge git-cost-zero">-</span>';
       var tokenBadge = rc.totalTokens > 0 ? '<span class="git-token-badge">' + formatTokens3(rc.totalTokens) + "</span>" : "";
       commitsHTML += '<div class="git-commit-item"><span class="git-commit-hash">' + rc.shortHash + '</span><span class="git-commit-msg">' + escapeHtml2(rc.message) + '</span><div class="git-commit-meta">' + tokenBadge + costBadge + "</div></div>";
     }
     commitsHTML += "</div></div>";
-    container.innerHTML = '<div class="overview-card full-width git-costs-card"><div class="git-costs-header"><h3>\u26A1 Git \xD7 AI Cost Correlation</h3><span class="git-repo-path" title="' + escapeAttr(data.repoPath || "") + '">' + escapeHtml2(shortenPath(data.repoPath || "")) + "</span></div>" + kpiHTML + chartHTML + branchHTML + commitsHTML + "</div>";
+    container.innerHTML = '<div class="overview-card full-width git-costs-card"><div class="git-costs-header"><h3>Git to AI Attribution</h3><span class="git-repo-path" title="' + escapeAttr(data.repoPath || "") + '">' + escapeHtml2(shortenPath(data.repoPath || "")) + "</span></div>" + kpiHTML + chartHTML + branchHTML + commitsHTML + "</div>";
   }
   function buildKpi(label, value, icon) {
     return '<div class="git-kpi-card"><div class="git-kpi-icon">' + icon + '</div><div class="git-kpi-value">' + value + '</div><div class="git-kpi-label">' + label + "</div></div>";
@@ -2681,11 +2685,11 @@
     return String(n);
   }
   function truncate(s, max) {
-    return s.length > max ? s.substring(0, max - 1) + "\u2026" : s;
+    return s.length > max ? s.substring(0, max - 1) + "..." : s;
   }
   function shortenPath(p) {
     var parts = p.replace(/\\/g, "/").split("/");
-    return parts.length > 2 ? "\u2026/" + parts.slice(-2).join("/") : p;
+    return parts.length > 2 ? ".../" + parts.slice(-2).join("/") : p;
   }
   function escapeHtml2(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -2697,33 +2701,24 @@
   // internal/web/src/overview/safeToSpend.ts
   function renderSafeToSpend(bf, currency) {
     if (!bf || bf.monthlyBudget <= 0) {
-      return '<div class="safe-to-spend-card no-budget"><div class="sts-icon">\u{1F4B0}</div><div class="sts-label">Set a monthly AI budget to unlock your Safe to Spend guardrail</div><button class="btn-add-sm" id="sts-set-budget-btn">Set Budget</button></div>';
+      return '<div class="safe-to-spend-card no-budget"><div class="sts-icon">Budget</div><div class="sts-label">Set a monthly AI budget to track recurring subscription headroom</div><button class="btn-add-sm" id="sts-set-budget-btn">Set Budget</button></div>';
     }
-    var safeAmount = Math.max(0, bf.monthlyBudget - bf.currentSpend);
-    var pct = Math.round(bf.currentSpend / bf.monthlyBudget * 100);
-    var now = /* @__PURE__ */ new Date();
-    var daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    var daysLeft = daysInMonth - now.getDate();
-    var dayOfMonth = now.getDate();
-    var dailyBurn = dayOfMonth > 0 ? bf.currentSpend / dayOfMonth : 0;
-    var projected = dailyBurn * daysInMonth;
-    var willExceed = projected > bf.monthlyBudget;
-    var cls, statusIcon, statusText;
+    var recurring = bf.recurringMonthlySpend != null ? bf.recurringMonthlySpend : bf.currentSpend;
+    var headroom = Math.max(0, bf.monthlyBudget - recurring);
+    var pct = bf.monthlyBudget > 0 ? Math.round(recurring / bf.monthlyBudget * 100) : 0;
+    var cls;
+    var statusText;
     if (pct >= 100) {
       cls = "over";
-      statusIcon = "\u{1F6A8}";
-      statusText = "Over budget by " + sym(currency) + (bf.currentSpend - bf.monthlyBudget).toFixed(2);
+      statusText = "Recurring subscriptions exceed budget by " + sym(currency) + (recurring - bf.monthlyBudget).toFixed(2) + "/mo";
     } else if (pct >= 80) {
       cls = "warning";
-      statusIcon = "\u26A0\uFE0F";
-      statusText = willExceed ? "Projected to exceed by " + sym(currency) + (projected - bf.monthlyBudget).toFixed(2) : daysLeft + " days left at " + sym(currency) + dailyBurn.toFixed(2) + "/day";
+      statusText = "Only " + sym(currency) + headroom.toFixed(2) + "/mo of recurring budget headroom remains";
     } else {
       cls = "healthy";
-      statusIcon = "\u2705";
-      statusText = daysLeft + " days left \xB7 " + sym(currency) + dailyBurn.toFixed(2) + "/day burn rate";
+      statusText = sym(currency) + headroom.toFixed(2) + "/mo remains after recurring subscriptions";
     }
-    var s = sym(currency);
-    return '<div class="safe-to-spend-card ' + cls + '"><div class="sts-header"><span class="sts-title">Safe to Spend</span><button class="sts-edit" id="sts-edit-budget-btn" title="Edit budget">\u270F\uFE0F</button></div><div class="sts-amount">' + s + safeAmount.toFixed(2) + '</div><div class="sts-bar-container"><div class="sts-bar-fill ' + cls + '" style="width:' + Math.min(pct, 100) + '%"></div></div><div class="sts-details"><span>' + statusIcon + " " + statusText + '</span><span class="sts-budget">Budget: ' + s + bf.monthlyBudget.toFixed(0) + "/mo</span></div></div>";
+    return '<div class="safe-to-spend-card ' + cls + '"><div class="sts-header"><span class="sts-title">Budget Headroom</span><button class="sts-edit" id="sts-edit-budget-btn" title="Edit budget">Edit</button></div><div class="sts-amount">' + sym(currency) + headroom.toFixed(2) + '</div><div class="sts-bar-container"><div class="sts-bar-fill ' + cls + '" style="width:' + Math.min(pct, 100) + '%"></div></div><div class="sts-details"><span>' + statusText + '</span><span class="sts-budget">Budget: ' + sym(currency) + bf.monthlyBudget.toFixed(0) + '/mo</span></div><div class="sts-caption">Based on recurring subscription commitments only; observed usage spend is not available yet.</div></div>';
   }
   function wireSafeToSpendButtons(openBudgetFn) {
     var editBtn = document.getElementById("sts-edit-budget-btn");
@@ -2732,9 +2727,9 @@
     if (setBtn) setBtn.addEventListener("click", openBudgetFn);
   }
   function sym(currency) {
-    if (currency === "INR") return "\u20B9";
-    if (currency === "EUR") return "\u20AC";
-    if (currency === "GBP") return "\xA3";
+    if (currency === "INR") return "Rs ";
+    if (currency === "EUR") return "EUR ";
+    if (currency === "GBP") return "GBP ";
     return "$";
   }
 
@@ -2802,75 +2797,6 @@
         container.innerHTML = renderCountdowns(quotaData);
       }
     }, 6e4);
-  }
-
-  // internal/web/src/overview/anomalyCard.ts
-  function loadAnomalies() {
-    var container = document.getElementById("anomaly-card-container");
-    if (!container) return;
-    fetch("/api/anomalies").then(function(res) {
-      return res.json();
-    }).then(function(data) {
-      if (data && data.disabled) {
-        container.innerHTML = '<div class="overview-card anomaly-card info"><div class="anomaly-header"><span class="anomaly-title">Cost Anomaly Detection</span></div><div class="anomaly-item">' + escHtml(data.reason || "Insufficient historical data.") + "</div></div>";
-        return;
-      }
-      if (!data || !data.anomalies || data.anomalies.length === 0) {
-        container.innerHTML = "";
-        return;
-      }
-      var anomalies = data.anomalies;
-      var dismissedKey = "niyantra_dismissed_anomalies";
-      var dismissed = [];
-      try {
-        dismissed = JSON.parse(localStorage.getItem(dismissedKey) || "[]");
-      } catch (e) {
-      }
-      anomalies = anomalies.filter(function(a2) {
-        return dismissed.indexOf(a2.provider + "_" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)) < 0;
-      });
-      if (anomalies.length === 0) {
-        container.innerHTML = "";
-        return;
-      }
-      var severityClass = anomalies[0].severity === "critical" ? "critical" : "warning";
-      var html = '<div class="anomaly-card ' + severityClass + '"><div class="anomaly-header"><span class="anomaly-title">' + (severityClass === "critical" ? "\u{1F6A8}" : "\u26A0\uFE0F") + ' Cost Anomaly Detected</span><button class="anomaly-dismiss" id="anomaly-dismiss-btn" title="Dismiss for today">\u2715</button></div>';
-      for (var i = 0; i < anomalies.length; i++) {
-        var a = anomalies[i];
-        html += '<div class="anomaly-item"><div class="anomaly-provider">' + (a.severity === "critical" ? "\u{1F534}" : "\u{1F7E1}") + " " + escHtml(a.message) + '</div><div class="anomaly-detail">Z-score: ' + a.zScore + "\u03C3 \xB7 $" + a.currentValue.toFixed(2) + " today vs $" + a.mean30d.toFixed(2) + " avg (30d)</div>";
-        if (a.projectedImpact > 0) {
-          html += '<div class="anomaly-impact">\u{1F4CA} At this rate: budget exceeded by $' + a.projectedImpact.toFixed(2) + "/mo</div>";
-        }
-        html += "</div>";
-      }
-      html += "</div>";
-      container.innerHTML = html;
-      var dismissBtn = document.getElementById("anomaly-dismiss-btn");
-      if (dismissBtn) {
-        dismissBtn.addEventListener("click", function() {
-          var today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-          var keys = anomalies.map(function(a2) {
-            return a2.provider + "_" + today;
-          });
-          var current = [];
-          try {
-            current = JSON.parse(localStorage.getItem(dismissedKey) || "[]");
-          } catch (e) {
-          }
-          for (var k = 0; k < keys.length; k++) {
-            if (current.indexOf(keys[k]) < 0) current.push(keys[k]);
-          }
-          if (current.length > 50) current = current.slice(-50);
-          localStorage.setItem(dismissedKey, JSON.stringify(current));
-          container.innerHTML = "";
-        });
-      }
-    }).catch(function(err) {
-      console.error("Anomaly detection failed:", err);
-    });
-  }
-  function escHtml(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   // internal/web/src/advanced/report.ts
@@ -3145,7 +3071,7 @@
     var countdownHTML = countdownContent ? '<div id="countdown-container" style="grid-column:1/-1">' + countdownContent + "</div>" : "";
     if (latestQuotaData) startCountdownRefresh(latestQuotaData);
     var cats = Object.keys(stats.byCategory);
-    var spendHTML = '<div class="overview-card"><h3>Monthly AI Spend</h3><div class="kpi-with-sparkline"><div class="overview-big-number">$' + stats.totalMonthlySpend.toFixed(2) + "</div></div>";
+    var spendHTML = '<div class="overview-card"><h3>Monthly Recurring Spend</h3><div class="kpi-with-sparkline"><div class="overview-big-number">$' + stats.totalMonthlySpend.toFixed(2) + "</div></div>";
     if (cats.length > 1) {
       cats.sort(function(a, b) {
         return (stats.byCategory[b].monthlySpend || 0) - (stats.byCategory[a].monthlySpend || 0);
@@ -3176,7 +3102,7 @@
       }
     }
     var exportHTML = '<div class="overview-card full-width"><h3>Export</h3><p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Download a redacted JSON report or a full database backup.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn-add" href="/api/export/csv" download style="text-decoration:none;display:inline-flex;padding:6px 12px;font-size:12px">\u{1F4E5} CSV</a><a class="btn-add" href="/api/export/json" download style="text-decoration:none;display:inline-flex;padding:6px 12px;font-size:12px">\u{1F4E6} Redacted JSON</a><a class="btn-add" href="/api/backup" download style="text-decoration:none;display:inline-flex;padding:6px 12px;font-size:12px">\u{1F4BE} DB Backup</a><button class="btn-add" id="generate-report-btn" style="padding:6px 12px;font-size:12px">\u{1F4CA} Monthly Report</button></div></div>';
-    var providerHTML = '<div class="overview-card full-width"><h3>Provider Health</h3>';
+    var providerHTML = '<div class="overview-card full-width"><h3>Provider Status Signals</h3><p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">Rows below use provider-specific counters and are not a normalized cross-provider health score.</p>';
     providerHTML += '<div class="provider-health-grid">';
     if (latestQuotaData && latestQuotaData.accounts && latestQuotaData.accounts.length > 0) {
       var accts = latestQuotaData.accounts;
@@ -3229,10 +3155,8 @@
     var tokenAnalyticsHTML = '<div id="token-analytics-container" class="overview-card full-width"></div>';
     var gitCostsHTML = '<div id="git-costs-container" class="overview-card full-width"></div>';
     var heatmapHTML = '<div id="heatmap-container" class="overview-card full-width"></div>';
-    var anomalyHTML = '<div id="anomaly-card-container"></div>';
-    el.innerHTML = safeToSpendHTML + anomalyHTML + countdownHTML + advisorHTML + costKPIHTML + tokenAnalyticsHTML + gitCostsHTML + heatmapHTML + providerHTML + insightsHTML + claudeHTML + spendHTML + calendarHTML + linksHTML + exportHTML;
+    el.innerHTML = safeToSpendHTML + countdownHTML + advisorHTML + costKPIHTML + tokenAnalyticsHTML + gitCostsHTML + heatmapHTML + providerHTML + insightsHTML + claudeHTML + spendHTML + calendarHTML + linksHTML + exportHTML;
     wireSafeToSpendButtons(openBudgetModal);
-    loadAnomalies();
     var reportBtn = document.getElementById("generate-report-btn");
     if (reportBtn) {
       reportBtn.addEventListener("click", function() {
@@ -4071,7 +3995,7 @@
         container.innerHTML = '<div class="plugin-empty"><div class="plugin-empty-icon">\u{1F9E9}</div><div class="plugin-empty-title">No plugins installed</div><div class="plugin-empty-hint">Add plugins to <code>' + esc(pluginsDir) + "</code><br>Each plugin needs a <code>plugin.json</code> manifest and an executable entry point.</div></div>";
         return;
       }
-      var html = "";
+      var html = '<div class="plugin-warning"><strong>Trusted local code only.</strong> Enabling or running a plugin executes its entry point with your current user permissions. Plugins can read local files, environment variables, network resources, and any secrets already stored in Niyantra.</div>';
       if (errors.length > 0) {
         html += '<div class="plugin-errors">';
         errors.forEach(function(e) {
@@ -4120,7 +4044,7 @@
           html += "</div>";
         }
         html += '<div class="plugin-footer" style="' + (p.enabled ? "" : "display:none") + '">';
-        html += '<button class="btn-sm plugin-test-btn" data-plugin="' + esc(p.manifest.id) + '">\u25B6 Test Run</button>';
+        html += '<button class="btn-sm plugin-test-btn" data-plugin="' + esc(p.manifest.id) + '">Run Trusted Plugin</button>';
         html += '<span class="plugin-test-result" id="plugin-result-' + esc(p.manifest.id) + '"></span>';
         html += "</div>";
         html += "</div>";
@@ -4192,8 +4116,11 @@
           var btn = el;
           var pluginId = btn.dataset.plugin;
           var resultEl = document.getElementById("plugin-result-" + pluginId);
+          if (!confirm('Run trusted plugin "' + pluginId + '" now?\n\nPlugins run as local subprocesses with access to your files, environment, network, and stored Niyantra secrets.')) {
+            return;
+          }
           btn.disabled = true;
-          btn.textContent = "\u23F3 Running...";
+          btn.textContent = "Running trusted plugin...";
           resultEl.textContent = "";
           fetch("/api/plugins/" + pluginId + "/run", { method: "POST" }).then(function(r) {
             return r.json().then(function(data2) {
@@ -4216,7 +4143,7 @@
             resultEl.style.color = "#ef4444";
           }).finally(function() {
             btn.disabled = false;
-            btn.textContent = "\u25B6 Test Run";
+            btn.textContent = "Run Trusted Plugin";
           });
         });
       });

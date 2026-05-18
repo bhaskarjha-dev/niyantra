@@ -17,14 +17,17 @@ import (
 
 // BudgetOutput is the output of budget_forecast.
 type BudgetOutput struct {
-	HasBudget        bool    `json:"hasBudget"`
-	MonthlyBudget    float64 `json:"monthlyBudget,omitempty"`
-	CurrentSpend     float64 `json:"currentSpend,omitempty"`
-	ProjectedSpend   float64 `json:"projectedMonthlySpend,omitempty"`
-	BurnRate         float64 `json:"burnRate,omitempty"`
-	OnTrack          bool    `json:"onTrack"`
-	DaysUntilExhaust *int    `json:"daysUntilBudgetExhausted,omitempty"`
-	Message          string  `json:"message"`
+	HasBudget              bool    `json:"hasBudget"`
+	MonthlyBudget          float64 `json:"monthlyBudget,omitempty"`
+	CurrentSpend           float64 `json:"currentSpend,omitempty"`
+	RecurringMonthlySpend  float64 `json:"recurringMonthlySpend,omitempty"`
+	ProjectedSpend         float64 `json:"projectedMonthlySpend,omitempty"`
+	BurnRate               float64 `json:"burnRate,omitempty"`
+	OnTrack                bool    `json:"onTrack"`
+	DaysUntilExhaust       *int    `json:"daysUntilBudgetExhausted,omitempty"`
+	DataMode               string  `json:"dataMode,omitempty"`
+	ObservedSpendAvailable bool    `json:"observedSpendAvailable"`
+	Message                string  `json:"message"`
 }
 
 // SpendingOutput is the output of analyze_spending.
@@ -86,25 +89,23 @@ func (m *MCPServer) handleBudgetForecast(_ context.Context, _ *mcp.CallToolReque
 	}
 
 	out := BudgetOutput{
-		HasBudget:      true,
-		MonthlyBudget:  forecast.MonthlyBudget,
-		CurrentSpend:   forecast.CurrentSpend,
-		ProjectedSpend: forecast.ProjectedMonthlySpend,
-		BurnRate:       forecast.BurnRatePerDay,
-		OnTrack:        forecast.OnTrack,
+		HasBudget:              true,
+		MonthlyBudget:          forecast.MonthlyBudget,
+		CurrentSpend:           forecast.CurrentSpend,
+		RecurringMonthlySpend:  forecast.RecurringMonthlySpend,
+		ProjectedSpend:         forecast.ProjectedMonthlySpend,
+		BurnRate:               forecast.BurnRatePerDay,
+		OnTrack:                forecast.OnTrack,
+		DataMode:               forecast.DataMode,
+		ObservedSpendAvailable: forecast.ObservedSpendAvailable,
 	}
 
 	if forecast.OnTrack {
-		out.Message = fmt.Sprintf("On track: spending $%.2f/day, projected $%.2f of $%.0f budget.",
-			forecast.BurnRatePerDay, forecast.ProjectedMonthlySpend, forecast.MonthlyBudget)
+		out.Message = fmt.Sprintf("Recurring subscriptions total $%.2f/month against a $%.0f budget. Observed usage spend is not available yet.",
+			forecast.RecurringMonthlySpend, forecast.MonthlyBudget)
 	} else {
-		out.Message = fmt.Sprintf("Over budget: spending $%.2f/day, projected $%.2f exceeds $%.0f budget.",
-			forecast.BurnRatePerDay, forecast.ProjectedMonthlySpend, forecast.MonthlyBudget)
-		if forecast.DaysUntilBudgetExhausted != nil {
-			d := *forecast.DaysUntilBudgetExhausted
-			out.DaysUntilExhaust = &d
-			out.Message += fmt.Sprintf(" Budget exhausts by day %d of month.", d)
-		}
+		out.Message = fmt.Sprintf("Recurring subscriptions total $%.2f/month, which exceeds the $%.0f budget. This is a commitment baseline, not a usage forecast.",
+			forecast.RecurringMonthlySpend, forecast.MonthlyBudget)
 	}
 
 	return nil, out, nil
@@ -140,7 +141,7 @@ func (m *MCPServer) handleAnalyzeSpending(_ context.Context, _ *mcp.CallToolRequ
 	// Generate insights
 	insights, err := m.store.GenerateInsights()
 	if err == nil && len(insights) > 0 {
-		out.Insights = insights
+		out.Insights = append(out.Insights, insights...)
 	}
 
 	// Budget status
@@ -246,10 +247,10 @@ func (m *MCPServer) handleCodexStatus(_ context.Context, _ *mcp.CallToolRequest,
 
 // CopilotStatusOutput is the output of copilot_status.
 type CopilotStatusOutput struct {
-	Configured     bool                     `json:"configured"`
-	CaptureEnabled bool                     `json:"captureEnabled"`
-	Snapshot       *store.CopilotSnapshot   `json:"snapshot,omitempty"`
-	Message        string                   `json:"message"`
+	Configured     bool                   `json:"configured"`
+	CaptureEnabled bool                   `json:"captureEnabled"`
+	Snapshot       *store.CopilotSnapshot `json:"snapshot,omitempty"`
+	Message        string                 `json:"message"`
 }
 
 func (m *MCPServer) handleCopilotStatus(_ context.Context, _ *mcp.CallToolRequest, _ EmptyInput) (*mcp.CallToolResult, CopilotStatusOutput, error) {

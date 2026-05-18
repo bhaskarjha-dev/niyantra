@@ -13,7 +13,7 @@ import (
 // openTestStore creates an in-memory store for tracker tests.
 func openTestStore(t *testing.T) *store.Store {
 	t.Helper()
-	s, err := store.Open(":memory:")
+	s, err := store.Open(":memory:", store.WithSecretBackend(store.NewMemorySecretBackend()))
 	if err != nil {
 		t.Fatalf("Open(:memory:) failed: %v", err)
 	}
@@ -134,4 +134,38 @@ func TestProcessConcurrentSafe(t *testing.T) {
 
 	// If there's no mutex, this panics with "concurrent map read and map write"
 	wg.Wait()
+}
+
+func TestAllUsageSummariesIncludeAccountContext(t *testing.T) {
+	s := openTestStore(t)
+	tr := New(s, slog.Default())
+
+	resetTime := time.Now().UTC().Add(5 * time.Hour)
+	summaries, err := tr.AllUsageSummaries(&client.Snapshot{
+		AccountID:  44,
+		Email:      "ctx@test.com",
+		PlanName:   "Pro",
+		CapturedAt: time.Now().UTC(),
+		Models: []client.ModelQuota{
+			{ModelID: "claude-sonnet", Label: "Claude Sonnet", RemainingFraction: 0.75, ResetTime: &resetTime},
+		},
+	}, 44)
+	if err != nil {
+		t.Fatalf("AllUsageSummaries: %v", err)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("expected 1 summary, got %d", len(summaries))
+	}
+	if summaries[0].AccountID != 44 {
+		t.Fatalf("accountID = %d, want 44", summaries[0].AccountID)
+	}
+	if summaries[0].AccountEmail != "ctx@test.com" {
+		t.Fatalf("accountEmail = %q, want %q", summaries[0].AccountEmail, "ctx@test.com")
+	}
+	if summaries[0].Provider != "antigravity" {
+		t.Fatalf("provider = %q, want %q", summaries[0].Provider, "antigravity")
+	}
+	if summaries[0].PlanName != "Pro" {
+		t.Fatalf("planName = %q, want %q", summaries[0].PlanName, "Pro")
+	}
 }

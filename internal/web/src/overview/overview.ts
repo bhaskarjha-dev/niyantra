@@ -15,7 +15,6 @@ import { loadGitCosts } from './gitCosts';
 import { renderSafeToSpend, wireSafeToSpendButtons } from './safeToSpend';
 import { renderStreakCard } from './streaks';
 import { renderCountdowns, startCountdownRefresh } from './countdown';
-import { loadAnomalies } from './anomalyCard';
 import { downloadReport } from '../advanced/report';
 
 export function loadOverview(): void {
@@ -54,7 +53,7 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
   var cats = Object.keys(stats.byCategory);
 
   var spendHTML = '<div class="overview-card">' +
-    '<h3>Monthly AI Spend</h3>' +
+    '<h3>Monthly Recurring Spend</h3>' +
     '<div class="kpi-with-sparkline">' +
     '<div class="overview-big-number">$' + stats.totalMonthlySpend.toFixed(2) + '</div>' +
     '</div>';
@@ -107,7 +106,8 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
     '<button class="btn-add" id="generate-report-btn" style="padding:6px 12px;font-size:12px">📊 Monthly Report</button>' +
     '</div></div>';
 
-  var providerHTML = '<div class="overview-card full-width"><h3>Provider Health</h3>';
+  var providerHTML = '<div class="overview-card full-width"><h3>Provider Status Signals</h3>' +
+    '<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">Rows below use provider-specific counters and are not a normalized cross-provider health score.</p>';
   providerHTML += '<div class="provider-health-grid">';
 
   if (latestQuotaData && latestQuotaData.accounts && latestQuotaData.accounts.length > 0) {
@@ -203,12 +203,10 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
   var tokenAnalyticsHTML = '<div id="token-analytics-container" class="overview-card full-width"></div>';
   var gitCostsHTML = '<div id="git-costs-container" class="overview-card full-width"></div>';
   var heatmapHTML = '<div id="heatmap-container" class="overview-card full-width"></div>';
-  var anomalyHTML = '<div id="anomaly-card-container"></div>';
 
-  el.innerHTML = safeToSpendHTML + anomalyHTML + countdownHTML + advisorHTML + costKPIHTML + tokenAnalyticsHTML + gitCostsHTML + heatmapHTML + providerHTML + insightsHTML + claudeHTML + spendHTML + calendarHTML + linksHTML + exportHTML;
+  el.innerHTML = safeToSpendHTML + countdownHTML + advisorHTML + costKPIHTML + tokenAnalyticsHTML + gitCostsHTML + heatmapHTML + providerHTML + insightsHTML + claudeHTML + spendHTML + calendarHTML + linksHTML + exportHTML;
 
   wireSafeToSpendButtons(openBudgetModal);
-  loadAnomalies();
 
   var reportBtn = document.getElementById('generate-report-btn');
   if (reportBtn) {

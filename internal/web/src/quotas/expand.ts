@@ -40,7 +40,7 @@ export function setupToggle(): void {
       e.stopPropagation();
       var accountId2 = deleteBtn.getAttribute('data-delete-account');
       var email2 = deleteBtn.getAttribute('data-delete-email');
-      if (confirm('Remove account ' + email2 + '?\n\nThis will permanently delete the account and ALL associated data (snapshots, cycles, codex data). This cannot be undone.')) {
+      if (confirm('Remove account ' + email2 + '?\n\nThis deletes the account record plus data explicitly tied to its local account ID, such as Antigravity snapshots and reset cycles. Provider-native records may require separate cleanup. This cannot be undone.')) {
         fetch('/api/accounts/' + accountId2, { method: 'DELETE' })
           .then(function(res) { return res.json(); })
           .then(function(data) {
@@ -62,7 +62,8 @@ export function setupToggle(): void {
       if (!gControls) return;
       var gSnapId = parseInt(gControls.getAttribute('data-snap-id')!, 10);
       var gGroupKey = gControls.getAttribute('data-group-key')!;
-      var gLabelsStr = gControls.getAttribute('data-group-labels')!;
+      var gModelIdsStr = gControls.getAttribute('data-group-model-ids')!;
+      var gModelLabelsStr = gControls.getAttribute('data-group-model-labels')!;
       var gCurrentPct = parseFloat(gControls.getAttribute('data-current-pct')!);
       var gDelta = parseFloat((gadjBtn as HTMLElement).getAttribute('data-delta')!);
       var gNewPct = Math.max(0, Math.min(100, gCurrentPct + gDelta));
@@ -84,13 +85,15 @@ export function setupToggle(): void {
       gControls.setAttribute('data-current-pct', String(gNewPct));
 
       // Build adjustments for ALL models in this group
-      var gLabels = gLabelsStr!.split('|||').filter(function(l) { return l.length > 0; });
+      var gModelIds = gModelIdsStr!.split('|||');
+      var gModelLabels = gModelLabelsStr!.split('|||');
       var adjustments = [];
-      for (var li = 0; li < gLabels.length; li++) {
+      for (var li = 0; li < gModelLabels.length; li++) {
+        if (!gModelIds[li] && !gModelLabels[li]) continue;
         // Each model gets the same delta applied
         // Note: this is approximate — individual models may have different starting values
         // The backend calculates the actual new value per model
-        adjustments.push({ label: gLabels[li], remainingPercent: gNewPct });
+        adjustments.push({ modelId: gModelIds[li] || '', label: gModelLabels[li] || '', remainingPercent: gNewPct });
       }
 
       if (adjustments.length === 0) return;
@@ -121,7 +124,8 @@ export function setupToggle(): void {
       var controls = adjBtn.closest('.adjust-controls');
       if (!controls) return;
       var snapId = parseInt(controls.getAttribute('data-snap-id')!, 10);
-      var label = controls.getAttribute('data-model-label')!;
+      var modelId = controls.getAttribute('data-model-id')!;
+      var modelLabel = controls.getAttribute('data-model-label')!;
       var currentPct = parseFloat(controls.getAttribute('data-current-pct')!);
       var delta = parseFloat((adjBtn as HTMLElement).getAttribute('data-delta')!);
       var newPct = Math.max(0, Math.min(100, currentPct + delta));
@@ -148,7 +152,7 @@ export function setupToggle(): void {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           snapshotId: snapId,
-          adjustments: [{ label: label, remainingPercent: newPct }]
+          adjustments: [{ modelId: modelId, label: modelLabel, remainingPercent: newPct }]
         })
       })
       .then(function(res) { return res.json(); })
@@ -157,7 +161,7 @@ export function setupToggle(): void {
           showToast('❌ ' + data.error, 'error');
           return;
         }
-        showToast('✎ Adjusted ' + label + ' → ' + Math.round(newPct) + '%', 'info');
+        showToast('✎ Adjusted ' + (modelLabel || modelId) + ' → ' + Math.round(newPct) + '%', 'info');
         // Refresh status to recalculate group-level aggregates
         fetchStatus().then(renderAccounts);
       })

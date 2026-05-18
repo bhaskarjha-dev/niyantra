@@ -10,6 +10,10 @@ import (
 
 // UsageSummary contains computed usage statistics for an Antigravity model.
 type UsageSummary struct {
+	AccountID         int64      `json:"accountId"`
+	AccountEmail      string     `json:"accountEmail"`
+	Provider          string     `json:"provider"`
+	PlanName          string     `json:"planName"`
 	ModelID           string     `json:"modelId"`
 	Label             string     `json:"label"`
 	Group             string     `json:"group"`
@@ -37,16 +41,22 @@ type UsageSummary struct {
 	CycleSnapshots int    `json:"cycleSnapshots"`
 }
 
-// BudgetForecast provides budget burn rate projections.
+// BudgetForecast summarizes budget headroom against recurring subscription
+// commitments. Niyantra does not yet persist an observed daily spend ledger, so
+// these values describe recurring commitments rather than a true usage-based
+// month-to-date forecast.
 type BudgetForecast struct {
 	MonthlyBudget            float64 `json:"monthlyBudget"`
 	CurrentSpend             float64 `json:"currentSpend"`
+	RecurringMonthlySpend    float64 `json:"recurringMonthlySpend"`
 	ProjectedMonthlySpend    float64 `json:"projectedMonthlySpend"`
 	BurnRatePerDay           float64 `json:"burnRate"`
 	DaysUntilBudgetExhausted *int    `json:"daysUntilBudgetExhausted"`
 	OnTrack                  bool    `json:"onTrack"`
 	DayOfMonth               int     `json:"dayOfMonth"`
 	DaysInMonth              int     `json:"daysInMonth"`
+	DataMode                 string  `json:"dataMode"`
+	ObservedSpendAvailable   bool    `json:"observedSpendAvailable"`
 }
 
 // UsageSummaryForModel computes intelligence for a single model.
@@ -186,12 +196,19 @@ func (t *Tracker) AllUsageSummaries(snap *client.Snapshot, accountID int64) ([]*
 			t.logger.Warn("Failed to compute summary", "model", model.ModelID, "error", err)
 			continue
 		}
+		s.AccountID = accountID
+		s.AccountEmail = snap.Email
+		s.Provider = "antigravity"
+		s.PlanName = snap.PlanName
 		summaries = append(summaries, s)
 	}
 	return summaries, nil
 }
 
-// ComputeBudgetForecast calculates budget burn rate projections.
+// ComputeBudgetForecast compares the configured monthly budget against current
+// recurring subscription commitments. It intentionally does not extrapolate a
+// usage-based monthly spend because the store lacks trustworthy observed daily
+// spend data.
 func ComputeBudgetForecast(db *store.Store) *BudgetForecast {
 	budget := db.GetConfigFloat("budget_monthly", 0)
 	if budget <= 0 {
@@ -209,25 +226,23 @@ func ComputeBudgetForecast(db *store.Store) *BudgetForecast {
 	daysInMonth := time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, now.Location()).Day()
 
 	forecast := &BudgetForecast{
-		MonthlyBudget: budget,
-		CurrentSpend:  overview.TotalMonthlySpend,
-		DayOfMonth:    dayOfMonth,
-		DaysInMonth:   daysInMonth,
+		MonthlyBudget:          budget,
+		CurrentSpend:           overview.TotalMonthlySpend,
+		RecurringMonthlySpend:  overview.TotalMonthlySpend,
+		ProjectedMonthlySpend:  overview.TotalMonthlySpend,
+		DayOfMonth:             dayOfMonth,
+		DaysInMonth:            daysInMonth,
+		DataMode:               "recurring_subscriptions",
+		ObservedSpendAvailable: false,
 	}
 
-	// For fixed monthly subscriptions, burn rate is total cost / days in month
-	// (not day-of-month, which would produce nonsensical rates on day 1)
+	// Expose a daily equivalent of recurring commitments for compatibility with
+	// existing clients. This is not an observed burn rate.
 	if daysInMonth > 0 {
 		forecast.BurnRatePerDay = overview.TotalMonthlySpend / float64(daysInMonth)
-		forecast.ProjectedMonthlySpend = overview.TotalMonthlySpend
 	}
 
 	forecast.OnTrack = forecast.ProjectedMonthlySpend <= budget
-
-	if !forecast.OnTrack && forecast.BurnRatePerDay > 0 {
-		daysUntilExhausted := int(budget / forecast.BurnRatePerDay)
-		forecast.DaysUntilBudgetExhausted = &daysUntilExhausted
-	}
 
 	return forecast
 }

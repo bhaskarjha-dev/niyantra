@@ -244,6 +244,50 @@ func TestCorrelateCommits_NoPriceFn(t *testing.T) {
 	}
 }
 
+func TestCorrelateCommits_AssignsUsageToNearestCommitWithoutDoubleCounting(t *testing.T) {
+	commits := []*CommitCost{
+		{Hash: "first", Date: "2026-05-17T10:00:00Z"},
+		{Hash: "second", Date: "2026-05-17T10:10:00Z"},
+	}
+
+	usages := []sessionUsage{
+		{
+			timestamp:    mustParseRFC3339(t, "2026-05-17T09:50:00Z"),
+			sessionID:    "sess-a",
+			model:        "claude-3.5-sonnet",
+			inputTokens:  1000,
+			outputTokens: 500,
+		},
+		{
+			timestamp:    mustParseRFC3339(t, "2026-05-17T10:05:00Z"),
+			sessionID:    "sess-b",
+			model:        "claude-3.5-sonnet",
+			inputTokens:  2000,
+			outputTokens: 1000,
+		},
+	}
+
+	correlateCommits(commits, usages, 30*time.Minute, nil)
+
+	if commits[0].TotalTokens != 1500 {
+		t.Fatalf("first commit got %d tokens, want 1500", commits[0].TotalTokens)
+	}
+	if commits[1].TotalTokens != 3000 {
+		t.Fatalf("second commit got %d tokens, want 3000", commits[1].TotalTokens)
+	}
+	if commits[0].Sessions != 1 || commits[1].Sessions != 1 {
+		t.Fatalf("expected one distinct session on each commit, got %d and %d", commits[0].Sessions, commits[1].Sessions)
+	}
+
+	var total int64
+	for _, c := range commits {
+		total += c.TotalTokens
+	}
+	if total != 4500 {
+		t.Fatalf("commit totals should equal raw usage total without double counting, got %d", total)
+	}
+}
+
 // ── CommitCost type tests ───────────────────────────────────────
 
 func TestCommitCostDefaults(t *testing.T) {
@@ -258,4 +302,13 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func mustParseRFC3339(t *testing.T, raw string) time.Time {
+	t.Helper()
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		t.Fatalf("parse time %q: %v", raw, err)
+	}
+	return parsed
 }

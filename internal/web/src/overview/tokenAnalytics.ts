@@ -1,12 +1,10 @@
-// Niyantra Dashboard — Token Usage Analytics (F13)
-// Renders KPI cards, model distribution donut, and daily burn chart.
+// Observed token usage analytics.
 import { sparkline, trendDirection } from '../charts/sparkline';
 
 export function loadTokenAnalytics(): void {
   var container = document.getElementById('token-analytics-container');
   if (!container) return;
 
-  // Get time range from selector, default to 30 days
   var rangeSelector = document.getElementById('token-range-selector') as HTMLSelectElement | null;
   var days = 30;
   if (rangeSelector) {
@@ -26,11 +24,11 @@ export function loadTokenAnalytics(): void {
 function renderTokenAnalytics(container: HTMLElement, data: any, days: number): void {
   if (!data || !data.totals || data.totals.totalTokens === 0) {
     container.innerHTML = '<div class="overview-card full-width token-analytics-card">' +
-      '<h3>🔥 Token Usage Analytics</h3>' +
+      '<h3>Observed Token Usage</h3>' +
       '<div class="token-analytics-empty">' +
-      '<p>No token usage data available yet.</p>' +
-      '<p style="font-size:12px;color:var(--text-secondary)">Use Claude Code to generate token usage data. ' +
-      'Session files are parsed from <code>~/.claude/projects/</code>.</p>' +
+      '<p>No observed token usage data is available yet.</p>' +
+      '<p style="font-size:12px;color:var(--text-secondary)">Current observed sources are Claude Code session files in <code>~/.claude/projects/</code> ' +
+      'plus any provider rows already persisted into Niyantra&apos;s <code>token_usage</code> table.</p>' +
       '</div></div>';
     return;
   }
@@ -40,7 +38,6 @@ function renderTokenAnalytics(container: HTMLElement, data: any, days: number): 
   var models = data.byModel || [];
   var dailyData = data.byDay || [];
 
-  // ── Time Range Selector ──
   var rangeOptions = [
     { value: '7', label: '7d' },
     { value: '30', label: '30d' },
@@ -55,7 +52,6 @@ function renderTokenAnalytics(container: HTMLElement, data: any, days: number): 
   }
   rangeHTML += '</div>';
 
-  // ── KPI Cards (with sparklines from daily data) ──
   var tokenSparkData: number[] = [];
   var costSparkData: number[] = [];
   if (dailyData.length >= 3) {
@@ -69,14 +65,13 @@ function renderTokenAnalytics(container: HTMLElement, data: any, days: number): 
   var costSpark = costSparkData.length >= 3 ? sparkline(costSparkData, { width: 50, height: 18, color: '#f59e0b', direction: trendDirection(costSparkData) }) : '';
 
   var kpiHTML = '<div class="token-kpi-row">';
-  kpiHTML += buildKpiCard('Total Tokens', formatTokens(totals.totalTokens), '📊', tokenSpark);
-  kpiHTML += buildKpiCard('Est. Cost', '$' + (totals.estimatedCostUSD || 0).toFixed(2), '💰', costSpark);
-  kpiHTML += buildKpiCard('Active Days', String(kpis.daysActive || 0), '📅');
-  kpiHTML += buildKpiCard('Avg/Day', formatTokens(kpis.avgTokensPerDay || 0), '📈');
-  kpiHTML += buildKpiCard('Cache Rate', Math.round((kpis.cacheHitRate || 0) * 100) + '%', '⚡');
+  kpiHTML += buildKpiCard('Total Tokens', formatTokens(totals.totalTokens), 'Usage', tokenSpark);
+  kpiHTML += buildKpiCard('Heuristic Cost', '$' + (totals.estimatedCostUSD || 0).toFixed(2), 'Cost', costSpark);
+  kpiHTML += buildKpiCard('Active Days', String(kpis.daysActive || 0), 'Days');
+  kpiHTML += buildKpiCard('Avg/Day', formatTokens(kpis.avgTokensPerDay || 0), 'Rate');
+  kpiHTML += buildKpiCard('Cache Rate', Math.round((kpis.cacheHitRate || 0) * 100) + '%', 'Cache');
   kpiHTML += '</div>';
 
-  // ── Token Breakdown Chips ──
   var chipsHTML = '<div class="token-breakdown-chips">';
   chipsHTML += '<span class="token-chip token-chip-input">Input: ' + formatTokens(totals.inputTokens) + '</span>';
   chipsHTML += '<span class="token-chip token-chip-output">Output: ' + formatTokens(totals.outputTokens) + '</span>';
@@ -86,20 +81,18 @@ function renderTokenAnalytics(container: HTMLElement, data: any, days: number): 
   }
   chipsHTML += '</div>';
 
-  // ── Model Distribution (donut-like visualization) ──
   var modelHTML = '';
   if (models.length > 0) {
     modelHTML = '<div class="token-section">';
     modelHTML += '<h4>Model Distribution</h4>';
     modelHTML += '<div class="token-model-bars">';
-    // Color palette for models
     var colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444'];
-    var topModels = models.slice(0, 7); // Max 7 models
+    var topModels = models.slice(0, 7);
     for (var mi = 0; mi < topModels.length; mi++) {
       var model = topModels[mi];
       var color = colors[mi % colors.length];
       var pct = model.percentage || 0;
-      var costLabel = model.costUSD > 0 ? ' · $' + model.costUSD.toFixed(2) : '';
+      var costLabel = model.costUSD > 0 ? ' | $' + model.costUSD.toFixed(2) : '';
       modelHTML += '<div class="token-model-row">' +
         '<div class="token-model-header">' +
         '<span class="token-model-name" style="color:' + color + '">' + escapeHtml(model.model) + '</span>' +
@@ -112,20 +105,17 @@ function renderTokenAnalytics(container: HTMLElement, data: any, days: number): 
     modelHTML += '</div></div>';
   }
 
-  // ── Daily Burn Chart (sparkline bars) ──
   var chartHTML = '';
   if (dailyData.length > 0) {
     chartHTML = '<div class="token-section">';
     chartHTML += '<h4>Daily Token Burn</h4>';
     chartHTML += '<div class="token-daily-chart">';
 
-    // Find max for scaling
     var maxTokens = 0;
     for (var di = 0; di < dailyData.length; di++) {
       if (dailyData[di].totalTokens > maxTokens) maxTokens = dailyData[di].totalTokens;
     }
 
-    // Limit to last N days for display
     var displayDays = dailyData;
     if (displayDays.length > 60) {
       displayDays = displayDays.slice(displayDays.length - 60);
@@ -136,7 +126,7 @@ function renderTokenAnalytics(container: HTMLElement, data: any, days: number): 
       var barHeight = maxTokens > 0 ? Math.max(2, (day.totalTokens / maxTokens) * 100) : 2;
       var inputPct = day.totalTokens > 0 ? (day.inputTokens / day.totalTokens) * barHeight : 0;
       var outputPct = barHeight - inputPct;
-      var dayLabel = day.date.substring(5); // MM-DD
+      var dayLabel = day.date.substring(5);
 
       chartHTML += '<div class="token-bar-col" title="' + day.date + ': ' + formatTokens(day.totalTokens) + ' tokens, $' + (day.costUSD || 0).toFixed(2) + '">' +
         '<div class="token-bar-stack" style="height:' + barHeight + '%">' +
@@ -155,31 +145,27 @@ function renderTokenAnalytics(container: HTMLElement, data: any, days: number): 
     chartHTML += '</div>';
   }
 
-  // ── Peak Day badge ──
   var peakHTML = '';
   if (kpis.peakDay) {
-    peakHTML = '<div class="token-peak-badge">🔥 Peak: ' + kpis.peakDay + ' — ' + formatTokens(kpis.peakDayTokens) + ' tokens</div>';
+    peakHTML = '<div class="token-peak-badge">Peak: ' + kpis.peakDay + ' | ' + formatTokens(kpis.peakDayTokens) + ' tokens</div>';
   }
 
-  // ── Assemble ──
   container.innerHTML = '<div class="overview-card full-width token-analytics-card">' +
     '<div class="token-analytics-header">' +
-    '<h3>🔥 Token Usage Analytics</h3>' +
+    '<h3>Observed Token Usage</h3>' +
     rangeHTML +
     '</div>' +
+    '<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">Observed sources are Claude session files plus any provider rows already persisted into <code>token_usage</code>.</p>' +
     kpiHTML + chipsHTML + peakHTML + modelHTML + chartHTML +
     '</div>';
 
-  // Wire up range selector buttons
   var rangeBtns = container.querySelectorAll('.token-range-btn');
   for (var bi = 0; bi < rangeBtns.length; bi++) {
     rangeBtns[bi].addEventListener('click', function(this: HTMLElement) {
       var newDays = this.getAttribute('data-days') || '30';
-      // Update active state
       var allBtns = container.querySelectorAll('.token-range-btn');
       for (var k = 0; k < allBtns.length; k++) allBtns[k].classList.remove('token-range-active');
       this.classList.add('token-range-active');
-      // Re-fetch with new range
       fetch('/api/token-usage?days=' + newDays).then(function(res) { return res.json(); }).then(function(d: any) {
         renderTokenAnalytics(container, d, parseInt(newDays));
       });

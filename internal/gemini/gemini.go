@@ -50,9 +50,9 @@ type Credentials struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	ExpiryDate   int64  `json:"expiry_date"` // Unix ms
-	Email        string `json:"-"`            // from userinfo (populated lazily)
-	Source       string `json:"-"`            // "auto" or "manual"
-	FilePath     string `json:"-"`            // path to oauth_creds.json
+	Email        string `json:"-"`           // from userinfo (populated lazily)
+	Source       string `json:"-"`           // "auto" or "manual"
+	FilePath     string `json:"-"`           // path to oauth_creds.json
 }
 
 // IsExpired returns true if the access token has expired.
@@ -101,18 +101,18 @@ type Snapshot struct {
 	ProjectID string       `json:"projectId"` // cloudaicompanionProject
 	Models    []ModelQuota `json:"models"`
 	Email     string       `json:"email,omitempty"`
-	// Aggregate usage (weighted avg of all models)
+	// Aggregate usage (arithmetic mean of the reported model used % values)
 	OverallUsedPct float64 `json:"overallUsedPct"`
 }
 
 // ── Endpoints ───────────────────────────────────────────────────────
 
 const (
-	loadCodeAssistURL     = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
-	retrieveUserQuotaURL  = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota"
-	tokenRefreshURL       = "https://oauth2.googleapis.com/token"
-	userInfoURL           = "https://www.googleapis.com/oauth2/v1/userinfo"
-	httpTimeout           = 15 * time.Second
+	loadCodeAssistURL    = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
+	retrieveUserQuotaURL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota"
+	tokenRefreshURL      = "https://oauth2.googleapis.com/token"
+	userInfoURL          = "https://www.googleapis.com/oauth2/v1/userinfo"
+	httpTimeout          = 15 * time.Second
 )
 
 // ── Model Tier Mapping ──────────────────────────────────────────────

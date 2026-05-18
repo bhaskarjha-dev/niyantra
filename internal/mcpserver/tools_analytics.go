@@ -32,6 +32,7 @@ type TokenUsageOutput struct {
 	PeakDay       string                      `json:"peakDay"`
 	Models        []tokenusage.ModelBreakdown `json:"topModels"`
 	Period        tokenusage.Period           `json:"period"`
+	DataSources   []string                    `json:"dataSources,omitempty"`
 	Message       string                      `json:"message"`
 }
 
@@ -104,10 +105,14 @@ func (m *MCPServer) handleTokenUsageStats(_ context.Context, _ *mcp.CallToolRequ
 		PeakDay:       summary.KPIs.PeakDay,
 		Models:        topModels,
 		Period:        summary.Period,
+		DataSources: []string{
+			"claude_session_jsonl",
+			"persisted_token_usage_rows",
+		},
 	}
 
 	if summary.Totals.TotalTokens > 0 {
-		out.Message = fmt.Sprintf("%d days active, %s tokens total, ~$%.2f estimated cost. Top model: %s. Cache hit rate: %.0f%%.",
+		out.Message = fmt.Sprintf("%d days active, %s tokens total, ~$%.2f estimated cost. Observed sources are Claude session files plus any persisted token_usage rows. Top model: %s. Cache hit rate: %.0f%%.",
 			summary.KPIs.DaysActive,
 			formatTokenCount(summary.Totals.TotalTokens),
 			summary.Totals.EstCostUSD,
@@ -115,13 +120,13 @@ func (m *MCPServer) handleTokenUsageStats(_ context.Context, _ *mcp.CallToolRequ
 			summary.KPIs.CacheHitRate*100,
 		)
 	} else {
-		out.Message = "No token usage data found for the specified period."
+		out.Message = "No observed token usage data found for the specified period."
 	}
 
 	return nil, out, nil
 }
 
-// ── Git Commit Costs (F16) ───────────────────────────────────────
+// Git to AI attribution.
 
 // GitCostInput is the input for git_commit_costs.
 type GitCostInput struct {
@@ -139,6 +144,8 @@ type GitCostOutput struct {
 	TopBranch    string               `json:"topBranch"`
 	TopCommits   []GitCommitSummary   `json:"topCommits,omitempty"`
 	Branches     []gitcorr.BranchCost `json:"branches,omitempty"`
+	Heuristic    bool                 `json:"heuristic"`
+	Method       string               `json:"method"`
 }
 
 // GitCommitSummary is a single commit's cost data.
@@ -208,10 +215,12 @@ func (m *MCPServer) handleGitCommitCosts(_ context.Context, _ *mcp.CallToolReque
 		TopBranch:    result.Totals.TopBranch,
 		TopCommits:   topCommits,
 		Branches:     branches,
+		Heuristic:    true,
+		Method:       "nearest_subsequent_commit_within_window",
 	}
 
 	if result.Totals.TotalTokens > 0 {
-		out.Message = fmt.Sprintf("%d commits analyzed, %s tokens consumed, ~$%.2f total AI cost. Avg $%.2f/commit. Top branch: %s.",
+		out.Message = fmt.Sprintf("%d commits analyzed, %s Claude tokens heuristically attributed to nearby commits, ~$%.2f total AI cost. Avg $%.2f/commit. Top branch: %s.",
 			result.Totals.CommitCount,
 			formatTokenCount(result.Totals.TotalTokens),
 			result.Totals.CostUSD,
@@ -219,7 +228,7 @@ func (m *MCPServer) handleGitCommitCosts(_ context.Context, _ *mcp.CallToolReque
 			result.Totals.TopBranch,
 		)
 	} else {
-		out.Message = fmt.Sprintf("%d commits found but no overlapping Claude Code session data. Ensure Claude Code has been used for coding in this repository.",
+		out.Message = fmt.Sprintf("%d commits found but no nearby Claude Code session data was attributable inside the lookback window.",
 			result.Totals.CommitCount)
 	}
 

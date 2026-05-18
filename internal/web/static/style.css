@@ -2918,6 +2918,19 @@ kbd {
 .plugin-card:hover {
   border-color: var(--border-hover);
 }
+.plugin-warning {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: var(--radius-sm);
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.plugin-warning strong {
+  color: var(--amber);
+}
 .plugin-header {
   display: flex;
   align-items: flex-start;
@@ -4550,6 +4563,11 @@ kbd {
   color: var(--text-secondary);
 }
 .sts-budget {
+  color: var(--text-muted);
+}
+.sts-caption {
+  margin-top: 10px;
+  font-size: 12px;
   color: var(--text-muted);
 }
 .safe-to-spend-card.no-budget {

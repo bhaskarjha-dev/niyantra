@@ -264,8 +264,8 @@ func (s *Store) UpcomingRenewals(limit int) ([]*Subscription, error) {
 
 // Insight represents a server-computed subscription analysis finding.
 type Insight struct {
-	Type     string `json:"type"`     // "unused", "renewal", "anomaly", "overlap", "savings", "trial"
-	Severity string `json:"severity"` // "info", "warning", "critical"
+	Type     string `json:"type"`     // renewal_imminent, trial_expiring, unused_subscription, category_overlap, budget_exceeded
+	Severity string `json:"severity"` // info, warning, critical
 	Icon     string `json:"icon"`
 	Title    string `json:"title"`
 	Message  string `json:"message"`
@@ -288,7 +288,6 @@ func (s *Store) GenerateInsights() ([]Insight, error) {
 		currency = "USD"
 	}
 
-	// Category counter — O2: only count manually-tracked subs for overlap detection
 	catCounts := make(map[string]int)
 	totalMonthly := 0.0
 
@@ -299,20 +298,18 @@ func (s *Store) GenerateInsights() ([]Insight, error) {
 
 		monthly := toMonthly(sub.CostAmount, sub.BillingCycle)
 		totalMonthly += monthly
-		// O2: Auto-tracked subs are separate accounts, not duplicate tools
 		if !sub.AutoTracked {
 			catCounts[sub.Category]++
 		}
 
-		// Rule 1: Imminent renewal (within 3 days) → critical
 		if sub.NextRenewal != "" {
 			if t, err := time.Parse("2006-01-02", sub.NextRenewal); err == nil {
 				days := int(t.Sub(now).Hours() / 24)
 				if days >= 0 && days <= 3 {
 					insights = append(insights, Insight{
-						Type:     "renewal",
+						Type:     "renewal_imminent",
 						Severity: "critical",
-						Icon:     "⏰",
+						Icon:     "renewal",
 						Title:    "Imminent Renewal",
 						Message:  fmt.Sprintf("%s renews in %d day(s) (%s %.2f)", sub.Platform, days, currency, sub.CostAmount),
 						Platform: sub.Platform,
@@ -322,17 +319,16 @@ func (s *Store) GenerateInsights() ([]Insight, error) {
 			}
 		}
 
-		// Rule 2: Trial expiring within 5 days → warning
 		if sub.Status == "trial" && sub.TrialEndsAt != "" {
 			if t, err := time.Parse("2006-01-02", sub.TrialEndsAt); err == nil {
 				days := int(t.Sub(now).Hours() / 24)
 				if days >= 0 && days <= 5 {
 					insights = append(insights, Insight{
-						Type:     "trial",
+						Type:     "trial_expiring",
 						Severity: "warning",
-						Icon:     "⏳",
+						Icon:     "trial",
 						Title:    "Trial Expiring",
-						Message:  fmt.Sprintf("%s trial ends in %d day(s) — cancel or it converts to paid", sub.Platform, days),
+						Message:  fmt.Sprintf("%s trial ends in %d day(s) - cancel or it converts to paid", sub.Platform, days),
 						Platform: sub.Platform,
 						SubID:    sub.ID,
 					})
@@ -340,78 +336,46 @@ func (s *Store) GenerateInsights() ([]Insight, error) {
 			}
 		}
 
-		// Rule 4: Unused subscription — auto-tracked sub with no recent snapshot
 		if sub.AutoTracked && sub.AccountID > 0 {
-			var lastSnap string
-			s.db.QueryRow(
-				`SELECT MAX(captured_at) FROM snapshots WHERE account_id = ?`, sub.AccountID,
-			).Scan(&lastSnap)
-			if lastSnap != "" {
-				if t, err := time.Parse("2006-01-02 15:04:05", lastSnap); err == nil {
-					daysSince := int(now.Sub(t).Hours() / 24)
-					if daysSince > 30 {
-						insights = append(insights, Insight{
-							Type:     "unused",
-							Severity: "warning",
-							Icon:     "💤",
-							Title:    "Possibly Unused",
-							Message:  fmt.Sprintf("%s has not been used in %d days — consider cancelling", sub.Platform, daysSince),
-							Platform: sub.Platform,
-							SubID:    sub.ID,
-						})
-					}
+			if lastSeen, ok := s.latestTrackedActivity(sub.AccountID); ok {
+				daysSince := int(now.Sub(lastSeen).Hours() / 24)
+				if daysSince > 30 {
+					insights = append(insights, Insight{
+						Type:     "unused_subscription",
+						Severity: "warning",
+						Icon:     "unused",
+						Title:    "Possibly Unused",
+						Message:  fmt.Sprintf("%s has not been used in %d days - consider cancelling", sub.Platform, daysSince),
+						Platform: sub.Platform,
+						SubID:    sub.ID,
+					})
 				}
 			}
 		}
 	}
 
-	// Rule 3: Annual savings (deduplicated per-platform, separate loop)
-	savingsSeen := make(map[string]bool)
-	for _, sub := range subs {
-		// O2: Skip auto-tracked subs — user can't change their billing through Niyantra
-		if sub.AutoTracked {
-			continue
+	if budget > 0 && totalMonthly > budget {
+		severity := "warning"
+		if totalMonthly > budget*1.2 {
+			severity = "critical"
 		}
-		if sub.Status != "active" || sub.BillingCycle != "monthly" {
-			continue
-		}
-		m := toMonthly(sub.CostAmount, sub.BillingCycle)
-		if m < 10 || savingsSeen[sub.Platform] {
-			continue
-		}
-		savingsSeen[sub.Platform] = true
-		annualSaving := m * 12 * 0.17 // typical SaaS annual discount
 		insights = append(insights, Insight{
-			Type:     "annual_savings",
-			Severity: "info",
-			Icon:     "💰",
-			Title:    "Annual Billing Saves Money",
-			Message:  fmt.Sprintf("Switching %s to annual billing typically saves ~%s %.0f/year (~17%% discount)", sub.Platform, currency, annualSaving),
-			Platform: sub.Platform,
-			SubID:    sub.ID,
+			Type:     "budget_exceeded",
+			Severity: severity,
+			Icon:     "budget",
+			Title:    "Budget Exceeded",
+			Message:  fmt.Sprintf("Recurring subscriptions total %s %.0f/month, or %.0f%% of the configured %s %.0f budget.", currency, totalMonthly, totalMonthly/budget*100, currency, budget),
 		})
 	}
 
-	// Rule 5: Spending anomaly — over 2× budget → critical
-	if budget > 0 && totalMonthly > budget*2 {
-		insights = append(insights, Insight{
-			Type:     "anomaly",
-			Severity: "critical",
-			Icon:     "📈",
-			Title:    "Spending Warning",
-			Message:  fmt.Sprintf("Monthly spend (%s %.0f) is %.0f%% of budget (%s %.0f)", currency, totalMonthly, totalMonthly/budget*100, currency, budget),
-		})
-	}
-
-	// Rule 6: Category overlap — 3+ active subs in same category → info
 	for cat, count := range catCounts {
 		if count >= 3 {
 			insights = append(insights, Insight{
-				Type:     "overlap",
+				Type:     "category_overlap",
 				Severity: "info",
-				Icon:     "🔄",
+				Icon:     "overlap",
 				Title:    "Category Overlap",
-				Message:  fmt.Sprintf("%d active subscriptions in '%s' — consider consolidating", count, cat),
+				Message:  fmt.Sprintf("%d active subscriptions in '%s' - consider consolidating", count, cat),
 			})
 		}
 	}
@@ -419,7 +383,40 @@ func (s *Store) GenerateInsights() ([]Insight, error) {
 	return insights, nil
 }
 
-// ── Helpers ──
+// Helpers
+
+func (s *Store) latestTrackedActivity(accountID int64) (time.Time, bool) {
+	account, err := s.GetAccountByID(accountID)
+	if err != nil || account == nil {
+		return time.Time{}, false
+	}
+
+	var raw string
+	switch account.Provider {
+	case "", "antigravity":
+		err = s.db.QueryRow(`SELECT MAX(captured_at) FROM snapshots WHERE account_id = ?`, accountID).Scan(&raw)
+	case "codex":
+		err = s.db.QueryRow(`SELECT MAX(captured_at) FROM codex_snapshots WHERE owner_account_id = ?`, accountID).Scan(&raw)
+	case "cursor":
+		err = s.db.QueryRow(`SELECT MAX(captured_at) FROM cursor_snapshots WHERE account_id = ?`, accountID).Scan(&raw)
+	case "gemini":
+		err = s.db.QueryRow(`SELECT MAX(captured_at) FROM gemini_snapshots WHERE account_id = ?`, accountID).Scan(&raw)
+	case "copilot":
+		err = s.db.QueryRow(`SELECT MAX(captured_at) FROM copilot_snapshots WHERE account_id = ?`, accountID).Scan(&raw)
+	default:
+		return time.Time{}, false
+	}
+	if err != nil || raw == "" {
+		return time.Time{}, false
+	}
+
+	for _, layout := range []string{time.RFC3339, "2006-01-02 15:04:05"} {
+		if parsed, err := time.Parse(layout, raw); err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
+}
 
 func scanSubscription(row *sql.Row) (*Subscription, error) {
 	var sub Subscription

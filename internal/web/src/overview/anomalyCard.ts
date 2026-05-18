@@ -10,7 +10,7 @@ export function loadAnomalies(): void {
     if (data && data.disabled) {
       container!.innerHTML = '<div class="overview-card anomaly-card info">' +
         '<div class="anomaly-header">' +
-          '<span class="anomaly-title">Cost Anomaly Detection</span>' +
+          '<span class="anomaly-title">Cost anomaly detection unavailable</span>' +
         '</div>' +
         '<div class="anomaly-item">' + escHtml(data.reason || 'Insufficient historical data.') + '</div>' +
         '</div>';

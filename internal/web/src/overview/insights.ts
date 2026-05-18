@@ -1,23 +1,22 @@
-// Niyantra Dashboard — Insights & Advisor
+// Niyantra Dashboard - Insights and Advisor
 import { latestQuotaData } from '../core/state';
 import { esc } from '../core/utils';
 
 export function generateInsights(stats: any, renewals: any, subs: any): any[] {
   var chips = [];
 
-  // Total subscriptions
   var activeSubs = (stats.byStatus && stats.byStatus.active) || 0;
   var trialSubs = (stats.byStatus && stats.byStatus.trial) || 0;
   if (activeSubs > 0) {
-    chips.push({ icon: '📊', text: activeSubs + ' active subscription' + (activeSubs !== 1 ? 's' : ''), cls: 'info' });
+    chips.push({ icon: 'Subs', text: activeSubs + ' active subscription' + (activeSubs !== 1 ? 's' : ''), cls: 'info' });
   }
   if (trialSubs > 0) {
-    chips.push({ icon: '⏳', text: trialSubs + ' trial' + (trialSubs !== 1 ? 's' : '') + ' active', cls: 'warn' });
+    chips.push({ icon: 'Trial', text: trialSubs + ' trial' + (trialSubs !== 1 ? 's' : '') + ' active', cls: 'warn' });
   }
 
-  // Highest category
   if (stats.byCategory) {
-    var topCat = null, topSpend = 0;
+    var topCat = null;
+    var topSpend = 0;
     var cats = Object.keys(stats.byCategory);
     for (var i = 0; i < cats.length; i++) {
       if (stats.byCategory[cats[i]].monthlySpend > topSpend) {
@@ -26,36 +25,28 @@ export function generateInsights(stats: any, renewals: any, subs: any): any[] {
       }
     }
     if (topCat && topSpend > 0) {
-      chips.push({ icon: '💰', text: 'Most spent on: ' + topCat + ' ($' + topSpend.toFixed(0) + '/mo)', cls: 'info' });
+      chips.push({ icon: 'Spend', text: 'Most spent on: ' + topCat + ' ($' + topSpend.toFixed(0) + '/mo)', cls: 'info' });
     }
   }
 
-  // Imminent renewals
   var urgent = 0;
   for (var r = 0; r < renewals.length; r++) {
     if (renewals[r].daysUntil <= 3) urgent++;
   }
   if (urgent > 0) {
-    chips.push({ icon: '🔴', text: urgent + ' renewal' + (urgent !== 1 ? 's' : '') + ' in next 3 days', cls: 'warn' });
+    chips.push({ icon: 'Renewal', text: urgent + ' renewal' + (urgent !== 1 ? 's' : '') + ' in next 3 days', cls: 'warn' });
   } else if (renewals.length > 0) {
-    chips.push({ icon: '📅', text: 'Next renewal: ' + renewals[0].platform + ' in ' + renewals[0].daysUntil + ' days', cls: 'good' });
+    chips.push({ icon: 'Next', text: 'Next renewal: ' + renewals[0].platform + ' in ' + renewals[0].daysUntil + ' days', cls: 'good' });
   }
 
-  // PAYG warning
   if (subs) {
     var paygCount = 0;
     for (var s = 0; s < subs.length; s++) {
       if (subs[s].billingCycle === 'payg' && subs[s].status === 'active') paygCount++;
     }
     if (paygCount > 0) {
-      chips.push({ icon: '📈', text: paygCount + ' pay-as-you-go service' + (paygCount !== 1 ? 's' : '') + ' (unbounded cost)', cls: 'warn' });
+      chips.push({ icon: 'PAYG', text: paygCount + ' pay-as-you-go service' + (paygCount !== 1 ? 's' : '') + ' (unbounded cost)', cls: 'warn' });
     }
-  }
-
-  // Annual savings potential
-  if (stats.totalMonthlySpend > 100) {
-    var annualSavings = stats.totalMonthlySpend * 12 * 0.17; // ~17% saved on annual billing
-    chips.push({ icon: '💡', text: 'Could save ~$' + annualSavings.toFixed(0) + '/yr by switching monthly plans to annual (typical ~17% discount)', cls: 'good' });
   }
 
   return chips;
@@ -67,39 +58,37 @@ export function renderInsightChips(chips: any[]): string {
   for (var i = 0; i < chips.length; i++) {
     var c = chips[i];
     html += '<div class="insight-chip ' + c.cls + '">' +
-      '<span class="insight-icon">' + c.icon + '</span>' + esc(c.text) + '</div>';
+      '<span class="insight-icon">' + esc(c.icon) + '</span>' + esc(c.text) + '</div>';
   }
   html += '</div></div>';
   return html;
 }
 
-
-//  Phase 10: SERVER-COMPUTED INSIGHTS
-// ════════════════════════════════════════════
-
 export function renderServerInsights(insights: any[]): string {
   if (!insights || insights.length === 0) return '';
 
-  var html = '<div class="insight-panel"><h3>🧠 Intelligence Insights</h3><div class="insight-list">';
+  var html = '<div class="insight-panel"><h3>Intelligence Insights</h3><div class="insight-list">';
 
   var iconMap = {
-    renewal_imminent: '🔴',
-    trial_expiring: '⏳',
-    unused_subscription: '💤',
-    spending_anomaly: '📈',
-    category_overlap: '🔁',
-    annual_savings: '💡',
-    budget_exceeded: '🚨'
+    renewal_imminent: 'Renewal',
+    trial_expiring: 'Trial',
+    unused_subscription: 'Unused',
+    category_overlap: 'Overlap',
+    budget_exceeded: 'Budget',
+    renewal: 'Renewal',
+    trial: 'Trial',
+    unused: 'Unused',
+    overlap: 'Overlap'
   };
 
   for (var i = 0; i < insights.length; i++) {
     var ins = insights[i];
-    var icon = (iconMap as any)[ins.type] || '💡';
+    var icon = (iconMap as any)[ins.type] || 'Info';
     var cls = ins.severity === 'critical' ? 'critical' : (ins.severity === 'warning' ? 'warning' : 'info');
     html += '<div class="insight-item ' + cls + '">' +
-      '<span class="insight-item-icon">' + icon + '</span>' +
+      '<span class="insight-item-icon">' + esc(icon) + '</span>' +
       '<div class="insight-item-content">' +
-      '<div class="insight-item-title">' + esc(ins.type.replace(/_/g, ' ')) + '</div>' +
+      '<div class="insight-item-title">' + esc(ins.title || ins.type.replace(/_/g, ' ')) + '</div>' +
       '<div class="insight-item-msg">' + esc(ins.message) + '</div>' +
       '</div></div>';
   }
@@ -107,14 +96,12 @@ export function renderServerInsights(insights: any[]): string {
   return html;
 }
 
-// O1: Dynamic Switch Advisor — model-group aware
 export var advisorGroupPref = localStorage.getItem('niyantra_advisor_group') || 'claude_gpt';
 
 export function loadAdvisorCard(): void {
   var container = document.getElementById('advisor-card-container');
   if (!container) return;
 
-  // Use latestQuotaData which has per-account group breakdowns
   if (!latestQuotaData || !latestQuotaData.accounts || latestQuotaData.accounts.length < 2) {
     container.innerHTML = '';
     return;
@@ -126,7 +113,6 @@ export function loadAdvisorCard(): void {
 export function renderAdvisorWithGroup(container: HTMLElement, groupKey: string): void {
   var accounts = latestQuotaData!.accounts;
 
-  // Build ranked list based on selected group's remaining %
   var ranked = [];
   for (var i = 0; i < accounts.length; i++) {
     var acc = accounts[i];
@@ -138,7 +124,6 @@ export function renderAdvisorWithGroup(container: HTMLElement, groupKey: string)
         break;
       }
     }
-    // If group not found for this account, compute average of all
     if (pct === null) {
       if (groupKey === 'all') {
         var total = 0;
@@ -151,7 +136,7 @@ export function renderAdvisorWithGroup(container: HTMLElement, groupKey: string)
     var isStale = false;
     if (acc.lastSeen) {
       var ageMs = Date.now() - new Date(acc.lastSeen).getTime();
-      isStale = ageMs > 6 * 3600 * 1000; // >6h
+      isStale = ageMs > 6 * 3600 * 1000;
     }
     ranked.push({
       email: acc.email,
@@ -161,10 +146,8 @@ export function renderAdvisorWithGroup(container: HTMLElement, groupKey: string)
     });
   }
 
-  // Sort by remaining % descending
   ranked.sort(function(a, b) { return b.pct - a.pct; });
 
-  // Group display names
   var groupNames = {
     'claude_gpt': 'Claude + GPT',
     'gemini_pro': 'Gemini Pro',
@@ -173,15 +156,12 @@ export function renderAdvisorWithGroup(container: HTMLElement, groupKey: string)
   };
 
   var best = ranked[0];
-  var worst = ranked[ranked.length - 1];
-  // Bug 4 fix: Detect when all accounts are healthy
   var allHealthy = ranked.every(function(a) { return a.pct > 80; });
-  var actionIcon = allHealthy ? '✅' : (best.pct > 20 ? '⚡' : '⏳');
+  var actionIcon = allHealthy ? 'READY' : (best.pct > 20 ? 'SWITCH' : 'WAIT');
   var actionLabel = allHealthy ? 'ALL READY' : (best.pct > 20 ? 'SWITCH' : 'WAIT');
-  var bestLabel = best.email.split('@')[0] + '@...';
 
   var html = '<div class="advisor-card">' +
-    '<h3>⚡ Antigravity Account Advisor</h3>' +
+    '<h3>Antigravity Account Advisor</h3>' +
     '<div class="advisor-group-select">' +
     '<label>Optimize for:</label>' +
     '<select id="advisor-group-filter" class="filter-select" style="margin-left:8px;font-size:12px">' +
@@ -194,19 +174,18 @@ export function renderAdvisorWithGroup(container: HTMLElement, groupKey: string)
   var actionCls = allHealthy ? 'stay' : (best.pct > 20 ? 'switch' : 'wait');
   html += '<div class="advisor-action ' + actionCls + '">' +
     actionIcon + ' ' + actionLabel + '</div>' +
-    '<div class="advisor-reason">' + (allHealthy ? 'All accounts have healthy quotas — no switch needed' :
+    '<div class="advisor-reason">' + (allHealthy ? 'All accounts have healthy quotas - no switch needed' :
     'Best: ' + esc(best.email) + ' (' + best.pct + '% ' +
     esc((groupNames as any)[groupKey] || groupKey) + ' remaining)') +
-    (best.stale ? ' ⚠️ stale data' : '') + '</div>';
+    (best.stale ? ' [stale data]' : '') + '</div>';
 
-  // Score bars — show top 5, toggle for rest
   html += '<div class="advisor-scores">';
   var initialShow = Math.min(ranked.length, 5);
   for (var s = 0; s < ranked.length; s++) {
     var acct = ranked[s];
     var isBest = s === 0;
     var barCls = acct.pct > 50 ? 'good' : (acct.pct > 20 ? 'ok' : 'low');
-    var staleIcon = acct.stale ? ' <span class="stale-icon" title="Data ' + esc(acct.label) + '">⚠</span>' : '';
+    var staleIcon = acct.stale ? ' <span class="stale-icon" title="Data ' + esc(acct.label) + '">STALE</span>' : '';
     var hidden = s >= initialShow ? ' style="display:none" data-advisor-extra' : '';
     html += '<div class="advisor-score-row' + (isBest ? ' best' : '') + '"' + hidden + '>' +
       '<span class="advisor-score-email" title="' + esc(acct.email) + '">' + esc(acct.email) + '</span>' +
@@ -220,7 +199,6 @@ export function renderAdvisorWithGroup(container: HTMLElement, groupKey: string)
   html += '</div></div>';
   container.innerHTML = html;
 
-  // Wire up group selector
   var sel = document.getElementById('advisor-group-filter');
   if (sel) {
     sel.addEventListener('change', function() {
@@ -230,7 +208,6 @@ export function renderAdvisorWithGroup(container: HTMLElement, groupKey: string)
     });
   }
 
-  // Wire up show-all toggle
   var toggleBtn = document.getElementById('advisor-toggle-all');
   if (toggleBtn) {
     toggleBtn.addEventListener('click', function() {
@@ -241,5 +218,3 @@ export function renderAdvisorWithGroup(container: HTMLElement, groupKey: string)
     });
   }
 }
-
-
