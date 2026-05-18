@@ -3,10 +3,10 @@
 
 import type { ServerConfig, QuotaSortState, StatusResponse, GroupColorMap, GroupNameMap, PresetEntry } from '../types/api';
 
-export const GROUP_ORDER: string[] = ['claude_gpt', 'gemini_pro', 'gemini_flash'];
-export const GROUP_LABELS: string[] = ['Claude + GPT', 'Gemini Pro', 'Gemini Flash'];
-export const GROUP_COLORS: GroupColorMap = { claude_gpt: '#D97757', gemini_pro: '#10B981', gemini_flash: '#3B82F6' };
-export const GROUP_NAMES: GroupNameMap = { claude_gpt: 'Claude + GPT', gemini_pro: 'Gemini Pro', gemini_flash: 'Gemini Flash' };
+export const GROUP_ORDER: string[] = ['claude_gpt', 'gemini_pro', 'gemini_flash', 'unknown'];
+export const GROUP_LABELS: string[] = ['Claude + GPT', 'Gemini Pro', 'Gemini Flash', 'Unknown'];
+export const GROUP_COLORS: GroupColorMap = { claude_gpt: '#D97757', gemini_pro: '#10B981', gemini_flash: '#3B82F6', unknown: '#64748B' };
+export const GROUP_NAMES: GroupNameMap = { claude_gpt: 'Claude + GPT', gemini_pro: 'Gemini Pro', gemini_flash: 'Gemini Flash', unknown: 'Unknown' };
 
 // Track which accounts are expanded (survives re-renders)
 export const expandedAccounts: Set<number> = new Set();

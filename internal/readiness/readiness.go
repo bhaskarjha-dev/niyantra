@@ -56,15 +56,13 @@ type GroupReadiness struct {
 func Calculate(snapshots []*client.Snapshot, threshold float64) []AccountReadiness {
 	var results []AccountReadiness
 
-	stalenessThreshold := 6 * time.Hour
-
 	for _, snap := range snapshots {
 		if snap == nil {
 			continue
 		}
 
-		staleness := time.Since(snap.CapturedAt)
-		isStale := staleness > stalenessThreshold
+		now := time.Now()
+		staleness := now.Sub(snap.CapturedAt)
 
 		ar := AccountReadiness{
 			AccountID:        snap.AccountID,
@@ -88,43 +86,25 @@ func Calculate(snapshots []*client.Snapshot, threshold float64) []AccountReadine
 		// Without this, group-level columns (Claude+GPT) show stale values even after reset.
 		correctedModels := make([]client.ModelQuota, 0, len(snap.Models))
 		for _, m := range snap.Models {
+			m = client.ApplyResetInference(m, now)
 			resetSec := 0.0
-			remainingPct := m.RemainingPercent
-			remainingFrac := m.RemainingFraction
-			exhausted := m.IsExhausted
-
 			if m.ResetTime != nil {
-				resetSec = time.Until(*m.ResetTime).Seconds()
+				resetSec = m.ResetTime.Sub(now).Seconds()
 				if resetSec < 0 {
 					resetSec = 0
-					// C3: If snapshot is stale AND reset time has passed,
-					// infer quota has refilled (rolling 5h resets)
-					if isStale {
-						remainingPct = 100
-						remainingFrac = 1.0
-						exhausted = false
-					}
 				}
 			}
 			ar.Models = append(ar.Models, ModelDetail{
 				ModelID:          m.ModelID,
 				Label:            m.Label,
-				RemainingPercent: remainingPct,
-				IsExhausted:      exhausted,
+				RemainingPercent: m.RemainingPercent,
+				IsExhausted:      m.IsExhausted,
 				ResetSeconds:     resetSec,
 				GroupKey:         client.GroupForModel(m.ModelID, m.Label),
 			})
 
 			// Build corrected ModelQuota for group computation
-			correctedModels = append(correctedModels, client.ModelQuota{
-				ModelID:           m.ModelID,
-				Label:             m.Label,
-				RemainingFraction: remainingFrac,
-				RemainingPercent:  remainingPct,
-				IsExhausted:       exhausted,
-				ResetTime:         m.ResetTime,
-				TimeUntilReset:    m.TimeUntilReset,
-			})
+			correctedModels = append(correctedModels, m)
 		}
 
 		// Group models using CORRECTED values (not raw snapshot)
@@ -147,12 +127,16 @@ func Calculate(snapshots []*client.Snapshot, threshold float64) []AccountReadine
 				gr.TimeUntilResetSec = sec
 			}
 
-			gr.IsReady = g.RemainingFraction > threshold
+			gr.IsReady = !g.IsExhausted && g.RemainingFraction > threshold
 			if !gr.IsReady {
 				ar.IsReady = false
 			}
 
 			ar.Groups = append(ar.Groups, gr)
+		}
+
+		if len(ar.Groups) == 0 {
+			ar.IsReady = false
 		}
 
 		results = append(results, ar)

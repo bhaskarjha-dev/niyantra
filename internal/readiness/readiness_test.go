@@ -286,3 +286,105 @@ func TestFreshSnapshotUnchanged(t *testing.T) {
 		t.Error("fresh model should be marked exhausted")
 	}
 }
+
+func TestResetPassedInfersRefillBeforeStalenessThreshold(t *testing.T) {
+	now := time.Now()
+	pastReset := now.Add(-1 * time.Hour)
+	snap := &client.Snapshot{
+		AccountID:  1,
+		Email:      "recent-reset@example.com",
+		PlanName:   "Pro",
+		CapturedAt: now.Add(-2 * time.Hour),
+		Models: []client.ModelQuota{
+			{
+				ModelID:           "claude-sonnet",
+				Label:             "Claude Sonnet",
+				RemainingFraction: 0,
+				RemainingPercent:  0,
+				IsExhausted:       true,
+				ResetTime:         &pastReset,
+			},
+		},
+	}
+
+	result := Calculate([]*client.Snapshot{snap}, 0.0)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 account, got %d", len(result))
+	}
+	if got := result[0].Models[0].RemainingPercent; got != 100 {
+		t.Fatalf("remaining = %.0f, want 100 after reset inference", got)
+	}
+	if result[0].Models[0].IsExhausted {
+		t.Fatal("model should not stay exhausted after reset inference")
+	}
+	if !result[0].IsReady {
+		t.Fatal("account should be ready after inferred refill")
+	}
+}
+
+func TestExhaustedModelMakesGroupNotReadyEvenWhenAveragePositive(t *testing.T) {
+	now := time.Now()
+	resetTime := now.Add(2 * time.Hour)
+	snap := &client.Snapshot{
+		AccountID:  1,
+		Email:      "mixed@example.com",
+		PlanName:   "Pro",
+		CapturedAt: now,
+		Models: []client.ModelQuota{
+			{
+				ModelID:           "claude-sonnet",
+				Label:             "Claude Sonnet",
+				RemainingFraction: 0,
+				RemainingPercent:  0,
+				IsExhausted:       true,
+				ResetTime:         &resetTime,
+			},
+			{
+				ModelID:           "gpt-4.1",
+				Label:             "GPT-4.1",
+				RemainingFraction: 0.8,
+				RemainingPercent:  80,
+				ResetTime:         &resetTime,
+			},
+		},
+	}
+
+	result := Calculate([]*client.Snapshot{snap}, 0.0)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 account, got %d", len(result))
+	}
+	if result[0].IsReady {
+		t.Fatal("account should not be ready when a model in its only group is exhausted")
+	}
+	if len(result[0].Groups) != 1 {
+		t.Fatalf("groups = %d, want 1", len(result[0].Groups))
+	}
+	group := result[0].Groups[0]
+	if group.GroupKey != client.GroupClaudeGPT {
+		t.Fatalf("group = %q, want %q", group.GroupKey, client.GroupClaudeGPT)
+	}
+	if !group.IsExhausted {
+		t.Fatal("group should be exhausted when any member model is exhausted")
+	}
+	if group.IsReady {
+		t.Fatal("group should not be ready when any member model is exhausted")
+	}
+	if group.RemainingPercent != 40 {
+		t.Fatalf("group remaining = %.0f, want 40", group.RemainingPercent)
+	}
+}
+
+func TestSnapshotWithNoModelsIsNotReady(t *testing.T) {
+	result := Calculate([]*client.Snapshot{{
+		AccountID:  1,
+		Email:      "empty@example.com",
+		CapturedAt: time.Now(),
+	}}, 0.0)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 account, got %d", len(result))
+	}
+	if result[0].IsReady {
+		t.Fatal("account with no model quota data should not be ready")
+	}
+}

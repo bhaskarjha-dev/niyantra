@@ -67,7 +67,7 @@ func (s *Server) computeAccountCosts(
 			for _, fg := range forecastGroups {
 				rates = append(rates, costtrack.GroupRate{
 					GroupKey:  fg.GroupKey,
-					BurnRate: fg.BurnRate,
+					BurnRate:  fg.BurnRate,
 					Remaining: fg.Remaining,
 					HasData:   fg.Confidence != "none",
 				})
@@ -78,7 +78,9 @@ func (s *Server) computeAccountCosts(
 				sum   float64
 				count int
 			}{}
+			now := time.Now()
 			for _, m := range snap.Models {
+				m = client.ApplyResetInference(m, now)
 				gk := client.GroupForModel(m.ModelID, m.Label)
 				acc := groupRemaining[gk]
 				acc.sum += m.RemainingFraction
@@ -164,19 +166,14 @@ func (s *Server) computeAccountForecasts(snapshots []*client.Snapshot) map[int64
 		// Compute rates from recent history
 		rates := forecast.ComputeRates(points)
 
-		// Build current remaining + reset times from latest snapshot
-		// Apply stale-correction: if a model's reset time is in the past,
-		// the quota has refilled — infer remaining = 1.0 to match readiness display.
+		// Build current remaining + reset times from latest snapshot using the
+		// same reset inference policy as readiness.
 		remaining := make(map[string]float64)
 		resetTimes := make(map[string]*time.Time)
 		now := time.Now()
 		for _, m := range snap.Models {
-			frac := m.RemainingFraction
-			if m.ResetTime != nil && m.ResetTime.Before(now) && frac <= 0 {
-				// Reset time passed and model was exhausted → quota has refilled
-				frac = 1.0
-			}
-			remaining[m.ModelID] = frac
+			m = client.ApplyResetInference(m, now)
+			remaining[m.ModelID] = m.RemainingFraction
 			resetTimes[m.ModelID] = m.ResetTime
 		}
 

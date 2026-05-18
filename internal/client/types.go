@@ -13,16 +13,18 @@ const (
 	GroupClaudeGPT   = "claude_gpt"
 	GroupGeminiPro   = "gemini_pro"
 	GroupGeminiFlash = "gemini_flash"
+	GroupUnknown     = "unknown"
 )
 
 // GroupOrder defines the canonical display order.
-var GroupOrder = []string{GroupClaudeGPT, GroupGeminiPro, GroupGeminiFlash}
+var GroupOrder = []string{GroupClaudeGPT, GroupGeminiPro, GroupGeminiFlash, GroupUnknown}
 
 // GroupDisplayNames maps group keys to human-readable names.
 var GroupDisplayNames = map[string]string{
 	GroupClaudeGPT:   "Claude + GPT",
 	GroupGeminiPro:   "Gemini Pro",
 	GroupGeminiFlash: "Gemini Flash",
+	GroupUnknown:     "Unknown",
 }
 
 // GroupColors maps group keys to display colors.
@@ -30,6 +32,7 @@ var GroupColors = map[string]string{
 	GroupClaudeGPT:   "#D97757",
 	GroupGeminiPro:   "#10B981",
 	GroupGeminiFlash: "#3B82F6",
+	GroupUnknown:     "#64748B",
 }
 
 // --- API response types (from Antigravity Connect RPC) ---
@@ -252,16 +255,47 @@ func (r *UserStatusResponse) ActiveModelIDs() []string {
 
 // GroupForModel determines which quota group a model belongs to.
 func GroupForModel(modelID, label string) string {
-	text := strings.ToLower(modelID + " " + label)
+	text := strings.ToLower(strings.TrimSpace(modelID + " " + label))
+	if text == "" {
+		return GroupUnknown
+	}
 
 	switch {
 	case strings.Contains(text, "gemini") && strings.Contains(text, "flash"):
 		return GroupGeminiFlash
 	case strings.Contains(text, "gemini"):
 		return GroupGeminiPro
-	default:
+	case strings.Contains(text, "claude") ||
+		strings.Contains(text, "anthropic") ||
+		strings.Contains(text, "gpt") ||
+		strings.Contains(text, "openai"):
 		return GroupClaudeGPT
+	default:
+		return GroupUnknown
 	}
+}
+
+// ApplyResetInference returns a model quota corrected for reset times that have
+// already passed. Provider snapshots are point-in-time observations; when a
+// model was exhausted and its reset timestamp is now in the past, downstream
+// status surfaces should not continue to route as if it is exhausted.
+func ApplyResetInference(m ModelQuota, now time.Time) ModelQuota {
+	if m.ResetTime == nil {
+		return m
+	}
+
+	m.TimeUntilReset = m.ResetTime.Sub(now)
+	if m.TimeUntilReset < 0 {
+		m.TimeUntilReset = 0
+	}
+
+	if !m.ResetTime.After(now) && (m.IsExhausted || m.RemainingFraction <= 0) {
+		m.RemainingFraction = 1.0
+		m.RemainingPercent = 100
+		m.IsExhausted = false
+	}
+
+	return m
 }
 
 // GroupModels groups model quotas into logical quota groups.
@@ -274,10 +308,6 @@ func GroupModels(models []ModelQuota) []GroupedQuota {
 	}
 
 	byGroup := map[string]*acc{}
-	for _, key := range GroupOrder {
-		byGroup[key] = &acc{}
-	}
-
 	for _, m := range models {
 		key := GroupForModel(m.ModelID, m.Label)
 		a := byGroup[key]
@@ -302,10 +332,12 @@ func GroupModels(models []ModelQuota) []GroupedQuota {
 
 	for _, key := range GroupOrder {
 		a := byGroup[key]
-		remaining := 1.0
-		if a != nil && a.count > 0 {
-			remaining = a.sum / float64(a.count)
+		if a == nil || a.count == 0 {
+			continue
 		}
+
+		remaining := 1.0
+		remaining = a.sum / float64(a.count)
 		if remaining < 0 {
 			remaining = 0
 		}
@@ -318,11 +350,11 @@ func GroupModels(models []ModelQuota) []GroupedQuota {
 			DisplayName:       GroupDisplayNames[key],
 			RemainingFraction: remaining,
 			RemainingPercent:  remaining * 100,
-			IsExhausted:       a != nil && a.count > 0 && (remaining <= 0 || a.anyExhausted),
+			IsExhausted:       remaining <= 0 || a.anyExhausted,
 			Color:             GroupColors[key],
 		}
 
-		if a != nil && a.earliestReset != nil {
+		if a.earliestReset != nil {
 			g.ResetTime = a.earliestReset
 			d := a.earliestReset.Sub(now)
 			if d < 0 {

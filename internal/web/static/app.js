@@ -2,10 +2,10 @@
 "use strict";
 (() => {
   // internal/web/src/core/state.ts
-  var GROUP_ORDER = ["claude_gpt", "gemini_pro", "gemini_flash"];
-  var GROUP_LABELS = ["Claude + GPT", "Gemini Pro", "Gemini Flash"];
-  var GROUP_COLORS = { claude_gpt: "#D97757", gemini_pro: "#10B981", gemini_flash: "#3B82F6" };
-  var GROUP_NAMES = { claude_gpt: "Claude + GPT", gemini_pro: "Gemini Pro", gemini_flash: "Gemini Flash" };
+  var GROUP_ORDER = ["claude_gpt", "gemini_pro", "gemini_flash", "unknown"];
+  var GROUP_LABELS = ["Claude + GPT", "Gemini Pro", "Gemini Flash", "Unknown"];
+  var GROUP_COLORS = { claude_gpt: "#D97757", gemini_pro: "#10B981", gemini_flash: "#3B82F6", unknown: "#64748B" };
+  var GROUP_NAMES = { claude_gpt: "Claude + GPT", gemini_pro: "Gemini Pro", gemini_flash: "Gemini Flash", unknown: "Unknown" };
   var expandedAccounts = /* @__PURE__ */ new Set();
   var collapsedProviders = /* @__PURE__ */ new Set();
   var presetsData = [];
@@ -567,6 +567,7 @@
         case "claude_gpt":
         case "gemini_pro":
         case "gemini_flash":
+        case "unknown":
           va = getGroupPct(a, col);
           vb = getGroupPct(b, col);
           break;
@@ -708,7 +709,7 @@
         if (acc.models) {
           for (var mi2 = 0; mi2 < acc.models.length; mi2++) {
             var mm = acc.models[mi2];
-            var gk = mm.groupKey || "claude_gpt";
+            var gk = mm.groupKey || "unknown";
             if (!modelIdsByGroup[gk]) modelIdsByGroup[gk] = [];
             if (!modelLabelsByGroup[gk]) modelLabelsByGroup[gk] = [];
             modelIdsByGroup[gk].push(mm.modelId || "");
@@ -813,7 +814,7 @@
           var groupedModels = {};
           for (var mi = 0; mi < acc.models.length; mi++) {
             var m = acc.models[mi];
-            var gk2 = m.groupKey || "claude_gpt";
+            var gk2 = m.groupKey || "unknown";
             if (!groupedModels[gk2]) groupedModels[gk2] = [];
             groupedModels[gk2].push(m);
           }
@@ -3496,8 +3497,8 @@
       return d.toLocaleDateString(void 0, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(void 0, { hour: "2-digit", minute: "2-digit" });
     });
     var groupData = {};
-    var groupNames = { claude_gpt: "Claude + GPT", gemini_pro: "Gemini Pro", gemini_flash: "Gemini Flash" };
-    var groupColors = { claude_gpt: "#D97757", gemini_pro: "#10B981", gemini_flash: "#3B82F6" };
+    var groupNames = { claude_gpt: "Claude + GPT", gemini_pro: "Gemini Pro", gemini_flash: "Gemini Flash", unknown: "Unknown" };
+    var groupColors = { claude_gpt: "#D97757", gemini_pro: "#10B981", gemini_flash: "#3B82F6", unknown: "#64748B" };
     for (var i = 0; i < snapshots.length; i++) {
       var groups = snapshots[i].groups || [];
       for (var j = 0; j < groups.length; j++) {

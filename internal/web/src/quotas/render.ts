@@ -54,6 +54,7 @@ export function sortAccountsArray(accounts: any[]): any[] {
       case 'claude_gpt':
       case 'gemini_pro':
       case 'gemini_flash':
+      case 'unknown':
         va = getGroupPct(a, col); vb = getGroupPct(b, col); break;
       case 'credits':
         va = getAICredits(a); vb = getAICredits(b); break;
@@ -247,7 +248,7 @@ export function renderAccounts(data: any): void {
     if (acc.models) {
       for (var mi2 = 0; mi2 < acc.models.length; mi2++) {
         var mm = acc.models[mi2];
-        var gk = mm.groupKey || 'claude_gpt';
+        var gk = mm.groupKey || 'unknown';
         if (!modelIdsByGroup[gk]) modelIdsByGroup[gk] = [];
         if (!modelLabelsByGroup[gk]) modelLabelsByGroup[gk] = [];
         modelIdsByGroup[gk].push(mm.modelId || '');
@@ -372,7 +373,7 @@ export function renderAccounts(data: any): void {
       var groupedModels: Record<string, any[]> = {};
       for (var mi = 0; mi < acc.models.length; mi++) {
         var m = acc.models[mi];
-        var gk2 = m.groupKey || 'claude_gpt';
+        var gk2 = m.groupKey || 'unknown';
         if (!groupedModels[gk2]) groupedModels[gk2] = [];
         groupedModels[gk2].push(m);
       }

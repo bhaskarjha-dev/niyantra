@@ -182,20 +182,26 @@ func (m *MCPServer) handleModelAvailability(_ context.Context, _ *mcp.CallToolRe
 
 	// Search across all accounts for matching model
 	for _, snap := range snapshots {
+		now := time.Now()
 		for _, model := range snap.Models {
+			model = client.ApplyResetInference(model, now)
 			label := strings.ToLower(model.Label)
 			id := strings.ToLower(model.ModelID)
 			group := client.GroupForModel(model.ModelID, model.Label)
 			if strings.Contains(label, query) || strings.Contains(id, query) {
 				pct := int(math.Round(model.RemainingFraction * 100))
+				available := !model.IsExhausted && pct > 0 && group != client.GroupUnknown
 				out := ModelAvailOutput{
 					Found:     true,
 					ModelID:   model.ModelID,
 					Label:     model.Label,
 					Group:     group,
-					Available: !model.IsExhausted && pct > 0,
+					Available: available,
 					Remaining: pct,
 					Message:   fmt.Sprintf("%s: %d%% remaining", model.Label, pct),
+				}
+				if group == client.GroupUnknown {
+					out.Message += "; model group is unknown, so it is excluded from recommendations until mapped"
 				}
 				if model.TimeUntilReset > 0 {
 					out.ResetIn = formatDuration(model.TimeUntilReset)
@@ -288,6 +294,12 @@ func (m *MCPServer) handleBestModel(_ context.Context, _ *mcp.CallToolRequest, i
 			Reason: "Please specify a group: 'claude_gpt', 'gemini_pro', or 'gemini_flash'.",
 		}, nil
 	}
+	if group == client.GroupUnknown {
+		return nil, BestModelOutput{
+			Found:  false,
+			Reason: "The 'unknown' group is intentionally excluded from model recommendations until those models are explicitly mapped.",
+		}, nil
+	}
 
 	snapshots, err := m.store.LatestPerAccount()
 	if err != nil {
@@ -305,7 +317,9 @@ func (m *MCPServer) handleBestModel(_ context.Context, _ *mcp.CallToolRequest, i
 	var candidates []candidate
 
 	for _, snap := range snapshots {
+		now := time.Now()
 		for _, model := range snap.Models {
+			model = client.ApplyResetInference(model, now)
 			modelGroup := client.GroupForModel(model.ModelID, model.Label)
 			if strings.ToLower(modelGroup) != group {
 				continue

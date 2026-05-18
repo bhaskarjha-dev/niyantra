@@ -40,7 +40,7 @@ type SnapshotPoint struct {
 
 // GroupForecast is the TTX prediction for a single quota group.
 type GroupForecast struct {
-	GroupKey     string  `json:"groupKey"`
+	GroupKey    string  `json:"groupKey"`
 	DisplayName string  `json:"displayName"`
 	BurnRate    float64 `json:"burnRate"`    // fraction consumed per hour (0.0–1.0 scale)
 	TTXHours    float64 `json:"ttxHours"`    // hours until exhaustion (-1 = no data, 0 = exhausted)
@@ -68,7 +68,7 @@ type ModelRate struct {
 
 // GroupDefinition maps a group key to its display name.
 type GroupDefinition struct {
-	GroupKey     string
+	GroupKey    string
 	DisplayName string
 }
 
@@ -258,16 +258,16 @@ func ComputeGroupForecasts(
 	var forecasts []GroupForecast
 	for _, gd := range groups {
 		acc := byGroup[gd.GroupKey]
-		if acc == nil {
+		if acc == nil || (acc.rateCount == 0 && acc.remainCount == 0) {
 			continue
 		}
 
 		f := GroupForecast{
-			GroupKey:     gd.GroupKey,
-			DisplayName:  gd.DisplayName,
-			TTXHours:     -1, // default: no data
-			Confidence:   "none",
-			Severity:     "safe",
+			GroupKey:    gd.GroupKey,
+			DisplayName: gd.DisplayName,
+			TTXHours:    -1, // default: no data
+			Confidence:  "none",
+			Severity:    "safe",
 		}
 
 		// Average remaining across models in group

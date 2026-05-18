@@ -91,7 +91,9 @@ func (m *MCPServer) handleQuotaForecast(_ context.Context, _ *mcp.CallToolReques
 
 		remaining := make(map[string]float64)
 		resetTimes := make(map[string]*time.Time)
+		now := time.Now()
 		for _, mod := range snap.Models {
+			mod = client.ApplyResetInference(mod, now)
 			remaining[mod.ModelID] = mod.RemainingFraction
 			resetTimes[mod.ModelID] = mod.ResetTime
 		}
@@ -181,7 +183,9 @@ func (m *MCPServer) computeMCPCosts(snapshots []*client.Snapshot) map[int64]cost
 			sum   float64
 			count int
 		}{}
+		now := time.Now()
 		for _, mod := range snap.Models {
+			mod = client.ApplyResetInference(mod, now)
 			gk := client.GroupForModel(mod.ModelID, mod.Label)
 			acc := groupRemaining[gk]
 			acc.sum += mod.RemainingFraction

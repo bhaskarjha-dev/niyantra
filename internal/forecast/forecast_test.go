@@ -217,6 +217,26 @@ func TestGroupForecasts_IdleRate(t *testing.T) {
 	}
 }
 
+func TestGroupForecastsSkipsConfiguredGroupsWithNoData(t *testing.T) {
+	rates := map[string]*ModelRate{
+		"m1": {ModelID: "m1", Rate: 0.20, Points: 5},
+	}
+	remaining := map[string]float64{"m1": 0.5}
+	assigner := func(id string) string { return "active" }
+	groups := []GroupDefinition{
+		{GroupKey: "active", DisplayName: "Active"},
+		{GroupKey: "empty", DisplayName: "Empty"},
+	}
+
+	forecasts := ComputeGroupForecasts(rates, remaining, nil, assigner, groups)
+	if len(forecasts) != 1 {
+		t.Fatalf("expected 1 forecast, got %d", len(forecasts))
+	}
+	if forecasts[0].GroupKey != "active" {
+		t.Fatalf("forecast group = %q, want active", forecasts[0].GroupKey)
+	}
+}
+
 func TestFormatTTX(t *testing.T) {
 	tests := []struct {
 		hours    float64
