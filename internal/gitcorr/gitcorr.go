@@ -1,8 +1,8 @@
 // Package gitcorr correlates git commit activity with AI token consumption.
 //
-// It parses git log output from local repositories and matches each commit's
-// timestamp with Claude Code JSONL session data to compute actual per-commit
-// token usage and cost — not estimated from diffs, but from real consumption.
+// It parses git log output from local repositories and heuristically assigns
+// nearby Claude Code JSONL session data to commits. The underlying token events
+// are observed, but commit attribution is a proximity estimate.
 //
 // Architecture:
 //   - Runs `git log` via os/exec (no git library dependency)
@@ -54,11 +54,14 @@ type BranchCost struct {
 
 // Summary is the top-level response for /api/git-costs.
 type Summary struct {
-	Commits  []CommitCost `json:"commits"`
-	Branches []BranchCost `json:"branches"`
-	Totals   Totals       `json:"totals"`
-	Period   Period       `json:"period"`
-	RepoPath string       `json:"repoPath"`
+	Commits                  []CommitCost `json:"commits"`
+	Branches                 []BranchCost `json:"branches"`
+	Totals                   Totals       `json:"totals"`
+	Period                   Period       `json:"period"`
+	RepoPath                 string       `json:"repoPath"`
+	Basis                    string       `json:"basis"`
+	Confidence               string       `json:"confidence"`
+	NotAccountingGradeReason string       `json:"notAccountingGradeReason"`
 }
 
 // Totals holds aggregate stats.
@@ -114,10 +117,13 @@ func Analyze(repoPath string, days, windowMin int, priceFn PriceFn) (*Summary, e
 	}
 	if len(commits) == 0 {
 		return &Summary{
-			Commits:  []CommitCost{},
-			Branches: []BranchCost{},
-			RepoPath: absPath,
-			Period:   Period{Days: days},
+			Commits:                  []CommitCost{},
+			Branches:                 []BranchCost{},
+			RepoPath:                 absPath,
+			Period:                   Period{Days: days},
+			Basis:                    "heuristic_git_activity_attribution",
+			Confidence:               "low",
+			NotAccountingGradeReason: "Claude Code token events are assigned to nearby commits by timestamp window; this is not accounting-grade per-commit spend.",
 		}, nil
 	}
 
@@ -363,8 +369,11 @@ func correlateCommits(commits []*CommitCost, usages []sessionUsage, window time.
 
 func buildSummary(commits []*CommitCost, repoPath string, days int) *Summary {
 	s := &Summary{
-		RepoPath: repoPath,
-		Period:   Period{Days: days},
+		RepoPath:                 repoPath,
+		Period:                   Period{Days: days},
+		Basis:                    "heuristic_git_activity_attribution",
+		Confidence:               "low",
+		NotAccountingGradeReason: "Claude Code token events are assigned to nearby commits by timestamp window; this is not accounting-grade per-commit spend.",
 	}
 
 	branchMap := make(map[string]*BranchCost)

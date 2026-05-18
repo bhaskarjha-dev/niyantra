@@ -19,9 +19,9 @@ export function loadCostKPI(): void {
     var totalLabel = data.totalLabel || '$0.00';
 
     var html = '<div class="cost-kpi-card overview-card">' +
-      '<h3>Heuristic Cost (Current Cycle)</h3>' +
+      '<h3>Quota-Derived Cost Estimate</h3>' +
       '<div class="cost-kpi-amount">' + esc(totalLabel) + '</div>' +
-      '<div class="cost-kpi-label">Heuristic cost from quota consumption and configured model pricing</div>';
+      '<div class="cost-kpi-label">Estimated from quota consumption, configured token ceilings, and model pricing; not observed spend.</div>';
 
     var hasChips = false;
     var chipsHTML = '<div class="cost-kpi-breakdown">';

@@ -40,9 +40,13 @@ func (s *Server) handleCost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := map[string]interface{}{
-		"accounts":   accounts,
-		"totalCost":  totalCost,
-		"totalLabel": costtrack.FormatCost(totalCost),
+		"accounts":                 accounts,
+		"totalCost":                totalCost,
+		"totalLabel":               costtrack.FormatCost(totalCost),
+		"basis":                    "estimated_quota_fraction",
+		"confidence":               "low",
+		"observedSpendAvailable":   false,
+		"notAccountingGradeReason": "Costs are estimated from quota fraction deltas, configurable token ceilings, and blended model prices; they are not provider invoices or observed billing ledger entries.",
 	}
 
 	// Include ceilings for transparency

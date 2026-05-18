@@ -21,9 +21,9 @@ export function loadGitCosts(): void {
 
 function renderGitCostsError(container: HTMLElement, message: string): void {
   container.innerHTML = '<div class="overview-card full-width git-costs-card">' +
-    '<h3>Git to AI Attribution</h3>' +
+    '<h3>Git Activity Attribution</h3>' +
     '<div class="git-costs-empty">' +
-    '<p>Unable to analyze git costs.</p>' +
+    '<p>Unable to analyze git activity attribution.</p>' +
     '<p style="font-size:12px;color:var(--text-secondary)">' + escapeHtml(message) + '</p>' +
     '</div></div>';
 }
@@ -31,7 +31,7 @@ function renderGitCostsError(container: HTMLElement, message: string): void {
 function renderGitCosts(container: HTMLElement, data: any): void {
   if (!data || !data.commits || data.commits.length === 0) {
     container.innerHTML = '<div class="overview-card full-width git-costs-card">' +
-      '<h3>Git to AI Attribution</h3>' +
+      '<h3>Git Activity Attribution</h3>' +
       '<div class="git-costs-empty">' +
       '<p>No git commit data available.</p>' +
       '<p style="font-size:12px;color:var(--text-secondary)">Ensure you are running Niyantra from within a git repository, ' +
@@ -47,11 +47,13 @@ function renderGitCosts(container: HTMLElement, data: any): void {
 
   var kpiHTML = '<div class="git-kpi-row">';
   kpiHTML += buildKpi('Commits', String(totals.commitCount || 0), 'Commits');
-  kpiHTML += buildKpi('AI Cost', '$' + (totals.costUSD || 0).toFixed(2), 'Cost');
-  kpiHTML += buildKpi('Avg/Commit', '$' + (totals.avgPerCommit || 0).toFixed(2), 'Avg');
+  kpiHTML += buildKpi('Nearby AI Estimate', '$' + (totals.costUSD || 0).toFixed(2), 'Estimate');
+  kpiHTML += buildKpi('Avg/Commit Est.', '$' + (totals.avgPerCommit || 0).toFixed(2), 'Avg');
   kpiHTML += buildKpi('Top Branch', truncate(totals.topBranch || '-', 18), 'Branch');
   kpiHTML += '</div>';
-  kpiHTML += '<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">Claude token events are heuristically assigned to the nearest subsequent commit inside the lookback window. This is guidance, not ground truth.</p>';
+  kpiHTML += '<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">' +
+    escapeHtml(data.notAccountingGradeReason || 'Claude token events are heuristically assigned to nearby commits. This is guidance, not ground truth.') +
+    '</p>';
 
   if (!hasAICosts) {
     kpiHTML += '<div class="git-no-ai-banner">No nearby Claude Code session data was attributable inside the commit lookback windows.</div>';
@@ -60,7 +62,7 @@ function renderGitCosts(container: HTMLElement, data: any): void {
   var chartHTML = '';
   if (commits.length > 0 && hasAICosts) {
     chartHTML = '<div class="git-section">';
-    chartHTML += '<h4>Cost per Commit</h4>';
+    chartHTML += '<h4>Estimated Nearby Cost per Commit</h4>';
     chartHTML += '<div class="git-commit-chart">';
 
     var maxCost = 0;
@@ -85,7 +87,7 @@ function renderGitCosts(container: HTMLElement, data: any): void {
   var branchHTML = '';
   if (branches.length > 0 && hasAICosts) {
     branchHTML = '<div class="git-section">';
-    branchHTML += '<h4>Branch Costs</h4>';
+    branchHTML += '<h4>Branch Estimates</h4>';
     branchHTML += '<div class="git-branch-table">';
     branchHTML += '<div class="git-branch-header">' +
       '<span>Branch</span><span>Commits</span><span>Tokens</span><span>Cost</span><span>Avg</span>' +
@@ -131,7 +133,7 @@ function renderGitCosts(container: HTMLElement, data: any): void {
 
   container.innerHTML = '<div class="overview-card full-width git-costs-card">' +
     '<div class="git-costs-header">' +
-    '<h3>Git to AI Attribution</h3>' +
+    '<h3>Git Activity Attribution</h3>' +
     '<span class="git-repo-path" title="' + escapeAttr(data.repoPath || '') + '">' +
     escapeHtml(shortenPath(data.repoPath || '')) + '</span>' +
     '</div>' +

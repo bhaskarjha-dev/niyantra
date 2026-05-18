@@ -602,6 +602,10 @@ Returns estimated dollar costs for all tracked accounts based on quota fraction 
   ],
   "totalCost": 17.20,
   "totalLabel": "$17.20",
+  "basis": "estimated_quota_fraction",
+  "confidence": "low",
+  "observedSpendAvailable": false,
+  "notAccountingGradeReason": "Costs are estimated from quota fraction deltas, configurable token ceilings, and blended model prices; they are not provider invoices or observed billing ledger entries.",
   "quotaCeilings": {
     "claude_gpt": { "groupKey": "claude_gpt", "displayName": "Claude + GPT", "tokensPerCycle": 5000000, "cycleDurationHours": 5 },
     "gemini_pro": { "groupKey": "gemini_pro", "displayName": "Gemini Pro", "tokensPerCycle": 3000000, "cycleDurationHours": 5 },
@@ -622,8 +626,14 @@ Returns estimated dollar costs for all tracked accounts based on quota fraction 
 | `costLabel` | string | Formatted cost: "$17.20" |
 | `hourlyLabel` | string | Formatted hourly rate: "$4.30/hr" |
 | `hasData` | bool | True if burn rate / remaining data is available |
+| `basis` | string | Always `estimated_quota_fraction` for this endpoint |
+| `confidence` | string | Estimate confidence; currently `low` |
+| `observedSpendAvailable` | bool | `false`; this endpoint is not a billing ledger |
+| `notAccountingGradeReason` | string | Human-readable explanation of why this is not observed spend |
 
 > **Algorithm:** `consumed_fraction × tokens_per_cycle × blended_price_per_token`, where blended price is 40% input + 60% output pricing (typical coding-assistant token split). Quota ceilings are configurable via Settings and default to 5M (Claude+GPT), 3M (Gemini Pro), 10M (Gemini Flash) tokens per 5-hour cycle.
+
+> **Truth Contract:** This endpoint is an estimate only. It is not observed spend, not billing data, and not accounting-grade cost reporting.
 
 > **Note:** `/api/status` also includes an `estimatedCosts` field (keyed by accountId) with the same per-account cost data for inline rendering in the Quotas grid.
 
@@ -1591,7 +1601,10 @@ Heuristically correlates git commits with nearby Claude Code token usage. Each C
     "topBranch": "feat/token-usage"
   },
   "period": { "start": "2026-04-14", "end": "2026-05-14", "days": 30 },
-  "repoPath": "D:\\dev\\pro\\niyantra"
+  "repoPath": "D:\\dev\\pro\\niyantra",
+  "basis": "heuristic_git_activity_attribution",
+  "confidence": "low",
+  "notAccountingGradeReason": "Claude Code token events are assigned to nearby commits by timestamp window; this is not accounting-grade per-commit spend."
 }
 ```
 
@@ -1608,7 +1621,7 @@ Heuristically correlates git commits with nearby Claude Code token usage. Each C
 
 > **Algorithm:** Runs `git log --all --no-merges --format` to extract commits, then walks Claude Code JSONL session records in timestamp order. Each usage event is assigned to the nearest subsequent commit inside `[usage_time, usage_time + 30min]`. Cost is computed via `store.GetModelPrice()` with fuzzy prefix matching. No database writes -- pure computation.
 
-> **Unique Feature:** No competitor does cost correlation with actual token data. `semcod/costs` estimates from diff size; Niyantra uses real Claude Code session telemetry.
+> **Truth Contract:** The token events are observed Claude Code telemetry, but the commit assignment is heuristic proximity attribution. Treat this as activity guidance, not proof of per-commit spend.
 
 ---
 

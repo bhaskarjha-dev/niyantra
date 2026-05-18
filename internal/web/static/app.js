@@ -1991,7 +1991,7 @@
         return;
       }
       var totalLabel = data.totalLabel || "$0.00";
-      var html = '<div class="cost-kpi-card overview-card"><h3>Heuristic Cost (Current Cycle)</h3><div class="cost-kpi-amount">' + esc(totalLabel) + '</div><div class="cost-kpi-label">Heuristic cost from quota consumption and configured model pricing</div>';
+      var html = '<div class="cost-kpi-card overview-card"><h3>Quota-Derived Cost Estimate</h3><div class="cost-kpi-amount">' + esc(totalLabel) + '</div><div class="cost-kpi-label">Estimated from quota consumption, configured token ceilings, and model pricing; not observed spend.</div>';
       var hasChips = false;
       var chipsHTML = '<div class="cost-kpi-breakdown">';
       if (data.accounts && data.accounts.length > 0) {
@@ -2638,11 +2638,11 @@
     });
   }
   function renderGitCostsError(container, message) {
-    container.innerHTML = '<div class="overview-card full-width git-costs-card"><h3>Git to AI Attribution</h3><div class="git-costs-empty"><p>Unable to analyze git costs.</p><p style="font-size:12px;color:var(--text-secondary)">' + escapeHtml2(message) + "</p></div></div>";
+    container.innerHTML = '<div class="overview-card full-width git-costs-card"><h3>Git Activity Attribution</h3><div class="git-costs-empty"><p>Unable to analyze git activity attribution.</p><p style="font-size:12px;color:var(--text-secondary)">' + escapeHtml2(message) + "</p></div></div>";
   }
   function renderGitCosts(container, data) {
     if (!data || !data.commits || data.commits.length === 0) {
-      container.innerHTML = '<div class="overview-card full-width git-costs-card"><h3>Git to AI Attribution</h3><div class="git-costs-empty"><p>No git commit data available.</p><p style="font-size:12px;color:var(--text-secondary)">Ensure you are running Niyantra from within a git repository, or pass <code>?repo=/path</code> to the API.</p></div></div>';
+      container.innerHTML = '<div class="overview-card full-width git-costs-card"><h3>Git Activity Attribution</h3><div class="git-costs-empty"><p>No git commit data available.</p><p style="font-size:12px;color:var(--text-secondary)">Ensure you are running Niyantra from within a git repository, or pass <code>?repo=/path</code> to the API.</p></div></div>';
       return;
     }
     var totals = data.totals || {};
@@ -2651,18 +2651,18 @@
     var hasAICosts = totals.totalTokens > 0;
     var kpiHTML = '<div class="git-kpi-row">';
     kpiHTML += buildKpi("Commits", String(totals.commitCount || 0), "Commits");
-    kpiHTML += buildKpi("AI Cost", "$" + (totals.costUSD || 0).toFixed(2), "Cost");
-    kpiHTML += buildKpi("Avg/Commit", "$" + (totals.avgPerCommit || 0).toFixed(2), "Avg");
+    kpiHTML += buildKpi("Nearby AI Estimate", "$" + (totals.costUSD || 0).toFixed(2), "Estimate");
+    kpiHTML += buildKpi("Avg/Commit Est.", "$" + (totals.avgPerCommit || 0).toFixed(2), "Avg");
     kpiHTML += buildKpi("Top Branch", truncate(totals.topBranch || "-", 18), "Branch");
     kpiHTML += "</div>";
-    kpiHTML += '<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">Claude token events are heuristically assigned to the nearest subsequent commit inside the lookback window. This is guidance, not ground truth.</p>';
+    kpiHTML += '<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">' + escapeHtml2(data.notAccountingGradeReason || "Claude token events are heuristically assigned to nearby commits. This is guidance, not ground truth.") + "</p>";
     if (!hasAICosts) {
       kpiHTML += '<div class="git-no-ai-banner">No nearby Claude Code session data was attributable inside the commit lookback windows.</div>';
     }
     var chartHTML = "";
     if (commits.length > 0 && hasAICosts) {
       chartHTML = '<div class="git-section">';
-      chartHTML += "<h4>Cost per Commit</h4>";
+      chartHTML += "<h4>Estimated Nearby Cost per Commit</h4>";
       chartHTML += '<div class="git-commit-chart">';
       var maxCost = 0;
       for (var ci = 0; ci < commits.length; ci++) {
@@ -2680,7 +2680,7 @@
     var branchHTML = "";
     if (branches.length > 0 && hasAICosts) {
       branchHTML = '<div class="git-section">';
-      branchHTML += "<h4>Branch Costs</h4>";
+      branchHTML += "<h4>Branch Estimates</h4>";
       branchHTML += '<div class="git-branch-table">';
       branchHTML += '<div class="git-branch-header"><span>Branch</span><span>Commits</span><span>Tokens</span><span>Cost</span><span>Avg</span></div>';
       var displayBranches = branches.slice(0, 10);
@@ -2702,7 +2702,7 @@
       commitsHTML += '<div class="git-commit-item"><span class="git-commit-hash">' + rc.shortHash + '</span><span class="git-commit-msg">' + escapeHtml2(rc.message) + '</span><div class="git-commit-meta">' + tokenBadge + costBadge + "</div></div>";
     }
     commitsHTML += "</div></div>";
-    container.innerHTML = '<div class="overview-card full-width git-costs-card"><div class="git-costs-header"><h3>Git to AI Attribution</h3><span class="git-repo-path" title="' + escapeAttr(data.repoPath || "") + '">' + escapeHtml2(shortenPath(data.repoPath || "")) + "</span></div>" + kpiHTML + chartHTML + branchHTML + commitsHTML + "</div>";
+    container.innerHTML = '<div class="overview-card full-width git-costs-card"><div class="git-costs-header"><h3>Git Activity Attribution</h3><span class="git-repo-path" title="' + escapeAttr(data.repoPath || "") + '">' + escapeHtml2(shortenPath(data.repoPath || "")) + "</span></div>" + kpiHTML + chartHTML + branchHTML + commitsHTML + "</div>";
   }
   function buildKpi(label, value, icon) {
     return '<div class="git-kpi-card"><div class="git-kpi-icon">' + icon + '</div><div class="git-kpi-value">' + value + '</div><div class="git-kpi-label">' + label + "</div></div>";
