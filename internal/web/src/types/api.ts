@@ -18,6 +18,10 @@ export interface StatusResponse {
   accountCount: number;
   codexSnapshot?: CodexSnapshot;
   claudeSnapshot?: ClaudeSnapshot;
+  cursorSnapshot?: CursorSnapshot;
+  geminiSnapshot?: GeminiSnapshot;
+  copilotSnapshot?: CopilotSnapshot;
+  pluginSnapshots?: PluginSnapshot[];
   forecasts?: AccountForecast[];
   estimatedCosts?: AccountCostEstimate[];
 }
@@ -175,6 +179,58 @@ export interface ClaudeSession {
   model: string;
   totalTokens: number;
   contextUsedPercent: number;
+}
+
+export interface CursorSnapshot {
+  id: number;
+  accountId: number;
+  email?: string;
+  billingModel: string;
+  planTier: string;
+  usagePct: number;
+  usedCents: number;
+  limitCents: number;
+  autoPct: number;
+  apiPct: number;
+  cycleStart: string;
+  cycleEnd: string;
+  capturedAt: string;
+}
+
+export interface GeminiSnapshot {
+  id: number;
+  accountId: number;
+  email?: string;
+  tier: string;
+  overallPct: number;
+  projectId: string;
+  capturedAt: string;
+}
+
+export interface CopilotSnapshot {
+  id: number;
+  accountId: number;
+  email?: string;
+  username?: string;
+  plan: string;
+  premiumPct: number;
+  chatPct: number;
+  hasPremium: boolean;
+  hasChat: boolean;
+  capturedAt: string;
+}
+
+export interface PluginSnapshot {
+  id: number;
+  pluginId: string;
+  provider: string;
+  label: string;
+  email: string;
+  usagePct: number;
+  usageDisplay: string;
+  plan: string;
+  capturedAt: string;
+  captureMethod: string;
 }
 
 // Settings / Config types

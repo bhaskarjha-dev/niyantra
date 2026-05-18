@@ -155,6 +155,7 @@ type HeatmapDay struct {
 	Cursor      int    `json:"cursor"`      // Cursor snapshots
 	Gemini      int    `json:"gemini"`      // Gemini CLI snapshots
 	Copilot     int    `json:"copilot"`     // GitHub Copilot snapshots
+	Plugin      int    `json:"plugin"`      // External plugin snapshots
 }
 
 // HeatmapData returns daily snapshot counts across all providers for the last N days.
@@ -174,28 +175,32 @@ func (s *Store) HeatmapData(days int) ([]HeatmapDay, error) {
 			SUM(cx) as codex,
 			SUM(cr) as cursor_cnt,
 			SUM(gm) as gemini_cnt,
-			SUM(cp) as copilot_cnt
+			SUM(cp) as copilot_cnt,
+			SUM(pl) as plugin_cnt
 		FROM (
-			SELECT date(captured_at) as day, 1 as ag, 0 as cl, 0 as cx, 0 as cr, 0 as gm, 0 as cp
+			SELECT date(captured_at) as day, 1 as ag, 0 as cl, 0 as cx, 0 as cr, 0 as gm, 0 as cp, 0 as pl
 			FROM snapshots WHERE captured_at >= datetime('now', ?)
 			UNION ALL
-			SELECT date(captured_at) as day, 0 as ag, 1 as cl, 0 as cx, 0 as cr, 0 as gm, 0 as cp
+			SELECT date(captured_at) as day, 0 as ag, 1 as cl, 0 as cx, 0 as cr, 0 as gm, 0 as cp, 0 as pl
 			FROM claude_snapshots WHERE captured_at >= datetime('now', ?)
 			UNION ALL
-			SELECT date(captured_at) as day, 0 as ag, 0 as cl, 1 as cx, 0 as cr, 0 as gm, 0 as cp
+			SELECT date(captured_at) as day, 0 as ag, 0 as cl, 1 as cx, 0 as cr, 0 as gm, 0 as cp, 0 as pl
 			FROM codex_snapshots WHERE captured_at >= datetime('now', ?)
 			UNION ALL
-			SELECT date(captured_at) as day, 0 as ag, 0 as cl, 0 as cx, 1 as cr, 0 as gm, 0 as cp
+			SELECT date(captured_at) as day, 0 as ag, 0 as cl, 0 as cx, 1 as cr, 0 as gm, 0 as cp, 0 as pl
 			FROM cursor_snapshots WHERE captured_at >= datetime('now', ?)
 			UNION ALL
-			SELECT date(captured_at) as day, 0 as ag, 0 as cl, 0 as cx, 0 as cr, 1 as gm, 0 as cp
+			SELECT date(captured_at) as day, 0 as ag, 0 as cl, 0 as cx, 0 as cr, 1 as gm, 0 as cp, 0 as pl
 			FROM gemini_snapshots WHERE captured_at >= datetime('now', ?)
 			UNION ALL
-			SELECT date(captured_at) as day, 0 as ag, 0 as cl, 0 as cx, 0 as cr, 0 as gm, 1 as cp
+			SELECT date(captured_at) as day, 0 as ag, 0 as cl, 0 as cx, 0 as cr, 0 as gm, 1 as cp, 0 as pl
 			FROM copilot_snapshots WHERE captured_at >= datetime('now', ?)
+			UNION ALL
+			SELECT date(captured_at) as day, 0 as ag, 0 as cl, 0 as cx, 0 as cr, 0 as gm, 0 as cp, 1 as pl
+			FROM plugin_snapshots WHERE captured_at >= datetime('now', ?)
 		)
 		GROUP BY day
-		ORDER BY day ASC`, cutoff, cutoff, cutoff, cutoff, cutoff, cutoff)
+		ORDER BY day ASC`, cutoff, cutoff, cutoff, cutoff, cutoff, cutoff, cutoff)
 	if err != nil {
 		return nil, fmt.Errorf("store: heatmap query: %w", err)
 	}
@@ -204,10 +209,10 @@ func (s *Store) HeatmapData(days int) ([]HeatmapDay, error) {
 	var result []HeatmapDay
 	for rows.Next() {
 		var d HeatmapDay
-		if err := rows.Scan(&d.Date, &d.Antigravity, &d.Claude, &d.Codex, &d.Cursor, &d.Gemini, &d.Copilot); err != nil {
+		if err := rows.Scan(&d.Date, &d.Antigravity, &d.Claude, &d.Codex, &d.Cursor, &d.Gemini, &d.Copilot, &d.Plugin); err != nil {
 			return nil, fmt.Errorf("store: scan heatmap row: %w", err)
 		}
-		d.Count = d.Antigravity + d.Claude + d.Codex + d.Cursor + d.Gemini + d.Copilot
+		d.Count = d.Antigravity + d.Claude + d.Codex + d.Cursor + d.Gemini + d.Copilot + d.Plugin
 		result = append(result, d)
 	}
 	return result, rows.Err()

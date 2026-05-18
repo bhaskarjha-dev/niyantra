@@ -3,7 +3,6 @@ import { serverConfig, latestQuotaData } from '../core/state';
 import { esc, formatTimeAgo, formatDurationSec } from '../core/utils';
 import { fetchOverview, fetchSubscriptions, fetchUsage } from '../core/api';
 import { openBudgetModal } from './budget';
-import { sparkline, trendDirection } from '../charts/sparkline';
 import { renderServerInsights, loadAdvisorCard } from './insights';
 import { loadCostKPI } from './cost';
 import { loadHeatmap } from './heatmap';
@@ -20,7 +19,6 @@ import { loadAnomalies } from './anomalyCard';
 import { downloadReport } from '../advanced/report';
 
 export function loadOverview(): void {
-  // Fetch overview, subscriptions, and usage intelligence
   Promise.all([fetchOverview(), fetchSubscriptions('', ''), fetchUsage()]).then(function(results) {
     var data = results[0];
     var subsData = results[1] as any;
@@ -41,48 +39,26 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
   var quotas = data.quotaSummary;
   var serverInsights = data.insights || [];
 
-  // ── Phase 10: Advisor Card placeholder ──
   var advisorHTML = '<div id="advisor-card-container"></div>';
-
-  // ── Phase 10: Server-Computed Insights ──
   var insightsHTML = renderServerInsights(serverInsights);
 
-  // ── F1-UX: Safe to Spend Guardrail (replaces old budget forecast) ──
   var safeToSpendHTML = renderSafeToSpend(
     usageData && usageData.budgetForecast ? usageData.budgetForecast : null,
     serverConfig['currency'] || 'USD'
   );
 
-  // ── F6-UX: Reset Countdown Timers ──
   var countdownContent = renderCountdowns(latestQuotaData);
   var countdownHTML = countdownContent ? '<div id="countdown-container" style="grid-column:1/-1">' + countdownContent + '</div>' : '';
   if (latestQuotaData) startCountdownRefresh(latestQuotaData);
 
-  // ── Spend + Category merged card ──
   var cats = Object.keys(stats.byCategory);
-
-  // F2-UX: Compute sparkline from subscription daily spend (estimate 7-day spread)
-  var spendSparkHTML = '';
-  var subsMonthly = stats.totalMonthlySpend || 0;
-  if (subsMonthly > 0 && subs.length > 0) {
-    // Generate a 7-day spend pattern from subscription data
-    var dailyBase = subsMonthly / 30;
-    var sparkData = [];
-    for (var sd = 0; sd < 7; sd++) {
-      sparkData.push(dailyBase * (0.85 + Math.random() * 0.3)); // Simulated daily variance
-    }
-    sparkData[6] = dailyBase; // Normalize today
-    var dir = trendDirection(sparkData);
-    spendSparkHTML = sparkline(sparkData, { width: 70, height: 22, color: 'var(--accent)', direction: dir });
-  }
 
   var spendHTML = '<div class="overview-card">' +
     '<h3>Monthly AI Spend</h3>' +
     '<div class="kpi-with-sparkline">' +
     '<div class="overview-big-number">$' + stats.totalMonthlySpend.toFixed(2) + '</div>' +
-    (spendSparkHTML ? '<div class="kpi-sparkline">' + spendSparkHTML + '</div>' : '') +
     '</div>';
-  // Show category breakdown inline if more than 1 category
+
   if (cats.length > 1) {
     cats.sort(function(a, b) {
       return (stats.byCategory[b].monthlySpend || 0) - (stats.byCategory[a].monthlySpend || 0);
@@ -100,33 +76,20 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
   }
   spendHTML += '</div>';
 
-  // ── Claude Code card (always rendered — F15d deep usage works without bridge) ──
   var claudeHTML = renderClaudeCodeCard();
 
-  // ── Renewal Calendar — only if renewals exist ──
   var calendarHTML = '';
   if (renewals.length > 0) {
     calendarHTML = '<div id="renewal-calendar-container" class="overview-card full-width"></div>';
   }
 
-  // ── Quick Links — most recent URL per platform (no stale duplicates) ──
   var linksHTML = '';
   if (links.length > 0) {
-    var platformLinks: Record<string, any> = {};
-    for (var l = 0; l < links.length; l++) {
-      var lnk = links[l];
-      // Keep only the first occurrence per platform (API returns newest first)
-      if (!platformLinks[lnk.platform]) {
-        platformLinks[lnk.platform] = lnk;
-      }
-    }
-    var platformKeys = Object.keys(platformLinks);
-    // Only show if there are links to non-Antigravity platforms, or multiple platforms
-    if (platformKeys.length > 1 || (platformKeys.length === 1 && platformKeys[0] !== 'Antigravity')) {
+    if (links.length > 1 || (links.length === 1 && links[0].platform !== 'Antigravity')) {
       linksHTML = '<div class="overview-card full-width"><h3>Quick Links</h3>' +
         '<div class="quick-links-grid">';
-      for (var pk = 0; pk < platformKeys.length; pk++) {
-        var pl = platformLinks[platformKeys[pk]];
+      for (var pk = 0; pk < links.length; pk++) {
+        var pl = links[pk];
         linksHTML += '<a class="quick-link" href="' + esc(pl.url) + '" target="_blank" rel="noopener">' +
           '🔗 ' + esc(pl.platform) + '</a>';
       }
@@ -134,7 +97,6 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
     }
   }
 
-  // ── Export ──
   var exportHTML = '<div class="overview-card full-width"><h3>Export</h3>' +
     '<p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">' +
     'Download your data for expense tracking, tax reports, or backup.</p>' +
@@ -144,14 +106,15 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
     '<button class="btn-add" id="generate-report-btn" style="padding:6px 12px;font-size:12px">📊 Monthly Report</button>' +
     '</div></div>';
 
-  // ── Provider Health Overview ──
   var providerHTML = '<div class="overview-card full-width"><h3>Provider Health</h3>';
   providerHTML += '<div class="provider-health-grid">';
-  // Antigravity
+
   if (latestQuotaData && latestQuotaData.accounts && latestQuotaData.accounts.length > 0) {
     var accts = latestQuotaData.accounts;
     var readyCount = 0;
-    for (var ai = 0; ai < accts.length; ai++) { if (accts[ai].isReady) readyCount++; }
+    for (var ai = 0; ai < accts.length; ai++) {
+      if (accts[ai].isReady) readyCount++;
+    }
     var healthPct = Math.round((readyCount / accts.length) * 100);
     var healthCls = healthPct >= 80 ? 'health-good' : healthPct >= 50 ? 'health-warn' : 'health-bad';
     providerHTML += '<div class="provider-health-row">' +
@@ -161,96 +124,123 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
       '<span class="ph-stat ' + healthCls + '">' + readyCount + '/' + accts.length + ' ready</span>' +
       '</div>';
   }
-  // Codex
+
   if (latestQuotaData && latestQuotaData.codexSnapshot) {
     var cs = latestQuotaData.codexSnapshot as any;
-    var cxStatus = cs.status === 'healthy' ? 'health-good' : 'health-bad';
+    var codexUsed = Math.max(cs.fiveHourPct || 0, cs.sevenDayPct || 0, cs.codeReviewPct || 0);
+    var cxStatus = usageHealthClass(codexUsed);
     var cxLabel = cs.email || 'Codex account';
     providerHTML += '<div class="provider-health-row">' +
       '<span class="ph-name">🤖 Codex</span>' +
       '<span class="ph-count">' + esc(cxLabel) + '</span>' +
-      '<span class="ph-bar"><span class="ph-fill ' + cxStatus + '" style="width:' + (100 - (cs.sevenDayPct || 0)) + '%"></span></span>' +
+      '<span class="ph-bar"><span class="ph-fill ' + cxStatus + '" style="width:' + Math.max(0, 100 - codexUsed) + '%"></span></span>' +
       '<span class="ph-stat ' + cxStatus + '">' + esc(cs.planType || 'free') + '</span>' +
       '</div>';
   }
-  // Claude
+
   if (latestQuotaData && latestQuotaData.claudeSnapshot) {
-    var cls2 = latestQuotaData.claudeSnapshot as any;
-    var clStatus = cls2.status === 'healthy' ? 'health-good' : 'health-bad';
+    var claude = latestQuotaData.claudeSnapshot as any;
+    var claudeUsed = Math.max(claude.fiveHourPct || 0, claude.sevenDayPct || 0);
+    var clStatus = usageHealthClass(claudeUsed);
     providerHTML += '<div class="provider-health-row">' +
       '<span class="ph-name">🔮 Claude Code</span>' +
       '<span class="ph-count">Bridge</span>' +
-      '<span class="ph-bar"><span class="ph-fill ' + clStatus + '" style="width:' + (100 - (cls2.fiveHourPct || 0)) + '%"></span></span>' +
-      '<span class="ph-stat ' + clStatus + '">' + (cls2.status || '—') + '</span>' +
+      '<span class="ph-bar"><span class="ph-fill ' + clStatus + '" style="width:' + Math.max(0, 100 - claudeUsed) + '%"></span></span>' +
+      '<span class="ph-stat ' + clStatus + '">' + formatUsageSummary(claudeUsed) + '</span>' +
       '</div>';
+  }
+
+  if (latestQuotaData && latestQuotaData.cursorSnapshot) {
+    var cursor = latestQuotaData.cursorSnapshot as any;
+    var cursorStatus = usageHealthClass(cursor.usagePct || 0);
+    providerHTML += '<div class="provider-health-row">' +
+      '<span class="ph-name">🖱️ Cursor</span>' +
+      '<span class="ph-count">' + esc(cursor.email || cursor.billingModel || 'Cursor') + '</span>' +
+      '<span class="ph-bar"><span class="ph-fill ' + cursorStatus + '" style="width:' + Math.max(0, 100 - (cursor.usagePct || 0)) + '%"></span></span>' +
+      '<span class="ph-stat ' + cursorStatus + '">' + esc(cursor.planTier || 'unknown') + '</span>' +
+      '</div>';
+  }
+
+  if (latestQuotaData && latestQuotaData.geminiSnapshot) {
+    var gemini = latestQuotaData.geminiSnapshot as any;
+    var geminiStatus = usageHealthClass(gemini.overallPct || 0);
+    providerHTML += '<div class="provider-health-row">' +
+      '<span class="ph-name">✨ Gemini CLI</span>' +
+      '<span class="ph-count">' + esc(gemini.email || gemini.projectId || 'Gemini') + '</span>' +
+      '<span class="ph-bar"><span class="ph-fill ' + geminiStatus + '" style="width:' + Math.max(0, 100 - (gemini.overallPct || 0)) + '%"></span></span>' +
+      '<span class="ph-stat ' + geminiStatus + '">' + esc(gemini.tier || 'unknown') + '</span>' +
+      '</div>';
+  }
+
+  if (latestQuotaData && latestQuotaData.copilotSnapshot) {
+    var copilot = latestQuotaData.copilotSnapshot as any;
+    var copilotUsed = copilot.hasPremium ? (copilot.premiumPct || 0) : (copilot.chatPct || 0);
+    var copilotStatus = usageHealthClass(copilotUsed);
+    providerHTML += '<div class="provider-health-row">' +
+      '<span class="ph-name">🐙 Copilot</span>' +
+      '<span class="ph-count">' + esc(copilot.email || copilot.username || 'Copilot') + '</span>' +
+      '<span class="ph-bar"><span class="ph-fill ' + copilotStatus + '" style="width:' + Math.max(0, 100 - copilotUsed) + '%"></span></span>' +
+      '<span class="ph-stat ' + copilotStatus + '">' + esc(copilot.plan || 'unknown') + '</span>' +
+      '</div>';
+  }
+
+  if (latestQuotaData && latestQuotaData.pluginSnapshots) {
+    for (var psi = 0; psi < latestQuotaData.pluginSnapshots.length; psi++) {
+      var pluginSnap = latestQuotaData.pluginSnapshots[psi] as any;
+      var pluginStatus = usageHealthClass(pluginSnap.usagePct || 0);
+      providerHTML += '<div class="provider-health-row">' +
+        '<span class="ph-name">🧩 ' + esc(pluginSnap.provider || pluginSnap.pluginId || 'Plugin') + '</span>' +
+        '<span class="ph-count">' + esc(pluginSnap.label || pluginSnap.email || pluginSnap.pluginId || 'Plugin source') + '</span>' +
+        '<span class="ph-bar"><span class="ph-fill ' + pluginStatus + '" style="width:' + Math.max(0, 100 - (pluginSnap.usagePct || 0)) + '%"></span></span>' +
+        '<span class="ph-stat ' + pluginStatus + '">' + esc(pluginSnap.plan || formatUsageSummary(pluginSnap.usagePct || 0)) + '</span>' +
+        '</div>';
+    }
   }
   providerHTML += '</div></div>';
 
-  // F8: Estimated Cost KPI (async — fetched from /api/cost) ──
   var costKPIHTML = '<div id="cost-kpi-container"></div>';
-
-  // F13: Token Usage Analytics (async — fetched from /api/token-usage) ──
   var tokenAnalyticsHTML = '<div id="token-analytics-container" class="overview-card full-width"></div>';
-
-  // F16: Git Commit Correlation (async — fetched from /api/git-costs) ──
   var gitCostsHTML = '<div id="git-costs-container" class="overview-card full-width"></div>';
-
-  // F6: Activity Heatmap (async — fetched from /api/history/heatmap) ──
   var heatmapHTML = '<div id="heatmap-container" class="overview-card full-width"></div>';
-
-  // F4-UX: Streak card — rendered into heatmap container after heatmap loads
-
-  // F5-UX: Anomaly Detection Card (async)
   var anomalyHTML = '<div id="anomaly-card-container"></div>';
 
-  // P1: Content order — safe-to-spend hero first, then anomalies, countdown, advisor, cost KPI, analytics, heatmap, provider health, spend, insights
   el.innerHTML = safeToSpendHTML + anomalyHTML + countdownHTML + advisorHTML + costKPIHTML + tokenAnalyticsHTML + gitCostsHTML + heatmapHTML + providerHTML + insightsHTML + claudeHTML + spendHTML + calendarHTML + linksHTML + exportHTML;
 
-  // F1-UX: Wire Safe to Spend buttons (CSP-safe — no inline onclick)
   wireSafeToSpendButtons(openBudgetModal);
-
-  // F5-UX: Load anomaly detection (async)
   loadAnomalies();
 
-  // F16-UX: Wire monthly report button (CSP-safe)
   var reportBtn = document.getElementById('generate-report-btn');
   if (reportBtn) {
     reportBtn.addEventListener('click', function() { downloadReport(); });
   }
 
-  // Async load Claude Code bridge data (only if bridge enabled)
   if (serverConfig['claude_bridge'] === 'true') {
     loadClaudeCardData();
   } else {
-    // Bridge disabled — clear the "Loading..." placeholder
     var cardBody = document.getElementById('claude-card-body');
     if (cardBody) cardBody.innerHTML = '';
   }
 
-  // F15d: Async load Claude Code deep token usage (always, even if bridge disabled)
   loadClaudeDeepUsage();
-
-  // Async load advisor card
   loadAdvisorCard();
-
-  // F8: Async load estimated cost KPI
   loadCostKPI();
-
-  // F6: Async load activity heatmap
   loadHeatmap();
-
-  // F13: Async load token usage analytics
   loadTokenAnalytics();
-
-  // F16: Async load git commit correlation
   loadGitCosts();
 
-  // Render calendar with renewal data (only if container exists)
   if (renewals.length > 0) {
     renderRenewalCalendar(renewals, subs);
   }
 
-  // Phase 11: Sessions timeline (Codex card removed — Provider Health covers it)
   renderSessionsTimeline(el);
 }
 
+function usageHealthClass(usedPct: number): string {
+  if (usedPct >= 80) return 'health-bad';
+  if (usedPct >= 50) return 'health-warn';
+  return 'health-good';
+}
+
+function formatUsageSummary(usedPct: number): string {
+  return Math.max(0, 100 - usedPct).toFixed(0) + '% left';
+}

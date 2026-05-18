@@ -7,7 +7,9 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bhaskarjha-com/niyantra/internal/readiness"
@@ -249,24 +251,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 
 	// Quick links from all subscriptions
 	allSubs, _ := s.store.ListSubscriptions("", "")
-	type quickLink struct {
-		Platform string `json:"platform"`
-		URL      string `json:"url"`
-		Category string `json:"category"`
-	}
-	var links []quickLink
-	for _, sub := range allSubs {
-		if sub.URL != "" {
-			links = append(links, quickLink{
-				Platform: sub.Platform,
-				URL:      sub.URL,
-				Category: sub.Category,
-			})
-		}
-	}
-	if links == nil {
-		links = []quickLink{}
-	}
+	links := selectQuickLinks(allSubs)
 
 	// Phase 10: Server-computed insights
 	insights, _ := s.store.GenerateInsights()
@@ -310,13 +295,10 @@ func (s *Server) handleExportCSV(w http.ResponseWriter, r *http.Request) {
 	defer writer.Flush()
 
 	// Header row
-	// N23: Token Limit, Credit Limit, Request Limit columns are omitted
-	// because subscriptions are user-entered, not API-queried. These
-	// fields would require a schema extension — tracked for v2.
-	// for Cursor USD credit billing and Copilot request-based quota systems.
 	writer.Write([]string{
 		"Platform", "Category", "Plan", "Status",
 		"Monthly Cost", "Currency", "Billing Cycle",
+		"Token Limit", "Credit Limit", "Request Limit", "Limit Period", "Limit Note",
 		"Annual Cost", "Email", "Next Renewal",
 		"Notes", "Dashboard URL",
 	})
@@ -328,8 +310,80 @@ func (s *Server) handleExportCSV(w http.ResponseWriter, r *http.Request) {
 		writer.Write([]string{
 			sub.Platform, sub.Category, sub.PlanName, sub.Status,
 			fmt.Sprintf("%.2f", monthly), sub.CostCurrency, sub.BillingCycle,
+			strconv.FormatInt(sub.TokenLimit, 10),
+			strconv.FormatInt(sub.CreditLimit, 10),
+			strconv.FormatInt(sub.RequestLimit, 10),
+			sub.LimitPeriod, sub.LimitNote,
 			fmt.Sprintf("%.2f", annual), sub.Email, sub.NextRenewal,
 			sub.Notes, sub.URL,
 		})
 	}
+}
+
+type quickLink struct {
+	Platform string `json:"platform"`
+	URL      string `json:"url"`
+	Category string `json:"category"`
+}
+
+func selectQuickLinks(subs []*store.Subscription) []quickLink {
+	bestByPlatform := make(map[string]*store.Subscription)
+	for _, sub := range subs {
+		if strings.TrimSpace(sub.URL) == "" {
+			continue
+		}
+		current := bestByPlatform[sub.Platform]
+		if current == nil || preferQuickLink(sub, current) {
+			bestByPlatform[sub.Platform] = sub
+		}
+	}
+
+	platforms := make([]string, 0, len(bestByPlatform))
+	for platform := range bestByPlatform {
+		platforms = append(platforms, platform)
+	}
+	sort.Strings(platforms)
+
+	links := make([]quickLink, 0, len(platforms))
+	for _, platform := range platforms {
+		sub := bestByPlatform[platform]
+		links = append(links, quickLink{
+			Platform: sub.Platform,
+			URL:      sub.URL,
+			Category: sub.Category,
+		})
+	}
+	return links
+}
+
+func preferQuickLink(candidate, current *store.Subscription) bool {
+	if strings.EqualFold(candidate.Status, "active") && !strings.EqualFold(current.Status, "active") {
+		return true
+	}
+	if !strings.EqualFold(candidate.Status, "active") && strings.EqualFold(current.Status, "active") {
+		return false
+	}
+
+	candidateTime := parseSubscriptionTimestamp(candidate.UpdatedAt)
+	currentTime := parseSubscriptionTimestamp(current.UpdatedAt)
+	if candidateTime.After(currentTime) {
+		return true
+	}
+	if currentTime.After(candidateTime) {
+		return false
+	}
+	return candidate.ID > current.ID
+}
+
+func parseSubscriptionTimestamp(raw string) time.Time {
+	if raw == "" {
+		return time.Time{}
+	}
+	if ts, err := time.Parse(time.RFC3339, raw); err == nil {
+		return ts
+	}
+	if ts, err := time.Parse("2006-01-02 15:04:05", raw); err == nil {
+		return ts
+	}
+	return time.Time{}
 }

@@ -710,6 +710,19 @@ func TestHeatmapData(t *testing.T) {
 	}
 	_, _ = s.InsertCopilotSnapshot(copilotSnap)
 
+	// Plugin snapshot (today)
+	_, _ = s.InsertPluginSnapshot(&PluginSnapshot{
+		PluginID:      "fixture-plugin",
+		Provider:      "fixture",
+		Label:         "Fixture Plugin",
+		UsagePct:      15.0,
+		UsageDisplay:  "15.0%",
+		Plan:          "Pro",
+		ModelsJSON:    "[]",
+		MetadataJSON:  "{}",
+		CaptureMethod: "plugin",
+	})
+
 	// Query heatmap
 	days, err = s.HeatmapData(365)
 	if err != nil {
@@ -738,8 +751,44 @@ func TestHeatmapData(t *testing.T) {
 	if day.Copilot != 1 {
 		t.Errorf("expected 1 Copilot snapshot, got %d", day.Copilot)
 	}
-	if day.Count != 7 {
-		t.Errorf("expected total count 7, got %d", day.Count)
+	if day.Plugin != 1 {
+		t.Errorf("expected 1 Plugin snapshot, got %d", day.Plugin)
+	}
+	if day.Count != 8 {
+		t.Errorf("expected total count 8, got %d", day.Count)
+	}
+}
+
+func TestDeleteAccountRemovesGeminiSnapshots(t *testing.T) {
+	s := openTestDB(t)
+
+	accountID, err := s.GetOrCreateAccount("gemini-delete@example.com", "Gemini CLI", "gemini")
+	if err != nil {
+		t.Fatalf("GetOrCreateAccount: %v", err)
+	}
+
+	if _, err := s.InsertGeminiSnapshot(&GeminiSnapshot{
+		AccountID:     accountID,
+		Email:         "gemini-delete@example.com",
+		Tier:          "standard",
+		OverallPct:    42.0,
+		ModelsJSON:    "[]",
+		CaptureMethod: "auto",
+		CaptureSource: "server",
+	}); err != nil {
+		t.Fatalf("InsertGeminiSnapshot: %v", err)
+	}
+
+	if count := s.GeminiSnapshotCount(); count != 1 {
+		t.Fatalf("expected 1 Gemini snapshot before delete, got %d", count)
+	}
+
+	if _, err := s.DeleteAccount(accountID); err != nil {
+		t.Fatalf("DeleteAccount: %v", err)
+	}
+
+	if count := s.GeminiSnapshotCount(); count != 0 {
+		t.Fatalf("expected Gemini snapshots to be deleted, got %d", count)
 	}
 }
 

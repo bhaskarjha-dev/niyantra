@@ -69,6 +69,11 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		result["copilotSnapshot"] = copilotSnap
 	}
 
+	pluginSnaps, _ := s.store.AllLatestPluginSnapshots()
+	if len(pluginSnaps) > 0 {
+		result["pluginSnapshots"] = pluginSnaps
+	}
+
 	// F7: Compute per-account forecasts using sliding-window rates
 	forecastsByAccount := s.computeAccountForecasts(snapshots)
 	if forecastsByAccount != nil {

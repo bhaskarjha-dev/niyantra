@@ -105,7 +105,7 @@ func (s *Store) UpdateAccountMeta(accountID int64, notes, tags, pinnedGroup stri
 	return err
 }
 
-// DeleteAccount removes an account and all its associated data (snapshots, cycles, sessions, codex/cursor snapshots).
+// DeleteAccount removes an account and all its associated data.
 // Returns the total number of deleted rows across all tables.
 func (s *Store) DeleteAccount(accountID int64) (int64, error) {
 	var totalDeleted int64
@@ -119,6 +119,7 @@ func (s *Store) DeleteAccount(accountID int64) (int64, error) {
 		{"DELETE FROM antigravity_reset_cycles WHERE account_id = ?", "reset_cycles"},
 		{"DELETE FROM codex_snapshots WHERE account_id = ?", "codex_snapshots"},
 		{"DELETE FROM cursor_snapshots WHERE account_id = ?", "cursor_snapshots"},
+		{"DELETE FROM gemini_snapshots WHERE account_id = ?", "gemini_snapshots"},
 		{"DELETE FROM copilot_snapshots WHERE account_id = ?", "copilot_snapshots"},
 		{"DELETE FROM accounts WHERE id = ?", "accounts"},
 	}

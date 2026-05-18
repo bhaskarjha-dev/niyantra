@@ -7,6 +7,16 @@ export function loadAnomalies(): void {
   if (!container) return;
 
   fetch('/api/anomalies').then(function(res) { return res.json(); }).then(function(data: any) {
+    if (data && data.disabled) {
+      container!.innerHTML = '<div class="overview-card anomaly-card info">' +
+        '<div class="anomaly-header">' +
+          '<span class="anomaly-title">Cost Anomaly Detection</span>' +
+        '</div>' +
+        '<div class="anomaly-item">' + escHtml(data.reason || 'Insufficient historical data.') + '</div>' +
+        '</div>';
+      return;
+    }
+
     if (!data || !data.anomalies || data.anomalies.length === 0) {
       container!.innerHTML = '';
       return;

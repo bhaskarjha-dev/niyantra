@@ -1818,42 +1818,6 @@
     document.getElementById("budget-overlay").hidden = true;
   }
 
-  // internal/web/src/charts/sparkline.ts
-  function sparkline(data, opts) {
-    var w = opts && opts.width || 60;
-    var h = opts && opts.height || 20;
-    var color = opts && opts.color || "var(--accent)";
-    var dir = opts && opts.direction || "flat";
-    if (!data || data.length < 2) {
-      return '<span class="sparkline-container"><svg width="' + w + '" height="' + h + '"></svg></span>';
-    }
-    var min = Math.min.apply(null, data);
-    var max = Math.max.apply(null, data);
-    var range = max - min || 1;
-    var pad = 2;
-    var points = "";
-    var lastX = 0;
-    var lastY = 0;
-    for (var i = 0; i < data.length; i++) {
-      var x = pad + i / (data.length - 1) * (w - 2 * pad);
-      var y = h - pad - (data[i] - min) / range * (h - 2 * pad);
-      points += x.toFixed(1) + "," + y.toFixed(1) + " ";
-      lastX = x;
-      lastY = y;
-    }
-    var arrowColor = dir === "up" ? "var(--green)" : dir === "down" ? "var(--red)" : "var(--text-muted)";
-    var arrow = dir === "up" ? "\u2191" : dir === "down" ? "\u2193" : "\u2192";
-    return '<span class="sparkline-container"><svg width="' + w + '" height="' + h + '" class="sparkline-svg"><polyline points="' + points.trim() + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/><circle cx="' + lastX.toFixed(1) + '" cy="' + lastY.toFixed(1) + '" r="2" fill="' + color + '"/></svg><span class="sparkline-arrow" style="color:' + arrowColor + '">' + arrow + "</span></span>";
-  }
-  function trendDirection(data) {
-    if (!data || data.length < 2) return "flat";
-    var first = data[0];
-    var last = data[data.length - 1];
-    if (last > first * 1.05) return "up";
-    if (last < first * 0.95) return "down";
-    return "flat";
-  }
-
   // internal/web/src/overview/insights.ts
   function renderServerInsights(insights) {
     if (!insights || insights.length === 0) return "";
@@ -2097,6 +2061,7 @@
             if (entry.cursor > 0) parts.push(entry.cursor + " Cursor");
             if (entry.gemini > 0) parts.push(entry.gemini + " Gemini");
             if (entry.copilot > 0) parts.push(entry.copilot + " Copilot");
+            if (entry.plugin > 0) parts.push(entry.plugin + " Plugin");
             if (parts.length > 0) tooltip += " (" + parts.join(", ") + ")";
           }
         }
@@ -2442,6 +2407,42 @@
       }
     }).catch(function() {
     });
+  }
+
+  // internal/web/src/charts/sparkline.ts
+  function sparkline(data, opts) {
+    var w = opts && opts.width || 60;
+    var h = opts && opts.height || 20;
+    var color = opts && opts.color || "var(--accent)";
+    var dir = opts && opts.direction || "flat";
+    if (!data || data.length < 2) {
+      return '<span class="sparkline-container"><svg width="' + w + '" height="' + h + '"></svg></span>';
+    }
+    var min = Math.min.apply(null, data);
+    var max = Math.max.apply(null, data);
+    var range = max - min || 1;
+    var pad = 2;
+    var points = "";
+    var lastX = 0;
+    var lastY = 0;
+    for (var i = 0; i < data.length; i++) {
+      var x = pad + i / (data.length - 1) * (w - 2 * pad);
+      var y = h - pad - (data[i] - min) / range * (h - 2 * pad);
+      points += x.toFixed(1) + "," + y.toFixed(1) + " ";
+      lastX = x;
+      lastY = y;
+    }
+    var arrowColor = dir === "up" ? "var(--green)" : dir === "down" ? "var(--red)" : "var(--text-muted)";
+    var arrow = dir === "up" ? "\u2191" : dir === "down" ? "\u2193" : "\u2192";
+    return '<span class="sparkline-container"><svg width="' + w + '" height="' + h + '" class="sparkline-svg"><polyline points="' + points.trim() + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/><circle cx="' + lastX.toFixed(1) + '" cy="' + lastY.toFixed(1) + '" r="2" fill="' + color + '"/></svg><span class="sparkline-arrow" style="color:' + arrowColor + '">' + arrow + "</span></span>";
+  }
+  function trendDirection(data) {
+    if (!data || data.length < 2) return "flat";
+    var first = data[0];
+    var last = data[data.length - 1];
+    if (last > first * 1.05) return "up";
+    if (last < first * 0.95) return "down";
+    return "flat";
   }
 
   // internal/web/src/overview/tokenAnalytics.ts
@@ -2810,6 +2811,10 @@
     fetch("/api/anomalies").then(function(res) {
       return res.json();
     }).then(function(data) {
+      if (data && data.disabled) {
+        container.innerHTML = '<div class="overview-card anomaly-card info"><div class="anomaly-header"><span class="anomaly-title">Cost Anomaly Detection</span></div><div class="anomaly-item">' + escHtml(data.reason || "Insufficient historical data.") + "</div></div>";
+        return;
+      }
       if (!data || !data.anomalies || data.anomalies.length === 0) {
         container.innerHTML = "";
         return;
@@ -3140,19 +3145,7 @@
     var countdownHTML = countdownContent ? '<div id="countdown-container" style="grid-column:1/-1">' + countdownContent + "</div>" : "";
     if (latestQuotaData) startCountdownRefresh(latestQuotaData);
     var cats = Object.keys(stats.byCategory);
-    var spendSparkHTML = "";
-    var subsMonthly = stats.totalMonthlySpend || 0;
-    if (subsMonthly > 0 && subs.length > 0) {
-      var dailyBase = subsMonthly / 30;
-      var sparkData = [];
-      for (var sd = 0; sd < 7; sd++) {
-        sparkData.push(dailyBase * (0.85 + Math.random() * 0.3));
-      }
-      sparkData[6] = dailyBase;
-      var dir = trendDirection(sparkData);
-      spendSparkHTML = sparkline(sparkData, { width: 70, height: 22, color: "var(--accent)", direction: dir });
-    }
-    var spendHTML = '<div class="overview-card"><h3>Monthly AI Spend</h3><div class="kpi-with-sparkline"><div class="overview-big-number">$' + stats.totalMonthlySpend.toFixed(2) + "</div>" + (spendSparkHTML ? '<div class="kpi-sparkline">' + spendSparkHTML + "</div>" : "") + "</div>";
+    var spendHTML = '<div class="overview-card"><h3>Monthly AI Spend</h3><div class="kpi-with-sparkline"><div class="overview-big-number">$' + stats.totalMonthlySpend.toFixed(2) + "</div></div>";
     if (cats.length > 1) {
       cats.sort(function(a, b) {
         return (stats.byCategory[b].monthlySpend || 0) - (stats.byCategory[a].monthlySpend || 0);
@@ -3173,18 +3166,10 @@
     }
     var linksHTML = "";
     if (links.length > 0) {
-      var platformLinks = {};
-      for (var l = 0; l < links.length; l++) {
-        var lnk = links[l];
-        if (!platformLinks[lnk.platform]) {
-          platformLinks[lnk.platform] = lnk;
-        }
-      }
-      var platformKeys = Object.keys(platformLinks);
-      if (platformKeys.length > 1 || platformKeys.length === 1 && platformKeys[0] !== "Antigravity") {
+      if (links.length > 1 || links.length === 1 && links[0].platform !== "Antigravity") {
         linksHTML = '<div class="overview-card full-width"><h3>Quick Links</h3><div class="quick-links-grid">';
-        for (var pk = 0; pk < platformKeys.length; pk++) {
-          var pl = platformLinks[platformKeys[pk]];
+        for (var pk = 0; pk < links.length; pk++) {
+          var pl = links[pk];
           linksHTML += '<a class="quick-link" href="' + esc(pl.url) + '" target="_blank" rel="noopener">\u{1F517} ' + esc(pl.platform) + "</a>";
         }
         linksHTML += "</div></div>";
@@ -3205,14 +3190,39 @@
     }
     if (latestQuotaData && latestQuotaData.codexSnapshot) {
       var cs = latestQuotaData.codexSnapshot;
-      var cxStatus = cs.status === "healthy" ? "health-good" : "health-bad";
+      var codexUsed = Math.max(cs.fiveHourPct || 0, cs.sevenDayPct || 0, cs.codeReviewPct || 0);
+      var cxStatus = usageHealthClass(codexUsed);
       var cxLabel = cs.email || "Codex account";
-      providerHTML += '<div class="provider-health-row"><span class="ph-name">\u{1F916} Codex</span><span class="ph-count">' + esc(cxLabel) + '</span><span class="ph-bar"><span class="ph-fill ' + cxStatus + '" style="width:' + (100 - (cs.sevenDayPct || 0)) + '%"></span></span><span class="ph-stat ' + cxStatus + '">' + esc(cs.planType || "free") + "</span></div>";
+      providerHTML += '<div class="provider-health-row"><span class="ph-name">\u{1F916} Codex</span><span class="ph-count">' + esc(cxLabel) + '</span><span class="ph-bar"><span class="ph-fill ' + cxStatus + '" style="width:' + Math.max(0, 100 - codexUsed) + '%"></span></span><span class="ph-stat ' + cxStatus + '">' + esc(cs.planType || "free") + "</span></div>";
     }
     if (latestQuotaData && latestQuotaData.claudeSnapshot) {
-      var cls2 = latestQuotaData.claudeSnapshot;
-      var clStatus = cls2.status === "healthy" ? "health-good" : "health-bad";
-      providerHTML += '<div class="provider-health-row"><span class="ph-name">\u{1F52E} Claude Code</span><span class="ph-count">Bridge</span><span class="ph-bar"><span class="ph-fill ' + clStatus + '" style="width:' + (100 - (cls2.fiveHourPct || 0)) + '%"></span></span><span class="ph-stat ' + clStatus + '">' + (cls2.status || "\u2014") + "</span></div>";
+      var claude = latestQuotaData.claudeSnapshot;
+      var claudeUsed = Math.max(claude.fiveHourPct || 0, claude.sevenDayPct || 0);
+      var clStatus = usageHealthClass(claudeUsed);
+      providerHTML += '<div class="provider-health-row"><span class="ph-name">\u{1F52E} Claude Code</span><span class="ph-count">Bridge</span><span class="ph-bar"><span class="ph-fill ' + clStatus + '" style="width:' + Math.max(0, 100 - claudeUsed) + '%"></span></span><span class="ph-stat ' + clStatus + '">' + formatUsageSummary(claudeUsed) + "</span></div>";
+    }
+    if (latestQuotaData && latestQuotaData.cursorSnapshot) {
+      var cursor = latestQuotaData.cursorSnapshot;
+      var cursorStatus = usageHealthClass(cursor.usagePct || 0);
+      providerHTML += '<div class="provider-health-row"><span class="ph-name">\u{1F5B1}\uFE0F Cursor</span><span class="ph-count">' + esc(cursor.email || cursor.billingModel || "Cursor") + '</span><span class="ph-bar"><span class="ph-fill ' + cursorStatus + '" style="width:' + Math.max(0, 100 - (cursor.usagePct || 0)) + '%"></span></span><span class="ph-stat ' + cursorStatus + '">' + esc(cursor.planTier || "unknown") + "</span></div>";
+    }
+    if (latestQuotaData && latestQuotaData.geminiSnapshot) {
+      var gemini = latestQuotaData.geminiSnapshot;
+      var geminiStatus = usageHealthClass(gemini.overallPct || 0);
+      providerHTML += '<div class="provider-health-row"><span class="ph-name">\u2728 Gemini CLI</span><span class="ph-count">' + esc(gemini.email || gemini.projectId || "Gemini") + '</span><span class="ph-bar"><span class="ph-fill ' + geminiStatus + '" style="width:' + Math.max(0, 100 - (gemini.overallPct || 0)) + '%"></span></span><span class="ph-stat ' + geminiStatus + '">' + esc(gemini.tier || "unknown") + "</span></div>";
+    }
+    if (latestQuotaData && latestQuotaData.copilotSnapshot) {
+      var copilot = latestQuotaData.copilotSnapshot;
+      var copilotUsed = copilot.hasPremium ? copilot.premiumPct || 0 : copilot.chatPct || 0;
+      var copilotStatus = usageHealthClass(copilotUsed);
+      providerHTML += '<div class="provider-health-row"><span class="ph-name">\u{1F419} Copilot</span><span class="ph-count">' + esc(copilot.email || copilot.username || "Copilot") + '</span><span class="ph-bar"><span class="ph-fill ' + copilotStatus + '" style="width:' + Math.max(0, 100 - copilotUsed) + '%"></span></span><span class="ph-stat ' + copilotStatus + '">' + esc(copilot.plan || "unknown") + "</span></div>";
+    }
+    if (latestQuotaData && latestQuotaData.pluginSnapshots) {
+      for (var psi = 0; psi < latestQuotaData.pluginSnapshots.length; psi++) {
+        var pluginSnap = latestQuotaData.pluginSnapshots[psi];
+        var pluginStatus = usageHealthClass(pluginSnap.usagePct || 0);
+        providerHTML += '<div class="provider-health-row"><span class="ph-name">\u{1F9E9} ' + esc(pluginSnap.provider || pluginSnap.pluginId || "Plugin") + '</span><span class="ph-count">' + esc(pluginSnap.label || pluginSnap.email || pluginSnap.pluginId || "Plugin source") + '</span><span class="ph-bar"><span class="ph-fill ' + pluginStatus + '" style="width:' + Math.max(0, 100 - (pluginSnap.usagePct || 0)) + '%"></span></span><span class="ph-stat ' + pluginStatus + '">' + esc(pluginSnap.plan || formatUsageSummary(pluginSnap.usagePct || 0)) + "</span></div>";
+      }
     }
     providerHTML += "</div></div>";
     var costKPIHTML = '<div id="cost-kpi-container"></div>';
@@ -3245,6 +3255,14 @@
       renderRenewalCalendar(renewals, subs);
     }
     renderSessionsTimeline(el);
+  }
+  function usageHealthClass(usedPct) {
+    if (usedPct >= 80) return "health-bad";
+    if (usedPct >= 50) return "health-warn";
+    return "health-good";
+  }
+  function formatUsageSummary(usedPct) {
+    return Math.max(0, 100 - usedPct).toFixed(0) + "% left";
   }
 
   // internal/web/src/advanced/snap.ts
