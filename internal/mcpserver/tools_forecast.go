@@ -40,7 +40,7 @@ type ForecastOutput struct {
 
 // ── Forecast Tool Handlers ───────────────────────────────────────
 
-// handleQuotaForecast returns time-to-exhaustion forecasts for all providers.
+// handleQuotaForecast returns time-to-exhaustion forecasts for Antigravity accounts.
 func (m *MCPServer) handleQuotaForecast(_ context.Context, _ *mcp.CallToolRequest, _ EmptyInput) (*mcp.CallToolResult, ForecastOutput, error) {
 	out := ForecastOutput{}
 
@@ -53,7 +53,7 @@ func (m *MCPServer) handleQuotaForecast(_ context.Context, _ *mcp.CallToolReques
 	groups := make([]forecast.GroupDefinition, len(client.GroupOrder))
 	for i, key := range client.GroupOrder {
 		groups[i] = forecast.GroupDefinition{
-			GroupKey:     key,
+			GroupKey:    key,
 			DisplayName: client.GroupDisplayNames[key],
 		}
 	}
@@ -193,7 +193,7 @@ func (m *MCPServer) computeMCPCosts(snapshots []*client.Snapshot) map[int64]cost
 		for _, key := range client.GroupOrder {
 			if acc, ok := groupRemaining[key]; ok && acc.count > 0 {
 				rates = append(rates, costtrack.GroupRate{
-					GroupKey:   key,
+					GroupKey:  key,
 					Remaining: acc.sum / float64(acc.count),
 					HasData:   true,
 				})

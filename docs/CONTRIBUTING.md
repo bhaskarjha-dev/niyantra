@@ -142,7 +142,7 @@ internal/
     gitcorr.go                        Git log ↔ Claude session timestamp correlation
 
   mcpserver/                       ← MCP stdio + Streamable HTTP server
-    server.go                         11 tools: quota, models, usage, budget, best_model, spending, switch, codex, forecast, token_usage, git_commit_costs
+    mcpserver.go                      13 tools: quota, models, usage, budget, best_model, spending, switch, codex, forecast, token_usage_stats, git_commit_costs, copilot_status, plugin_status
 
   web/                             ← Modular HTTP server (17 Go files)
     server.go                         Server struct, lifecycle, route table
@@ -159,13 +159,13 @@ internal/
     handlers_cursor.go                Cursor status/snap endpoints
     handlers_gemini.go                Gemini status/snap endpoints
     handlers_copilot.go               Copilot status/snap endpoints
-    handlers_heatmap.go               Activity heatmap data
+    handlers_quota.go                 Status payload + activity heatmap endpoints
     static/                           Embedded via Go embed.FS
       index.html                       Single-page dashboard shell
       style.css                        Design system (CSS variables, dark/light themes)
       app.js                           GENERATED — do not edit (bundled from src/)
       sw.js                            Service Worker for WebPush notifications
-    src/                              TypeScript source (30 modules, strict mode)
+    src/                              TypeScript source (strict mode)
       main.ts                          Entry point: imports + DOMContentLoaded init
       subscriptions.ts                 Subscription cards, modal, search
       core/                            state.ts, utils.ts, api.ts, theme.ts

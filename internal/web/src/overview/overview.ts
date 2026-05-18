@@ -99,10 +99,11 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
 
   var exportHTML = '<div class="overview-card full-width"><h3>Export</h3>' +
     '<p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">' +
-    'Download your data for expense tracking, tax reports, or backup.</p>' +
+    'Download a redacted JSON report or a full database backup.</p>' +
     '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
     '<a class="btn-add" href="/api/export/csv" download style="text-decoration:none;display:inline-flex;padding:6px 12px;font-size:12px">📥 CSV</a>' +
-    '<a class="btn-add" href="/api/export/json" download style="text-decoration:none;display:inline-flex;padding:6px 12px;font-size:12px">📦 JSON</a>' +
+    '<a class="btn-add" href="/api/export/json" download style="text-decoration:none;display:inline-flex;padding:6px 12px;font-size:12px">📦 Redacted JSON</a>' +
+    '<a class="btn-add" href="/api/backup" download style="text-decoration:none;display:inline-flex;padding:6px 12px;font-size:12px">💾 DB Backup</a>' +
     '<button class="btn-add" id="generate-report-btn" style="padding:6px 12px;font-size:12px">📊 Monthly Report</button>' +
     '</div></div>';
 

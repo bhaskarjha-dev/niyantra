@@ -126,7 +126,7 @@ Track subscriptions across **26+ AI platforms** with renewals, spending breakdow
 
 ### Let AI Help You Code Smarter
 
-**Switch Advisor** ranks your accounts and tells you which one to use right now. **MCP Server** (12 tools over stdio + Streamable HTTP) lets your AI agent check quotas, analyze spending, query plugin data, and get routing recommendations mid-task — locally or remotely. **Anomaly detection** uses Z-score statistical analysis to proactively flag cost spikes.
+**Switch Advisor** ranks your accounts and tells you which one to use right now. **MCP Server** (13 tools over stdio + Streamable HTTP) lets your AI agent check quotas, analyze spending, query plugin data, and get routing recommendations mid-task — locally or remotely. **Anomaly alerts** stay disabled until Niyantra has enough real daily spend history to analyze.
 
 ### Stay Informed
 
@@ -150,7 +150,7 @@ SQLite database. No cloud. No telemetry. Full provenance audit trail on every sn
 |-----|---------------|
 | **Quotas** | Provider-sectioned layout (Antigravity/Codex/Claude/Cursor/Gemini/Copilot), per-model progress bars with reset timers, Quick Adjust (±5%/±10%), provider, status & tag filters, split-button snap, twin-axis history chart with event annotations, activity heatmap, AI Credits tracking |
 | **Subscriptions** | Hybrid card + provider layout with spend summary, search, 26 platform presets, CSV export |
-| **Overview** | Safe to Spend guardrail, anomaly alerts, monthly budget vs actual, switch advisor, provider health cards, sparkline KPIs, estimated cost tracking, Git commit costs, token usage analytics, sessions timeline, renewal calendar, shareable PNG report, JSON/CSV export |
+| **Overview** | Safe to Spend guardrail, anomaly status card, monthly budget vs actual, switch advisor, provider health cards, estimated cost tracking, Git commit costs, token usage analytics, sessions timeline, renewal calendar, shareable PNG report, redacted JSON/CSV export + DB backup |
 | **Settings** | Auto-capture (7 providers), polling interval, notifications (4 channels + digest mode), plugin management, model pricing, Claude bridge, backup/restore, command palette (`Ctrl+K`) |
 
 ---
@@ -177,7 +177,7 @@ SQLite database. No cloud. No telemetry. Full provenance audit trail on every sn
 
 Niyantra exposes quota intelligence to AI coding agents via the [Model Context Protocol](https://modelcontextprotocol.io).
 
-**12 tools:** `quota_status` `model_availability` `usage_intelligence` `budget_forecast` `best_model` `analyze_spending` `switch_recommendation` `codex_status` `quota_forecast` `token_usage` `git_commit_costs` `plugin_status`
+**13 tools:** `quota_status` `model_availability` `usage_intelligence` `budget_forecast` `best_model` `analyze_spending` `switch_recommendation` `codex_status` `quota_forecast` `token_usage_stats` `git_commit_costs` `copilot_status` `plugin_status`
 
 **Stdio transport** (local agents):
 ```json
@@ -206,7 +206,7 @@ Then ask: *"What's my quota?"* or *"Which account should I use?"* or *"How much 
 | Subscription management | 26 AI platforms, renewals, CSV | — | Generic subs | — |
 | Budget forecasting | Monthly budget with projections | — | Basic budget | — |
 | Switch advisor (account routing) | Multi-factor scoring engine | — | — | — |
-| MCP for AI agents | 12 tools over stdio + HTTP | — | — | — |
+| MCP for AI agents | 13 tools over stdio + HTTP | — | — | — |
 | Notifications | Quad-channel (OS + SMTP + Webhook + WebPush) | — | 10+ channels | — |
 | Token analytics | Per-model cost estimation + git correlation | — | — | — |
 | Renewal calendar | Visual month view | — | Calendar view | — |

@@ -5,10 +5,10 @@
 //   - stdio (JSON-RPC 2.0) for local AI agent integration via `niyantra mcp`
 //   - Streamable HTTP for remote clients via the `/mcp` endpoint on the web dashboard
 //
-// It provides 12 tools for querying quota status, model availability, usage
+// It provides 13 tools for querying quota status, model availability, usage
 // intelligence, budget forecasts, model recommendations, spending analysis,
 // switch advice, Codex status, quota time-to-exhaustion, token usage
-// analytics, git commit cost correlation, and plugin data.
+// analytics, git commit cost correlation, Copilot state, and plugin data.
 //
 // Tool handlers are organized into domain files:
 //
@@ -98,12 +98,12 @@ func New(s *store.Store, t *tracker.Tracker, logger *slog.Logger, version string
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "quota_forecast",
-		Description: "Get time-to-exhaustion (TTX) forecasts for all tracked quota groups across all providers. Uses sliding-window rate calculations from recent snapshot history (last 60 min) for accurate burn rate predictions. Returns per-group TTX estimates with severity levels (safe/caution/warning/critical) and confidence indicators. Covers Antigravity model groups, Claude Code, and Codex providers.",
+		Description: "Get time-to-exhaustion (TTX) forecasts for tracked Antigravity quota groups. Uses sliding-window rate calculations from recent snapshot history (last 60 min) for burn rate estimates. Returns per-group TTX with severity levels, confidence indicators, and estimated cost when pricing data is available.",
 	}, m.handleQuotaForecast)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "token_usage_stats",
-		Description: "Get unified token usage analytics across all AI coding providers. Returns total token counts (input/output/cache), estimated costs, per-model breakdowns, daily trends, and KPIs (cache hit rate, avg tokens/day, peak day). Supports time range filtering (default 30 days). Primary data source is Claude Code JSONL sessions with full per-turn granularity.",
+		Description: "Get token usage analytics from Claude Code JSONL sessions plus any persisted non-Claude token_usage rows. Returns total token counts (input/output/cache), estimated costs, per-model breakdowns, daily trends, and KPIs. Supports time range filtering (default 30 days).",
 	}, m.handleTokenUsageStats)
 
 	mcp.AddTool(srv, &mcp.Tool{

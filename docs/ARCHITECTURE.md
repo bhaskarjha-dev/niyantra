@@ -8,7 +8,7 @@
 User Interfaces
   CLI (snap/status/serve/mcp/demo/backup/restore)
   Dashboard (4 tabs, embedded web app, PWA)
-  MCP Server (12 tools, stdio + Streamable HTTP)
+  MCP Server (13 tools, stdio + Streamable HTTP)
           |
 Application Layer
   agent/        - polling loop + session management
@@ -199,7 +199,7 @@ Serves a 4-tab dashboard with embedded static assets and a REST API.
 | `handlers_gemini.go` | Gemini status/snap endpoints |
 | `handlers_copilot.go` | Copilot status/snap endpoints |
 | `handlers_plugins.go` | Plugin discovery, execution, config |
-| `handlers_heatmap.go` | Activity heatmap data (365 days) |
+| `handlers_quota.go` | Status + heatmap API data |
 | `embed_prod.go` / `embed_dev.go` | Build-tag-switched static FS |
 
 ### Endpoints (60 REST)

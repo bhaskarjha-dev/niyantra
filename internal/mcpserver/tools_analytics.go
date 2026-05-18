@@ -19,20 +19,20 @@ type TokenUsageInput struct {
 
 // TokenUsageOutput is the output of token_usage_stats.
 type TokenUsageOutput struct {
-	TotalTokens   int64                      `json:"totalTokens"`
-	EstimatedCost float64                    `json:"estimatedCostUSD"`
-	InputTokens   int64                      `json:"inputTokens"`
-	OutputTokens  int64                      `json:"outputTokens"`
-	CacheTokens   int64                      `json:"cacheTokens"`
-	Sessions      int                        `json:"sessions"`
-	DaysActive    int                        `json:"daysActive"`
-	AvgPerDay     int64                      `json:"avgTokensPerDay"`
-	CacheHitRate  float64                    `json:"cacheHitRate"`
-	TopModel      string                     `json:"topModel"`
-	PeakDay       string                     `json:"peakDay"`
+	TotalTokens   int64                       `json:"totalTokens"`
+	EstimatedCost float64                     `json:"estimatedCostUSD"`
+	InputTokens   int64                       `json:"inputTokens"`
+	OutputTokens  int64                       `json:"outputTokens"`
+	CacheTokens   int64                       `json:"cacheTokens"`
+	Sessions      int                         `json:"sessions"`
+	DaysActive    int                         `json:"daysActive"`
+	AvgPerDay     int64                       `json:"avgTokensPerDay"`
+	CacheHitRate  float64                     `json:"cacheHitRate"`
+	TopModel      string                      `json:"topModel"`
+	PeakDay       string                      `json:"peakDay"`
 	Models        []tokenusage.ModelBreakdown `json:"topModels"`
-	Period        tokenusage.Period          `json:"period"`
-	Message       string                     `json:"message"`
+	Period        tokenusage.Period           `json:"period"`
+	Message       string                      `json:"message"`
 }
 
 func (m *MCPServer) handleTokenUsageStats(_ context.Context, _ *mcp.CallToolRequest, input TokenUsageInput) (*mcp.CallToolResult, TokenUsageOutput, error) {
@@ -63,7 +63,7 @@ func (m *MCPServer) handleTokenUsageStats(_ context.Context, _ *mcp.CallToolRequ
 	if provider == "all" || provider == "claude" {
 		claudeSummary, cerr := tokenusage.AggregateFromClaude(days, priceFn)
 		if cerr != nil {
-			m.logger.Warn("MCP token_usage: Claude aggregation failed", "error", cerr)
+			m.logger.Warn("MCP token_usage_stats: Claude aggregation failed", "error", cerr)
 		}
 		if provider == "claude" {
 			summary = claudeSummary
@@ -131,13 +131,13 @@ type GitCostInput struct {
 
 // GitCostOutput is the output of git_commit_costs.
 type GitCostOutput struct {
-	Message      string             `json:"message"`
-	CommitCount  int                `json:"commitCount"`
-	TotalTokens  int64              `json:"totalTokens"`
-	TotalCost    float64            `json:"totalCost"`
-	AvgPerCommit float64            `json:"avgPerCommit"`
-	TopBranch    string             `json:"topBranch"`
-	TopCommits   []GitCommitSummary `json:"topCommits,omitempty"`
+	Message      string               `json:"message"`
+	CommitCount  int                  `json:"commitCount"`
+	TotalTokens  int64                `json:"totalTokens"`
+	TotalCost    float64              `json:"totalCost"`
+	AvgPerCommit float64              `json:"avgPerCommit"`
+	TopBranch    string               `json:"topBranch"`
+	TopCommits   []GitCommitSummary   `json:"topCommits,omitempty"`
 	Branches     []gitcorr.BranchCost `json:"branches,omitempty"`
 }
 

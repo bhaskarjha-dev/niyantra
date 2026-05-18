@@ -323,12 +323,12 @@ niyantra restore <file>  # Restore from backup
 
 ---
 
-## 9. MCP Server (11 tools)
+## 9. MCP Server (13 tools)
 
 ### 9.1 Stdio Transport
 - [ ] `niyantra mcp` starts without error
 - [ ] JSON-RPC initialize → response with `serverInfo.name: "niyantra"`
-- [ ] `tools/list` returns 11 tools
+- [ ] `tools/list` returns 13 tools
 
 ### 9.2 Streamable HTTP Transport
 - [ ] `POST /mcp` endpoint accepts MCP protocol messages
@@ -346,9 +346,11 @@ niyantra restore <file>  # Restore from backup
 | `analyze_spending` | Spending analysis, savings detection |
 | `switch_recommendation` | AI-powered switch advice |
 | `codex_status` | Codex/ChatGPT quota state |
-| `quota_forecast` | TTX forecasting per model |
-| `token_usage` | Claude Code token analytics |
+| `quota_forecast` | Antigravity TTX forecasting |
+| `token_usage_stats` | Claude Code token analytics plus persisted non-Claude token rows |
 | `git_commit_costs` | Git commit cost correlation |
+| `copilot_status` | GitHub Copilot plan and usage state |
+| `plugin_status` | Latest installed plugin data |
 
 ---
 
@@ -464,7 +466,7 @@ niyantra restore <file>  # Restore from backup
 - [ ] `niyantra backup` → creates timestamped `.db.bak` file
 - [ ] `niyantra restore <file>` → prompts for confirmation → database replaced
 - [ ] Dashboard backup button → downloads valid SQLite file
-- [ ] `GET /api/export/json` → full JSON export (all tables)
+- [ ] `GET /api/export/json` → redacted JSON export with recent history metadata
 - [ ] `POST /api/import/json` → additive merge with deduplication
 
 ---

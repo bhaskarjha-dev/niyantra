@@ -58,7 +58,7 @@ Based on a 28-tool competitive analysis across 8 market categories:
 
 **Niyantra leads with 37+ features** in the competitive matrix — next closest is onWatch at 12/37. Our unique moats:
 1. **Multi-account observability** (28+ accounts, passive read-only) — unlike the 6+ account managers that support multi-account via risky active switching, Niyantra monitors all accounts without triggering T&S
-2. **MCP Server** (11 tools, stdio + Streamable HTTP) — completely uncontested, zero competitors
+2. **MCP Server** (13 tools, stdio + Streamable HTTP) — completely uncontested, zero competitors
 3. **Combined quota + subscription + budget** in one tool — nobody else bridges this
 4. **Quad-channel notifications** (OS + SMTP + Webhook + WebPush) — more channels than any competitor
 5. **7 providers** (Antigravity, Codex, Claude deep, Cursor, Gemini CLI, Copilot, Manual) — broadest coverage in the local-first category
@@ -257,7 +257,7 @@ Polling agent with ticker loop, exponential backoff, config-driven enable/disabl
 Per-model reset cycle detection (3 methods), usage rate forecasting, projected exhaustion, budget burn rate alerts.
 
 ### ✅ Phase 8: MCP Server
-MCP server over stdio (12 tools) for AI agent integration. Uses official Go SDK (github.com/modelcontextprotocol/go-sdk).
+MCP server over stdio (13 tools) for AI agent integration. Uses official Go SDK (github.com/modelcontextprotocol/go-sdk).
 
 ### ✅ Phase 9: Multi-Source & Safety Net
 - **Claude Code statusline bridge** — real-time rate limit data via shared file, auto-patched `~/.claude/settings.json`, 5h/7d usage meters
@@ -287,7 +287,7 @@ MCP server over stdio (12 tools) for AI agent integration. Uses official Go SDK 
 - **MCP insight tools** — `analyze_spending` (spending analysis, savings detection, category breakdown) + `switch_recommendation` (wraps advisor for AI agents). Total: 7 MCP tools.
 - **Enhanced subscription insights** — structured insights with type/severity/icon: unused detection (30+ days), imminent renewal (3 days), spending anomaly (2× budget), category overlap (3+ subs)
 - **Renewal calendar** — CSS grid month-view calendar with pin markers on renewal dates, month navigation, legend
-- **JSON export** — `GET /api/export/json` with full data portability (accounts, subs, snapshots, claude data, config)
+- **JSON export** — `GET /api/export/json` as a redacted/importable report. Use `GET /api/backup` for a full-fidelity database backup.
 - **System alerts** — persistent dismissible banners for quota warnings, budget overages, bridge errors (schema v6: `system_alerts` table)
 - **Data retention cleanup** — enforce `retention_days` config via agent poll hook
 
@@ -354,7 +354,7 @@ MCP server over stdio (12 tools) for AI agent integration. Uses official Go SDK 
 ### ✅ Phase 15: Deep Analytics Sprint
 - **Token usage analytics** — parse Claude JSONL sessions for per-conversation token costs
 - **Git commit correlation** — cost per feature branch (unique — no competitor does this)
-- **Streamable HTTP MCP** — remote agent access over HTTP transport (11 tools)
+- **Streamable HTTP MCP** — remote agent access over HTTP transport (13 tools)
 - **Provider: GitHub Copilot** — GitHub PAT → billing endpoints
 
 ### 🔲 Phase 16: Ecosystem & Growth — in progress

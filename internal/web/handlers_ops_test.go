@@ -50,10 +50,19 @@ func TestHandleExportJSONMasksSensitiveConfig(t *testing.T) {
 	}
 
 	var export struct {
-		Config []*store.ConfigEntry `json:"config"`
+		RedactedSecrets bool                 `json:"redactedSecrets"`
+		FullBackupPath  string               `json:"fullBackupPath"`
+		Config          []*store.ConfigEntry `json:"config"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &export); err != nil {
 		t.Fatalf("unmarshal export JSON: %v", err)
+	}
+
+	if !export.RedactedSecrets {
+		t.Fatal("expected export to mark secrets as redacted")
+	}
+	if export.FullBackupPath != "/api/backup" {
+		t.Fatalf("fullBackupPath = %q, want %q", export.FullBackupPath, "/api/backup")
 	}
 
 	values := make(map[string]string, len(export.Config))

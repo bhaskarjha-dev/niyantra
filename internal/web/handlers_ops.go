@@ -231,12 +231,17 @@ func (s *Server) handleWebPushStatus(w http.ResponseWriter, r *http.Request) {
 
 // ── Phase 10 Handlers ────────────────────────────────────────────
 
-// handleExportJSON exports all data as a JSON file for full portability.
+// handleExportJSON exports a redacted JSON report for sharing and import.
+// Use the database backup endpoint for a full-fidelity local backup.
 func (s *Server) handleExportJSON(w http.ResponseWriter, r *http.Request) {
 	export := map[string]interface{}{
-		"version":         "1.0",
-		"exportedAt":      time.Now().UTC().Format(time.RFC3339),
-		"niyantraVersion": s.Version,
+		"version":          "1.0",
+		"exportedAt":       time.Now().UTC().Format(time.RFC3339),
+		"niyantraVersion":  s.Version,
+		"redactedSecrets":  true,
+		"historyScope":     "recent",
+		"fullBackupPath":   "/api/backup",
+		"exportDisclaimer": "Secrets are redacted and snapshot history is limited. Use /api/backup for a full local database backup.",
 	}
 
 	// Accounts

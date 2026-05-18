@@ -628,7 +628,7 @@ Returns estimated dollar costs for all tracked accounts based on quota fraction 
 
 ### `GET /api/history/heatmap` (Phase 14: F6)
 
-Returns daily snapshot counts across all providers (Antigravity, Claude Code, Codex, Cursor, Gemini CLI) for rendering a GitHub-style contribution calendar.
+Returns daily snapshot counts across all providers (Antigravity, Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, plugins) for rendering a GitHub-style contribution calendar.
 
 **Query Parameters:**
 
@@ -658,7 +658,7 @@ Returns daily snapshot counts across all providers (Antigravity, Claude Code, Co
 |-------|------|-------------|
 | `days` | array | Per-day snapshot counts, ordered chronologically ASC |
 | `days[].date` | string | Date in YYYY-MM-DD format |
-| `days[].count` | int | Total snapshots across all providers |
+| `days[].count` | int | Total snapshots across all providers, including plugins |
 | `days[].antigravity` | int | Antigravity snapshot count |
 | `days[].claude` | int | Claude Code snapshot count |
 | `days[].codex` | int | Codex snapshot count |
@@ -1053,7 +1053,7 @@ Add to Claude Desktop `claude_desktop_config.json`:
 }
 ```
 
-### Tools (9 total)
+### Tools (13 total)
 
 | Tool | Input | Description |
 |------|-------|-------------|
@@ -1065,7 +1065,11 @@ Add to Claude Desktop `claude_desktop_config.json`:
 | `analyze_spending` | none | Category breakdown, budget status, savings detection, insights |
 | `switch_recommendation` | none | Account switch advice (stay/switch/wait) with scores |
 | `codex_status` | none | Codex CLI detection, plan, token expiry, latest snapshot |
-| `quota_forecast` | none | TTX forecasts with **per-group estimated cost** and $/hr (Phase 14: F7+F8) |
+| `quota_forecast` | none | Antigravity TTX forecasts with per-group estimated cost and $/hr |
+| `token_usage_stats` | none | Claude Code JSONL token analytics plus any persisted non-Claude token rows |
+| `git_commit_costs` | `repo?`, `days?` | Git commit to Claude Code token/cost correlation |
+| `copilot_status` | none | GitHub Copilot plan and latest premium/chat usage snapshot |
+| `plugin_status` | `plugin_id?` | Latest data from installed plugins |
 
 ### Protocol
 
@@ -1132,7 +1136,7 @@ Sends a test OS-native desktop notification.
 
 ### `GET /api/export/json`
 
-Full JSON export of all data (accounts, subscriptions, snapshots, claude data, config).
+Redacted JSON export for sharing/import. Includes all accounts and subscriptions plus recent snapshot/activity history. Secret config values are masked, and full-fidelity backup remains available via `GET /api/backup`.
 
 **Response:** `200 OK` — JSON file download
 
@@ -1140,6 +1144,9 @@ Full JSON export of all data (accounts, subscriptions, snapshots, claude data, c
 {
   "exportedAt": "2026-04-18T21:00:00Z",
   "version": "niyantra-export-v1",
+  "redactedSecrets": true,
+  "historyScope": "recent",
+  "fullBackupPath": "/api/backup",
   "accounts": [...],
   "subscriptions": [...],
   "snapshots": [...],
@@ -1485,7 +1492,7 @@ Updates the full pricing configuration. Replaces all existing entries.
 
 ### `GET /api/token-usage` (Phase 15: F13)
 
-Returns unified token usage analytics aggregating Claude Code JSONL sessions (full per-turn granularity) with estimated data from snapshot providers.
+Returns token usage analytics aggregating Claude Code JSONL sessions (full per-turn granularity) with any persisted non-Claude `token_usage` rows.
 
 **Query Parameters:**
 
@@ -1523,7 +1530,7 @@ Returns unified token usage analytics aggregating Claude Code JSONL sessions (fu
 }
 ```
 
-> **Data Source:** Primary: Claude Code JSONL (`~/.claude/projects/*/sessions/*.jsonl`). Secondary: estimated data from `token_usage` table (schema v14) for all other providers.
+> **Data Source:** Primary: Claude Code JSONL (`~/.claude/projects/*/sessions/*.jsonl`). Secondary: persisted `token_usage` rows when non-Claude providers write them. If that table is empty, Claude Code will dominate the result.
 
 ---
 
@@ -1800,18 +1807,22 @@ Returns the latest snapshot data for a specific plugin.
 
 ```json
 {
+  "id": 17,
   "pluginId": "openrouter-usage",
   "provider": "openrouter",
   "label": "OpenRouter",
+  "email": "ops@example.com",
   "usagePct": 42.5,
   "usageDisplay": "$4.25 / $10.00",
   "plan": "api",
+  "modelsJson": "[]",
+  "metadataJson": "{}",
   "capturedAt": "2026-05-16T14:30:00Z",
-  "captureCount": 12
+  "captureMethod": "plugin"
 }
 ```
 
-**Response (no data):** `404 Not Found` — `{ "error": "no snapshot found" }`
+**Response (no data):** `404 Not Found` — `{ "error": "plugin snapshot not found" }`
 
 #### `POST /api/plugins/{id}/run`
 
@@ -1832,9 +1843,11 @@ Triggers a manual test execution of a plugin. The plugin's subprocess is invoked
 }
 ```
 
-**Response (plugin error):** `200 OK` — `{ "status": "error", "error": "API key invalid" }`
+**Response (plugin reported error):** `200 OK` — `{ "status": "error", "error": "API key invalid" }`
 
-**Response (plugin not found):** `404 Not Found` — `{ "error": "plugin 'xyz' not found" }`
+**Response (execution failure):** `502 Bad Gateway` — `{ "error": "process exited with status 1" }`
+
+**Response (plugin not found):** `404 Not Found` — `{ "error": "plugin not found" }`
 
 #### `PUT /api/plugins/{id}/config`
 
@@ -1860,9 +1873,9 @@ Updates configuration for a plugin. Supports setting arbitrary key-value pairs (
 
 ### `POST /mcp` — Streamable HTTP MCP (Phase 15: F14)
 
-Exposes all 12 MCP tools over HTTP using the MCP Streamable HTTP transport protocol. This enables remote MCP clients (Claude Desktop on another machine, CI/CD pipelines, cross-machine AI agents) to connect without stdio.
+Exposes all 13 MCP tools over HTTP using the MCP Streamable HTTP transport protocol. This enables remote MCP clients (Claude Desktop on another machine, CI/CD pipelines, cross-machine AI agents) to connect without stdio.
 
-**No authentication required** — the MCP SDK handles its own transport-level security (Origin/Host header verification). The endpoint does not go through Niyantra's basic auth middleware.
+**Authentication:** If Niyantra basic auth is enabled, `/mcp` is protected by the same HTTP Basic Auth gate as the rest of the dashboard. The MCP SDK still handles transport-level session and content-type validation.
 
 **Protocol:** MCP JSON-RPC 2.0 over HTTP, with optional SSE streaming for server-to-client notifications.
 
@@ -1886,7 +1899,7 @@ curl -X POST http://localhost:9222/mcp \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
 ```
 
-**Available tools (12):**
+**Available tools (13):**
 
 | Tool | Description |
 |------|-------------|
@@ -1898,12 +1911,13 @@ curl -X POST http://localhost:9222/mcp \
 | `analyze_spending` | Subscription spending patterns and insights |
 | `switch_recommendation` | Which account to use right now |
 | `codex_status` | Codex/ChatGPT detection and usage state |
-| `quota_forecast` | Time-to-exhaustion predictions with severity |
-| `token_usage_stats` | Unified token analytics across all providers |
+| `quota_forecast` | Antigravity time-to-exhaustion predictions with severity |
+| `token_usage_stats` | Claude Code JSONL token analytics plus any persisted non-Claude token rows |
 | `git_commit_costs` | Git commit ↔ AI token cost correlation |
+| `copilot_status` | GitHub Copilot plan and latest premium/chat usage |
 | `plugin_status` | Latest data from all installed external plugins |
 
-> **Transport Note:** The same 12 tools are available via both stdio (`niyantra mcp`) and HTTP (`/mcp` on the web dashboard). The HTTP transport uses the MCP Go SDK's `NewStreamableHTTPHandler` with session management and SSE support built in.
+> **Transport Note:** The same 13 tools are available via both stdio (`niyantra mcp`) and HTTP (`/mcp` on the web dashboard). The HTTP transport uses the MCP Go SDK's `NewStreamableHTTPHandler` with session management and SSE support built in.
 
 > **Claude Desktop Config:** To connect Claude Desktop to a remote Niyantra instance, configure the MCP server URL as `http://<host>:9222/mcp` using the Streamable HTTP transport type.
 
@@ -1911,35 +1925,18 @@ curl -X POST http://localhost:9222/mcp \
 
 ### `GET /api/anomalies`
 
-Returns detected cost anomalies using Z-score statistical analysis. Analyzes subscription and account spending history to identify days where spend exceeds 2σ above the rolling 30-day average.
+Returns anomaly-card state for spend analysis. The endpoint currently stays disabled until Niyantra has enough persisted daily spend history to run trustworthy Z-score analysis.
 
 **Response:** `200 OK`
 
 ```json
 {
-  "anomalies": [
-    {
-      "date": "2026-05-15",
-      "amount": 45.20,
-      "average": 12.50,
-      "zScore": 2.61,
-      "multiplier": 3.62,
-      "severity": "warning",
-      "budgetProjection": 1356.00
-    }
-  ],
-  "analyzed": true,
-  "dataPoints": 30
+  "anomalies": [],
+  "disabled": true,
+  "reason": "Insufficient historical daily spend data for anomaly detection."
 }
 ```
 
-**Fields:**
-- `zScore`: Standard deviations above the mean (≥2.0 = warning, ≥3.0 = critical)
-- `multiplier`: How many times the average this day's spend represents
-- `severity`: `"warning"` (2-3σ) or `"critical"` (>3σ)
-- `budgetProjection`: Estimated monthly spend if this rate continues
-
 **Notes:**
-- Requires at least 7 days of data to produce meaningful results
-- Returns empty `anomalies` array if insufficient data or no anomalies detected
-- Uses `internal/forecast/anomaly.go` Z-score engine (zero dependencies)
+- Future anomaly analysis will require persisted daily spend history before enabling Z-score calculations
+- Current UI should render the disabled state rather than fabricated alerts

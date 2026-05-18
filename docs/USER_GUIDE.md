@@ -370,7 +370,7 @@ Each account gets a score (0-100) based on three factors:
 
 ## MCP Server
 
-Niyantra exposes 12 tools to AI coding agents via the [Model Context Protocol](https://modelcontextprotocol.io).
+Niyantra exposes 13 tools to AI coding agents via the [Model Context Protocol](https://modelcontextprotocol.io).
 
 ### Setup
 
@@ -406,8 +406,9 @@ Connect to `POST /mcp` on the running dashboard server. Supports SSE streaming a
 | `analyze_spending` | "Break down my AI spending by category" |
 | `switch_recommendation` | "Should I switch accounts?" |
 | `codex_status` | "What's my Codex/ChatGPT status?" |
-| `quota_forecast` | "When will I exhaust quota at current rate?" |
-| `token_usage` | "How many tokens did I use today?" |
+| `quota_forecast` | "When will my Antigravity quota groups exhaust at current rate?" |
+| `token_usage_stats` | "How many Claude Code tokens did I use today?" |
+| `copilot_status` | "What is my GitHub Copilot premium/chat usage?" |
 | `git_commit_costs` | "What did my last feature branch cost?" |
 | `plugin_status` | "What's the latest data from my plugins?" |
 
