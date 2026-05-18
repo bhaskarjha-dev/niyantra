@@ -173,9 +173,9 @@ SQLite database. No cloud. No telemetry. Full provenance audit trail on every sn
 | `niyantra healthcheck` | Docker health probe (GET /healthz) |
 | `niyantra version` | Print version |
 
-**Flags:** `--port 9222` `--bind 127.0.0.1` `--allow-remote` `--mcp-http` `--db ~/.niyantra/niyantra.db` `--auth user:pass` `--insecure-plaintext-secrets` `--debug`
+**Flags:** `--port 9222` `--bind 127.0.0.1` `--allow-remote` `--behind-https-proxy` `--mcp-http` `--db ~/.niyantra/niyantra.db` `--auth user:pass` `--insecure-plaintext-secrets` `--debug`
 
-**Environment Variables:** `NIYANTRA_PORT` `NIYANTRA_BIND` `NIYANTRA_ALLOW_REMOTE` `NIYANTRA_MCP_HTTP` `NIYANTRA_DB` `NIYANTRA_AUTH` `NIYANTRA_INSECURE_PLAINTEXT_SECRETS` (CLI flags take precedence)
+**Environment Variables:** `NIYANTRA_PORT` `NIYANTRA_BIND` `NIYANTRA_ALLOW_REMOTE` `NIYANTRA_BEHIND_HTTPS_PROXY` `NIYANTRA_MCP_HTTP` `NIYANTRA_DB` `NIYANTRA_AUTH` `NIYANTRA_INSECURE_PLAINTEXT_SECRETS` (CLI flags take precedence)
 
 ## MCP Integration
 
@@ -195,7 +195,7 @@ Niyantra exposes quota intelligence to AI coding agents via the [Model Context P
 }
 ```
 
-**Streamable HTTP transport** (opt-in): `POST /mcp` on the running dashboard server after starting `niyantra serve --mcp-http`. For non-local binds, combine it with `--allow-remote` and `--auth user:pass`. SSE streaming and session management are handled by the MCP SDK.
+**Streamable HTTP transport** (opt-in): `POST /mcp` on the running dashboard server after starting `niyantra serve --mcp-http`. For non-local binds, Niyantra refuses startup unless you also set `--allow-remote`, `--auth user:pass`, and `--behind-https-proxy` so Basic auth is not sent over plaintext HTTP. SSE streaming and session management are handled by the MCP SDK.
 
 Then ask: *"What's my quota?"* or *"Which account should I use?"* or *"How much Claude activity landed near my recent commits?"*
 

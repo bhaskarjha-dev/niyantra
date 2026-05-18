@@ -65,6 +65,9 @@ jobs:
       - name: Bundle CSS
         run: npm run css
 
+      - name: Verify Generated Assets
+        run: git diff --exit-code -- internal/web/static/app.js internal/web/static/style.css
+
   docs:
     runs-on: ubuntu-latest
     steps:

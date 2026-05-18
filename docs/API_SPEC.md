@@ -139,7 +139,7 @@ Returns the readiness state of all tracked accounts. **Zero network calls** — 
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `groupKey` | `string` | One of: `claude_gpt`, `gemini_pro`, `gemini_flash` |
+| `groupKey` | `string` | One of: `claude_gpt`, `gemini_pro`, `gemini_flash`, `unknown` |
 | `displayName` | `string` | Human-readable group name |
 | `remainingPercent` | `float64` | 0–100, average across models in this group |
 | `isExhausted` | `bool` | `true` if any model in group has 0% remaining |
@@ -488,7 +488,7 @@ Returns per-model usage intelligence plus a recurring-subscription budget headro
 | `models` | array | Per-model usage summaries with intelligence data |
 | `models[].modelId` | string | Opaque model identifier |
 | `models[].label` | string | Human-readable model name |
-| `models[].group` | string | Quota group key (claude_gpt, gemini_pro, gemini_flash) |
+| `models[].group` | string | Quota group key (`claude_gpt`, `gemini_pro`, `gemini_flash`, or `unknown`) |
 | `models[].remainingFraction` | float | Current remaining quota (0.0-1.0) |
 | `models[].usagePercent` | float | Usage percentage (0-100) |
 | `models[].isExhausted` | bool | Whether quota is depleted |
@@ -1112,7 +1112,17 @@ Returns Claude Code rate limit data from the statusline bridge.
 
 ### `GET /api/backup`
 
-Downloads the database file as an attachment.
+Legacy route. Returns `410 Gone`; full database backups must use the protected POST flow.
+
+**Response:** `410 Gone`
+
+```json
+{ "error": "GET /api/backup is disabled; use POST /api/backup/create" }
+```
+
+### `POST /api/backup/create`
+
+Runs a database integrity check and then downloads a full SQLite backup as an attachment.
 
 **Response:** `200 OK` with `Content-Type: application/octet-stream`
 
@@ -1139,7 +1149,7 @@ Sends a test OS-native desktop notification.
 
 ### `GET /api/export/json`
 
-Redacted JSON export for sharing/import. Includes all accounts and subscriptions plus recent snapshot/activity history. Secret config values are masked, and full-fidelity backup remains available via `GET /api/backup`.
+Redacted JSON export for sharing/import. Includes all accounts and subscriptions plus recent snapshot/activity history. Secret config values are masked, and full-fidelity backup remains available via `POST /api/backup/create`.
 
 **Response:** `200 OK` — JSON file download
 
@@ -1149,7 +1159,7 @@ Redacted JSON export for sharing/import. Includes all accounts and subscriptions
   "version": "niyantra-export-v1",
   "redactedSecrets": true,
   "historyScope": "recent",
-  "fullBackupPath": "/api/backup",
+  "fullBackupPath": "/api/backup/create",
   "accounts": [...],
   "subscriptions": [...],
   "snapshots": [...],
@@ -1922,7 +1932,7 @@ curl -X POST http://localhost:9222/mcp \
 
 > **Transport Note:** The same 13 tools are available via both stdio (`niyantra mcp`) and HTTP (`/mcp` on the web dashboard when `--mcp-http` is enabled). The HTTP transport uses the MCP Go SDK's `NewStreamableHTTPHandler` with session management and SSE support built in.
 
-> **Claude Desktop Config:** To connect Claude Desktop to a remote Niyantra instance, configure the MCP server URL as `http://<host>:9222/mcp` using the Streamable HTTP transport type, and start Niyantra with `--mcp-http --allow-remote --auth user:pass`.
+> **Claude Desktop Config:** For local use, prefer stdio (`niyantra mcp`). To expose HTTP MCP on a non-local bind, start Niyantra behind an HTTPS reverse proxy with `--mcp-http --allow-remote --auth user:pass --behind-https-proxy`; startup refuses non-local plaintext Basic auth.
 
 ---
 

@@ -9,7 +9,54 @@ permissions:
   contents: write
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Go Build
+        run: go build ./...
+
+      - name: Go Vet
+        run: go vet ./...
+
+      - name: Go Tests
+        run: go test -count=1 ./...
+
+      - name: Frontend Type Check
+        run: npm run check
+
+      - name: Bundle Frontend
+        run: |
+          npm run build
+          npm run css
+
+      - name: Verify Generated Assets
+        run: git diff --exit-code -- internal/web/static/app.js internal/web/static/style.css
+
+      - name: Docs Sanity
+        run: go run ./scripts/checkdocs
+
+      - name: Docker Build
+        run: docker build -t niyantra:release-smoke .
+
   release:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

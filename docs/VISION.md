@@ -287,7 +287,7 @@ MCP server over stdio (13 tools) for AI agent integration. Uses official Go SDK 
 - **MCP insight tools** — `analyze_spending` (spending analysis, savings detection, category breakdown) + `switch_recommendation` (wraps advisor for AI agents). Total: 7 MCP tools.
 - **Enhanced subscription insights** — structured insights with type/severity/icon: unused detection (30+ days), imminent renewal (3 days), spending anomaly (2× budget), category overlap (3+ subs)
 - **Renewal calendar** — CSS grid month-view calendar with pin markers on renewal dates, month navigation, legend
-- **JSON export** — `GET /api/export/json` as a redacted/importable report. Use `GET /api/backup` for a full-fidelity database backup.
+- **JSON export** — `GET /api/export/json` as a redacted/importable report. Use `POST /api/backup/create` for a full-fidelity database backup.
 - **System alerts** — persistent dismissible banners for quota warnings, budget overages, bridge errors (schema v6: `system_alerts` table)
 - **Data retention cleanup** — enforce `retention_days` config via agent poll hook
 

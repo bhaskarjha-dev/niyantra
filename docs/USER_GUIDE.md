@@ -391,9 +391,9 @@ Add to your MCP client config:
 
 **Streamable HTTP Transport** (opt-in):
 
-Start the dashboard with `niyantra serve --mcp-http` to mount `POST /mcp`. For non-local binds, also use `--allow-remote` and `--auth user:pass`. The transport supports SSE streaming and session management via `Mcp-Session-Id` header.
+Start the dashboard with `niyantra serve --mcp-http` to mount `POST /mcp`. For non-local binds, startup also requires `--allow-remote`, `--auth user:pass`, and `--behind-https-proxy` so credentials are not sent over plaintext HTTP. The transport supports SSE streaming and session management via `Mcp-Session-Id` header.
 
-### Available Tools (12)
+### Available Tools (13)
 
 | Tool | What you can ask |
 |------|-----------------|

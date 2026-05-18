@@ -91,7 +91,7 @@ All HTTP responses include the following security headers:
 
 Optional HTTP basic auth via `--auth user:pass` flag or `NIYANTRA_AUTH` environment variable. No session tokens, no cookies. The auth is per-request and not persisted.
 
-**Non-local Bind Gate:** Niyantra binds to `127.0.0.1` by default. To bind a non-loopback address you must opt in with `--allow-remote` / `NIYANTRA_ALLOW_REMOTE=true`. Streamable HTTP MCP also requires `--mcp-http`, and non-local HTTP MCP requires `--auth`.
+**Non-local Bind Gate:** Niyantra binds to `127.0.0.1` by default. To bind a non-loopback address you must opt in with `--allow-remote` / `NIYANTRA_ALLOW_REMOTE=true`, enable `--auth user:pass`, and acknowledge TLS termination with `--behind-https-proxy` / `NIYANTRA_BEHIND_HTTPS_PROXY=true`. Basic auth is only an HTTP authentication scheme; it is not confidential over plaintext HTTP. Streamable HTTP MCP follows the same non-local bind policy.
 
 ## Rate Limiting
 
@@ -123,7 +123,7 @@ Rejects malformed input with `400 Bad Request` and a descriptive error message.
 - All operational data is stored in a single SQLite file (default: `~/.niyantra/niyantra.db`)
 - Provider and notification secrets are stored in the OS credential manager by default via `go-keyring`
 - SQLite stores opaque secret references rather than plaintext credentials unless `--insecure-plaintext-secrets` / `NIYANTRA_INSECURE_PLAINTEXT_SECRETS=true` is explicitly enabled
-- Database backups created by `niyantra backup` or `/api/backup` contain operational data but not keychain-managed secret material
+- Database backups created by `niyantra backup` or `POST /api/backup/create` contain operational data but not keychain-managed secret material
 - WebPush VAPID keys auto-generated on first subscribe (P-256 ECDSA)
 - Plugin API keys follow the same keychain-backed storage path as other secrets when their config key suffix matches the supported secret patterns
 

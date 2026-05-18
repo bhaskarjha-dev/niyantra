@@ -69,19 +69,31 @@ func main() {
 		"README.md": {
 			"anomaly status card",
 			"Safe to Spend guardrail",
+			"For non-local binds, combine it with `--allow-remote` and `--auth user:pass`",
 		},
 		filepath.Join("docs", "API_SPEC.md"): {
 			"Projected spend at current burn rate",
 			"real per-commit cost",
 			"actual AI token consumption from Claude Code sessions",
+			"full-fidelity backup remains available via `GET /api/backup`",
+			`"fullBackupPath": "/api/backup"`,
+			"start Niyantra with `--mcp-http --allow-remote --auth user:pass`",
 		},
 		filepath.Join("docs", "SECURITY.md"): {
 			"plaintext in SQLite",
 			"not encrypted at rest",
 			"the database contains quota percentages, not credentials",
+			"non-local HTTP MCP requires `--auth`",
+			"or `/api/backup`",
 		},
 		filepath.Join("docs", "TESTING.md"): {
 			"budget_forecast | Burn rate, projected spend, on-track",
+		},
+		filepath.Join("docs", "USER_GUIDE.md"): {
+			"also use `--allow-remote` and `--auth user:pass`",
+		},
+		filepath.Join("docs", "VISION.md"): {
+			"Use `GET /api/backup`",
 		},
 	}
 

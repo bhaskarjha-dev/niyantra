@@ -80,7 +80,7 @@ Detection flow:
 Key types:
 - Snapshot — captured quota data with provenance fields
 - ModelQuota — per-model `*float64` remainingFraction (protobuf semantics: nil=missing, 0=exhausted), resetTime, label
-- GroupedQuota — logical group (claude_gpt, gemini_pro, gemini_flash)
+- GroupedQuota — logical group (claude_gpt, gemini_pro, gemini_flash, unknown)
 
 Data integrity:
 - `remainingFraction` uses `*float64` to distinguish protobuf zero (0% = exhausted) from missing/null
@@ -148,13 +148,14 @@ Output: AccountReadiness with per-group status, staleness, reset countdowns
 
 ### Model Grouping Logic
 
-Antigravity exposes per-model quotas. Niyantra groups them into 3 logical buckets:
+Antigravity exposes per-model quotas. Niyantra groups known model families into 3 routing buckets and keeps unmapped models in an explicit unknown bucket:
 
 | Group Key | Display Name | Model Match |
 |-----------|-------------|-------------|
 | claude_gpt | Claude + GPT | contains "claude" or "gpt" |
 | gemini_pro | Gemini Pro | contains "gemini" but not "flash" |
 | gemini_flash | Gemini Flash | contains "gemini" and "flash" |
+| unknown | Unknown | no known family match; excluded from recommendations until mapped |
 
 For each group:
 - Remaining % = average of remainingFraction across all models in group

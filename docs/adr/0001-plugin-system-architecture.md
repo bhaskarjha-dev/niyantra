@@ -188,10 +188,11 @@ We adopt the **`exec` model** (short-lived subprocess) because:
 |--------|-----------|
 | Malicious plugin code | Process isolation via `os/exec` — plugin cannot access Niyantra memory |
 | Infinite loop / hang | `exec.CommandContext` enforces configurable timeout (default 30s) |
-| Secrets exposure | Config values stored in SQLite, masked in API responses (existing pattern) |
+| Secrets exposure | Secret-looking config keys use the same keychain-backed config path as other secrets; API responses only report `configured` |
 | Path traversal | Entry point path validated to be within plugin directory |
 | Untrusted output | JSON parsed into strict Go structs; unknown fields ignored |
-| Resource exhaustion | Plugins run sequentially (not parallel) in poll loop |
+| Resource exhaustion | Plugins run sequentially, have timeout enforcement, and stdout/stderr are capped |
+| Package-manager execution | TypeScript entry points are rejected by default; compile to JavaScript or a native executable instead of invoking `npx ts-node` |
 
 ## Consequences
 
@@ -208,7 +209,7 @@ We adopt the **`exec` model** (short-lived subprocess) because:
 ### Negative
 
 - **Process startup overhead** — spawning a new process per poll cycle (every 30s–5min). Acceptable for our use case; Telegraf's `exec` plugin works this same way at 10s intervals.
-- **No sandboxing** — plugins can do anything the OS user can do (read files, make network calls, etc.). This is acceptable because plugins are user-installed, local-first, and run on the user's own machine.
+- **No sandboxing** — plugins can do anything the OS user can do (read files, make network calls, etc.). Treat them as trusted local scripts, not as untrusted marketplace extensions.
 - **No plugin registry/marketplace** — users must manually create plugin directories. A future feature could add a community plugin index.
 
 ### Neutral
