@@ -1,17 +1,6 @@
 // Niyantra Dashboard — Entry Point
 // All core functionality is imported from modules.
 
-// Augment Window for inline onclick handler exposure
-declare global {
-  interface Window {
-    openBudgetModal: typeof openBudgetModal;
-    dismissAlert: typeof dismissAlert;
-    switchToTab: typeof switchToTab;
-    calendarNav: typeof calendarNav;
-    handleCodexSnap: typeof handleCodexSnap;
-  }
-}
-
 import {
   GROUP_ORDER, GROUP_LABELS, GROUP_COLORS, GROUP_NAMES,
   expandedAccounts, collapsedProviders,
@@ -35,7 +24,7 @@ import {
   fetchOverview, fetchPresets, fetchUsage,
 } from './core/api';
 
-import { initTheme, initTabs, switchToTab } from './core/theme';
+import { initTheme, initTabs } from './core/theme';
 
 import {
   renderAccounts, filterAccountsArray, sortAccountsArray,
@@ -51,9 +40,8 @@ import {
 
 import { loadSubscriptions, initModal, initSearch } from './subscriptions';
 
-import { getBudget, setBudget, getCurrency, updateConfig, loadConfig, initBudget, openBudgetModal, closeBudget, renderBudgetAlert } from './overview/budget';
+import { getBudget, setBudget, getCurrency, updateConfig, loadConfig, initBudget, closeBudget, renderBudgetAlert } from './overview/budget';
 import { loadOverview } from './overview/overview';
-import { calendarNav } from './overview/calendar';
 
 import { initSnapDropdown, handleSnap } from './advanced/snap';
 import { updateChartTheme, loadHistoryChart, populateChartAccountSelect } from './charts/history';
@@ -64,8 +52,7 @@ import { loadActivityLog } from './settings/activity';
 import { loadModelPricing } from './settings/pricing';
 import { initKeyboardShortcuts } from './advanced/keyboard';
 import { initCommandPalette } from './advanced/palette';
-import { loadSystemAlerts, dismissAlert } from './advanced/alerts';
-import { handleCodexSnap } from './advanced/codex';
+import { loadSystemAlerts } from './advanced/alerts';
 import { renderOnboarding, checkOnboardingStep, autoDetectSteps } from './core/onboarding';
 import { emptyQuotas } from './core/emptyStates';
 
@@ -183,11 +170,3 @@ document.addEventListener('DOMContentLoaded', function() {
   // H2: Refresh relative timestamp every 30s
   setInterval(refreshTimestampDisplay, 30000);
 });
-
-
-// ── IIFE Safety: Expose functions used by inline onclick="..." HTML attributes ──
-window.openBudgetModal = openBudgetModal;
-window.dismissAlert = dismissAlert;
-window.switchToTab = switchToTab;
-window.calendarNav = calendarNav;
-window.handleCodexSnap = handleCodexSnap;

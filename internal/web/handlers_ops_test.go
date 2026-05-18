@@ -71,3 +71,19 @@ func TestHandleExportJSONMasksSensitiveConfig(t *testing.T) {
 		t.Fatalf("budget_monthly = %q, want %q", values["budget_monthly"], "200")
 	}
 }
+
+func TestGitRepoPathFromRequest(t *testing.T) {
+	t.Run("defaults to current directory", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/git-costs?days=30", nil)
+		if got := gitRepoPathFromRequest(req); got != "." {
+			t.Fatalf("gitRepoPathFromRequest() = %q, want %q", got, ".")
+		}
+	})
+
+	t.Run("uses explicit repo query", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/git-costs?repo=%20D:/work/repo%20", nil)
+		if got := gitRepoPathFromRequest(req); got != "D:/work/repo" {
+			t.Fatalf("gitRepoPathFromRequest() = %q, want %q", got, "D:/work/repo")
+		}
+	})
+}

@@ -452,7 +452,7 @@ export function initSettings(): void {
                 var applicationServerKey = urlBase64ToUint8Array(data.publicKey);
                 return reg!.pushManager.subscribe({
                   userVisibleOnly: true,
-                  applicationServerKey: applicationServerKey
+                  applicationServerKey: applicationServerKey as unknown as BufferSource
                 });
               }).then(function(sub) {
                 // Send subscription to server

@@ -833,9 +833,10 @@
               var color = GROUP_COLORS[m.groupKey] || "#94a3b8";
               var resetStr = m.resetSeconds > 0 ? "\u21BB " + formatSeconds(m.resetSeconds) : "";
               var intellBadges = "";
-              if (usageDataCache && usageDataCache.models) {
-                for (var ui = 0; ui < usageDataCache.models.length; ui++) {
-                  var um = usageDataCache.models[ui];
+              var usageModels = usageDataCache ? usageDataCache.models : void 0;
+              if (usageModels) {
+                for (var ui = 0; ui < usageModels.length; ui++) {
+                  var um = usageModels[ui];
                   if (um.modelId === m.modelId && um.hasIntelligence) {
                     var rateStr = (um.currentRate * 100).toFixed(1) + "%/hr";
                     intellBadges += '<span class="rate-badge" title="Current consumption rate">' + rateStr + "</span>";
@@ -1794,6 +1795,12 @@
     document.getElementById("budget-overlay").addEventListener("click", function(e) {
       if (e.target.id === "budget-overlay") closeBudget();
     });
+    document.addEventListener("click", function(e) {
+      var target = e.target;
+      if (!target) return;
+      var trigger = target.closest('[data-budget-edit="true"]');
+      if (trigger) openBudgetModal();
+    });
     document.getElementById("budget-save").addEventListener("click", function() {
       var val = parseFloat(document.getElementById("f-budget").value) || 0;
       setBudget(val);
@@ -2179,7 +2186,7 @@
     var firstDay = new Date(year, month, 1).getDay();
     var daysInMonth = new Date(year, month + 1, 0).getDate();
     var prevDays = new Date(year, month, 0).getDate();
-    var html = '<div class="calendar-container"><div class="calendar-header"><h3>\u{1F4C5} Renewal Calendar</h3><div class="calendar-nav"><button class="calendar-nav-btn" onclick="calendarNav(-1)">\u2039</button><span class="calendar-month-label">' + monthNames[month] + " " + year + '</span><button class="calendar-nav-btn" onclick="calendarNav(1)">\u203A</button></div></div>';
+    var html = '<div class="calendar-container"><div class="calendar-header"><h3>\u{1F4C5} Renewal Calendar</h3><div class="calendar-nav"><button class="calendar-nav-btn" data-calendar-nav="-1">\u2039</button><span class="calendar-month-label">' + monthNames[month] + " " + year + '</span><button class="calendar-nav-btn" data-calendar-nav="1">\u203A</button></div></div>';
     html += '<div class="calendar-weekdays">';
     for (var d = 0; d < 7; d++) {
       html += '<div class="calendar-weekday">' + dayNames[d] + "</div>";
@@ -2236,6 +2243,12 @@
     }
     html += "</div>";
     container.innerHTML = html;
+    container.querySelectorAll("[data-calendar-nav]").forEach(function(el) {
+      el.addEventListener("click", function() {
+        var btn = el;
+        calendarNav(parseInt(btn.dataset.calendarNav || "0", 10));
+      });
+    });
   }
   function calendarNav(delta) {
     calendarViewDate.setMonth(calendarViewDate.getMonth() + delta);
@@ -2576,13 +2589,21 @@
     var container = document.getElementById("git-costs-container");
     if (!container) return;
     fetch("/api/git-costs?days=30").then(function(res) {
-      return res.json();
+      return res.json().then(function(data) {
+        if (!res.ok) {
+          throw new Error(data.error || "Failed to load git costs");
+        }
+        return data;
+      });
     }).then(function(data) {
       renderGitCosts(container, data);
     }).catch(function(err) {
       console.error("Git costs fetch failed:", err);
-      container.innerHTML = "";
+      renderGitCostsError(container, err instanceof Error ? err.message : "Failed to load git costs");
     });
+  }
+  function renderGitCostsError(container, message) {
+    container.innerHTML = '<div class="overview-card full-width git-costs-card"><h3>\u26A1 Git \xD7 AI Cost Correlation</h3><div class="git-costs-empty"><p>Unable to analyze git costs.</p><p style="font-size:12px;color:var(--text-secondary)">' + escapeHtml2(message) + "</p></div></div>";
   }
   function renderGitCosts(container, data) {
     if (!data || !data.commits || data.commits.length === 0) {
@@ -3700,12 +3721,24 @@
       for (var i = 0; i < shown; i++) {
         var a = alerts[i];
         var icon = a.severity === "critical" ? "\u{1F6A8}" : a.severity === "warning" ? "\u26A0\uFE0F" : "\u2139\uFE0F";
-        html += '<div class="alert-banner ' + esc(a.severity) + '"><span class="alert-banner-icon">' + icon + '</span><div class="alert-banner-content"><div class="alert-banner-title">' + esc(a.category) + '</div><div class="alert-banner-msg">' + esc(a.message) + '</div></div><button class="alert-banner-dismiss" onclick="dismissAlert(' + a.id + ')" title="Dismiss">&times;</button></div>';
+        html += '<div class="alert-banner ' + esc(a.severity) + '"><span class="alert-banner-icon">' + icon + '</span><div class="alert-banner-content"><div class="alert-banner-title">' + esc(a.category) + '</div><div class="alert-banner-msg">' + esc(a.message) + '</div></div><button class="alert-banner-dismiss" data-alert-dismiss="' + a.id + '" title="Dismiss">&times;</button></div>';
       }
       if (alerts.length > 3) {
-        html += `<div class="alert-more-link" onclick="switchToTab('overview')">+ ` + (alerts.length - 3) + " more alert(s)</div>";
+        html += '<div class="alert-more-link" data-alert-nav="overview">+ ' + (alerts.length - 3) + " more alert(s)</div>";
       }
       container.innerHTML = html;
+      container.querySelectorAll("[data-alert-dismiss]").forEach(function(el) {
+        el.addEventListener("click", function() {
+          var button = el;
+          dismissAlert(button.dataset.alertDismiss || "");
+        });
+      });
+      var moreLink = container.querySelector('[data-alert-nav="overview"]');
+      if (moreLink) {
+        moreLink.addEventListener("click", function() {
+          switchToTab("overview");
+        });
+      }
     }).catch(function() {
     });
   }
@@ -4060,7 +4093,7 @@
             if (field.required) html += ' <span style="color:var(--accent)">*</span>';
             html += "</label>";
             if (field.secret) {
-              html += '<input type="password" class="plugin-config-input" data-plugin="' + esc(p.manifest.id) + '" data-key="' + esc(key) + '" placeholder="' + (val === "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (configured)" : "Enter " + esc(field.label || key)) + '">';
+              html += '<input type="password" class="plugin-config-input" data-plugin="' + esc(p.manifest.id) + '" data-key="' + esc(key) + '" placeholder="' + (val === "configured" ? "configured" : "Enter " + esc(field.label || key)) + '">';
             } else {
               html += '<input type="text" class="plugin-config-input" data-plugin="' + esc(p.manifest.id) + '" data-key="' + esc(key) + '" value="' + esc(val) + '" placeholder="Enter ' + esc(field.label || key) + '">';
             }
@@ -4084,6 +4117,13 @@
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ enabled: enabled ? "true" : "false" })
+          }).then(function(r) {
+            return r.json().then(function(data2) {
+              if (!r.ok || data2.error) {
+                throw new Error(data2.error || "Failed to update plugin");
+              }
+              return data2;
+            });
           }).then(function() {
             showToast(enabled ? "\u{1F9E9} Plugin enabled: " + pluginId : "\u{1F9E9} Plugin disabled: " + pluginId, "success");
             var card = input.closest(".plugin-card");
@@ -4091,8 +4131,10 @@
             var footer = card.querySelector(".plugin-footer");
             if (config) config.style.display = enabled ? "" : "none";
             if (footer) footer.style.display = enabled ? "" : "none";
-          }).catch(function() {
-            showToast("\u274C Failed to update plugin", "error");
+            loadDataSources();
+          }).catch(function(err) {
+            input.checked = !enabled;
+            showToast("\u274C " + (err instanceof Error ? err.message : "Failed to update plugin"), "error");
           });
         });
       });
@@ -4109,14 +4151,21 @@
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body)
+          }).then(function(r) {
+            return r.json().then(function(data2) {
+              if (!r.ok || data2.error) {
+                throw new Error(data2.error || "Failed to save config");
+              }
+              return data2;
+            });
           }).then(function() {
             showToast("\u{1F9E9} " + key + " saved", "success");
             if (input.type === "password") {
               input.value = "";
-              input.placeholder = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (configured)";
+              input.placeholder = "configured";
             }
-          }).catch(function() {
-            showToast("\u274C Failed to save config", "error");
+          }).catch(function(err) {
+            showToast("\u274C " + (err instanceof Error ? err.message : "Failed to save config"), "error");
           });
         });
       });
@@ -4129,17 +4178,19 @@
           btn.textContent = "\u23F3 Running...";
           resultEl.textContent = "";
           fetch("/api/plugins/" + pluginId + "/run", { method: "POST" }).then(function(r) {
-            return r.json();
+            return r.json().then(function(data2) {
+              return { ok: r.ok, data: data2 };
+            });
           }).then(function(data2) {
-            if (data2.error) {
-              resultEl.textContent = "\u274C " + data2.error;
+            if (!data2.ok || data2.data.error) {
+              resultEl.textContent = "\u274C " + (data2.data.error || "Plugin test failed");
               resultEl.style.color = "#ef4444";
-            } else if (data2.status === "ok") {
-              var d = data2.data || {};
+            } else if (data2.data.status === "ok") {
+              var d = data2.data.data || {};
               resultEl.textContent = "\u2705 " + (d.label || d.provider || "OK") + (d.usage_pct ? " \u2014 " + d.usage_pct.toFixed(1) + "%" : "") + (d.usage_display ? " (" + d.usage_display + ")" : "");
               resultEl.style.color = "#22c55e";
             } else {
-              resultEl.textContent = "\u26A0\uFE0F " + (data2.error || "Unknown response");
+              resultEl.textContent = "\u26A0\uFE0F " + (data2.data.error || "Unknown response");
               resultEl.style.color = "#f59e0b";
             }
           }).catch(function() {
@@ -4979,9 +5030,4 @@
     loadSystemAlerts();
     setInterval(refreshTimestampDisplay, 3e4);
   });
-  window.openBudgetModal = openBudgetModal;
-  window.dismissAlert = dismissAlert;
-  window.switchToTab = switchToTab;
-  window.calendarNav = calendarNav;
-  window.handleCodexSnap = handleCodexSnap;
 })();

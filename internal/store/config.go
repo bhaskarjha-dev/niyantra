@@ -3,6 +3,7 @@ package store
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // ConfigEntry represents a server-level configuration entry.
@@ -60,16 +61,42 @@ func (s *Store) GetConfigBool(key string) bool {
 // SetConfig updates a config value and returns the old value.
 func (s *Store) SetConfig(key, value string) (string, error) {
 	oldVal := s.GetConfig(key)
+	valueType, category, label := inferConfigMetadata(key, value)
 
 	_, err := s.db.Exec(`
-		UPDATE config SET value = ?, updated_at = datetime('now')
-		WHERE key = ?
-	`, value, key)
+		INSERT INTO config (key, value, value_type, category, label, description, updated_at)
+		VALUES (?, ?, ?, ?, ?, '', datetime('now'))
+		ON CONFLICT(key) DO UPDATE SET
+			value = excluded.value,
+			updated_at = datetime('now')
+	`, key, value, valueType, category, label)
 	if err != nil {
 		return "", fmt.Errorf("store: update config %s: %w", key, err)
 	}
 
 	return oldVal, nil
+}
+
+func inferConfigMetadata(key, value string) (valueType, category, label string) {
+	valueType = "string"
+	if value == "true" || value == "false" {
+		valueType = "bool"
+	} else if _, err := strconv.Atoi(value); err == nil {
+		valueType = "int"
+	} else if _, err := strconv.ParseFloat(value, 64); err == nil {
+		valueType = "float"
+	}
+
+	category = "general"
+	if strings.HasPrefix(key, "plugin_") {
+		category = "plugins"
+	}
+
+	label = strings.ReplaceAll(key, "_", " ")
+	if label == "" {
+		label = key
+	}
+	return valueType, category, label
 }
 
 // AllConfig returns all config entries, optionally filtered by category.

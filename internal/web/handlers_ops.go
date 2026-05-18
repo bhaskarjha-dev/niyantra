@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bhaskarjha-com/niyantra/internal/advisor"
@@ -504,13 +505,7 @@ func (s *Server) handleTokenUsage(w http.ResponseWriter, r *http.Request) {
 
 // handleGitCosts correlates git commits with AI token consumption.
 func (s *Server) handleGitCosts(w http.ResponseWriter, r *http.Request) {
-	// Repo path: query param or auto-detect CWD
-	repoPath := r.URL.Query().Get("repo")
-	if repoPath == "" {
-		// Require explicit repo path — CWD is unreliable (especially in Docker)
-		jsonError(w, "repo query parameter is required", http.StatusBadRequest)
-		return
-	}
+	repoPath := gitRepoPathFromRequest(r)
 
 	days := 30
 	if d := r.URL.Query().Get("days"); d != "" {
@@ -536,4 +531,12 @@ func (s *Server) handleGitCosts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, result)
+}
+
+func gitRepoPathFromRequest(r *http.Request) string {
+	repoPath := strings.TrimSpace(r.URL.Query().Get("repo"))
+	if repoPath == "" {
+		return "."
+	}
+	return repoPath
 }

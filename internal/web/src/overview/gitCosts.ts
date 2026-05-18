@@ -6,13 +6,27 @@ export function loadGitCosts(): void {
   if (!container) return;
 
   fetch('/api/git-costs?days=30').then(function(res) {
-    return res.json();
+    return res.json().then(function(data) {
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to load git costs');
+      }
+      return data;
+    });
   }).then(function(data: any) {
     renderGitCosts(container!, data);
   }).catch(function(err) {
     console.error('Git costs fetch failed:', err);
-    container!.innerHTML = '';
+    renderGitCostsError(container!, err instanceof Error ? err.message : 'Failed to load git costs');
   });
+}
+
+function renderGitCostsError(container: HTMLElement, message: string): void {
+  container.innerHTML = '<div class="overview-card full-width git-costs-card">' +
+    '<h3>⚡ Git × AI Cost Correlation</h3>' +
+    '<div class="git-costs-empty">' +
+    '<p>Unable to analyze git costs.</p>' +
+    '<p style="font-size:12px;color:var(--text-secondary)">' + escapeHtml(message) + '</p>' +
+    '</div></div>';
 }
 
 function renderGitCosts(container: HTMLElement, data: any): void {

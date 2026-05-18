@@ -7,70 +7,57 @@ import (
 	"time"
 
 	"github.com/bhaskarjha-com/niyantra/internal/plugin"
-	"github.com/bhaskarjha-com/niyantra/internal/store"
 )
+
+type pluginInfo struct {
+	Manifest     plugin.Manifest   `json:"manifest"`
+	Dir          string            `json:"dir"`
+	Enabled      bool              `json:"enabled"`
+	Config       map[string]string `json:"config"`
+	LastCapture  string            `json:"lastCapture,omitempty"`
+	CaptureCount int64             `json:"captureCount"`
+}
 
 // handlePlugins returns all discovered plugins with their status.
 // GET /api/plugins
 func (s *Server) handlePlugins(w http.ResponseWriter, r *http.Request) {
 	pluginsDir := plugin.DefaultPluginsDir()
-	plugins, errs := plugin.Discover(pluginsDir)
+	plugins, errs := s.loadConfiguredPlugins()
+	result := make([]pluginInfo, 0, len(plugins))
+	dataSources := s.pluginSourceIndex()
 
-	// Load enabled state and config for each plugin from SQLite
-	type pluginInfo struct {
-		plugin.Manifest `json:"manifest"`
-		Dir             string            `json:"dir"`
-		Enabled         bool              `json:"enabled"`
-		Config          map[string]string `json:"config"`
-		LastCapture     string            `json:"lastCapture,omitempty"`
-		CaptureCount    int64             `json:"captureCount"`
-	}
-
-	var result []pluginInfo
 	for _, p := range plugins {
 		info := pluginInfo{
 			Manifest: p.Manifest,
 			Dir:      p.Dir,
-			Config:   make(map[string]string),
+			Enabled:  p.Enabled,
+			Config:   make(map[string]string, len(p.Manifest.Config)),
 		}
 
-		// Check if plugin is enabled in config
-		info.Enabled = s.store.GetConfigBool("plugin_" + p.Manifest.ID + "_enabled")
-
-		// Load plugin-specific config values
 		for key, field := range p.Manifest.Config {
-			val := s.store.GetConfig("plugin_" + p.Manifest.ID + "_" + key)
-			if val == "" && field.Default != "" {
-				val = field.Default
-			}
-			// Mask secret values
+			val := p.Config[key]
 			if field.Secret && val != "" {
-				info.Config[key] = "••••••••"
+				info.Config[key] = "configured"
 			} else {
 				info.Config[key] = val
 			}
 		}
 
-		// Get latest snapshot info from data_sources
-		ds, _ := s.store.AllDataSources()
-		for _, d := range ds {
-			if d.ID == "plugin_"+p.Manifest.ID {
-				info.LastCapture = d.LastCapture
-				info.CaptureCount = d.CaptureCount
-				break
-			}
+		if ds, ok := dataSources["plugin_"+p.Manifest.ID]; ok {
+			info.LastCapture = ds.LastCapture
+			info.CaptureCount = ds.CaptureCount
 		}
 
 		result = append(result, info)
 	}
 
-	var discoveryErrors []string
-	for _, e := range errs {
-		discoveryErrors = append(discoveryErrors, e.Error())
+	discoveryErrors := make([]string, 0, len(errs))
+	for _, err := range errs {
+		s.logger.Warn("Plugin discovery error", "error", err)
+		discoveryErrors = append(discoveryErrors, err.Error())
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	writeJSON(w, map[string]any{
 		"plugins":    result,
 		"pluginsDir": pluginsDir,
 		"errors":     discoveryErrors,
@@ -88,20 +75,11 @@ func (s *Server) handlePluginStatus(w http.ResponseWriter, r *http.Request) {
 
 	snap, err := s.store.LatestPluginSnapshot(pluginID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"pluginId": pluginID,
-			"status":   "no_data",
-		})
+		jsonError(w, "plugin snapshot not found", http.StatusNotFound)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"pluginId": pluginID,
-		"status":   "ok",
-		"snapshot": snap,
-	})
+	writeJSON(w, snap)
 }
 
 // handlePluginRun manually triggers a plugin capture and returns the result.
@@ -109,106 +87,56 @@ func (s *Server) handlePluginStatus(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePluginRun(w http.ResponseWriter, r *http.Request) {
 	pluginID := r.PathValue("id")
 	if pluginID == "" {
-		http.Error(w, `{"error":"plugin id required"}`, http.StatusBadRequest)
+		jsonError(w, "plugin id required", http.StatusBadRequest)
 		return
 	}
 
-	// Discover and find the specific plugin
-	pluginsDir := plugin.DefaultPluginsDir()
-	plugins, _ := plugin.Discover(pluginsDir)
-
-	var target *plugin.Plugin
-	for _, p := range plugins {
-		if p.Manifest.ID == pluginID {
-			target = p
-			break
-		}
+	target, errs := s.findConfiguredPlugin(pluginID)
+	for _, err := range errs {
+		s.logger.Warn("Plugin discovery error", "error", err)
 	}
-
 	if target == nil {
-		http.Error(w, `{"error":"plugin not found"}`, http.StatusNotFound)
+		jsonError(w, "plugin not found", http.StatusNotFound)
 		return
 	}
 
-	// Load config values from SQLite
-	for key := range target.Manifest.Config {
-		val := s.store.GetConfig("plugin_" + pluginID + "_" + key)
-		if val != "" {
-			target.Config[key] = val
-		}
-	}
-
-	// Execute the plugin
 	runStart := time.Now()
 	result, err := target.Run(r.Context(), s.logger)
 	elapsed := time.Since(runStart)
 	if err != nil {
-		// Log failed test run for observability
-		s.store.LogInfo("ui", "plugin_test_run", "", map[string]interface{}{
+		s.store.LogInfo("ui", "plugin_test_run", "", map[string]any{
 			"pluginId":    pluginID,
 			"success":     false,
 			"error":       err.Error(),
 			"duration_ms": elapsed.Milliseconds(),
 		})
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"error": err.Error(),
-		})
+		jsonError(w, err.Error(), http.StatusBadGateway)
 		return
 	}
 
-	// Persist the capture result if status is OK
-	persisted := false
-	if result.Status == "ok" {
-		modelsJSON := "[]"
-		if result.Data.Models != nil {
-			if b, merr := json.Marshal(result.Data.Models); merr == nil {
-				modelsJSON = string(b)
-			}
-		}
-		metadataJSON := "{}"
-		if result.Data.Metadata != nil {
-			if b, merr := json.Marshal(result.Data.Metadata); merr == nil {
-				metadataJSON = string(b)
-			}
-		}
-
-		snap := &store.PluginSnapshot{
-			PluginID:      pluginID,
-			Provider:      result.Data.Provider,
-			Label:         result.Data.Label,
-			Email:         result.Data.Email,
-			UsagePct:      result.Data.UsagePct,
-			UsageDisplay:  result.Data.UsageDisplay,
-			Plan:          result.Data.Plan,
-			ModelsJSON:    modelsJSON,
-			MetadataJSON:  metadataJSON,
-			CaptureMethod: "manual",
-		}
-		if _, serr := s.store.InsertPluginSnapshot(snap); serr != nil {
-			s.logger.Warn("Failed to persist plugin test run", "plugin", pluginID, "error", serr)
-		} else {
-			s.store.UpdateSourceCapture("plugin_" + pluginID)
-			persisted = true
-		}
-	}
-
-	// Log successful test run for observability
-	s.store.LogInfo("ui", "plugin_test_run", "", map[string]interface{}{
+	s.store.LogInfo("ui", "plugin_test_run", "", map[string]any{
 		"pluginId":     pluginID,
 		"provider":     result.Data.Provider,
 		"usagePct":     result.Data.UsagePct,
 		"usageDisplay": result.Data.UsageDisplay,
 		"planType":     result.Data.Plan,
-		"success":      true,
-		"persisted":    persisted,
+		"success":      result.Status == "ok",
+		"pluginStatus": result.Status,
 		"duration_ms":  elapsed.Milliseconds(),
 	})
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"result":    result,
-		"persisted": persisted,
+	if result.Status != "ok" {
+		writeJSON(w, map[string]any{
+			"status": result.Status,
+			"error":  result.Error,
+		})
+		return
+	}
+
+	writeJSON(w, map[string]any{
+		"status":     "ok",
+		"data":       result.Data,
+		"durationMs": elapsed.Milliseconds(),
 	})
 }
 
@@ -217,63 +145,44 @@ func (s *Server) handlePluginRun(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePluginConfig(w http.ResponseWriter, r *http.Request) {
 	pluginID := r.PathValue("id")
 	if pluginID == "" {
-		http.Error(w, `{"error":"plugin id required"}`, http.StatusBadRequest)
+		jsonError(w, "plugin id required", http.StatusBadRequest)
 		return
 	}
 
 	var body map[string]string
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
+		jsonError(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
 
-	// Validate: only save keys that exist in the plugin manifest
-	pluginsDir := plugin.DefaultPluginsDir()
-	plugins, _ := plugin.Discover(pluginsDir)
-
-	var target *plugin.Plugin
-	for _, p := range plugins {
-		if p.Manifest.ID == pluginID {
-			target = p
-			break
-		}
+	target, errs := s.findConfiguredPlugin(pluginID)
+	for _, err := range errs {
+		s.logger.Warn("Plugin discovery error", "error", err)
 	}
-
 	if target == nil {
-		http.Error(w, `{"error":"plugin not found"}`, http.StatusNotFound)
+		jsonError(w, "plugin not found", http.StatusNotFound)
 		return
 	}
 
-	// Handle special "enabled" key
 	if enabled, ok := body["enabled"]; ok {
 		s.store.SetConfig("plugin_"+pluginID+"_enabled", enabled)
+		target.Enabled = strings.EqualFold(enabled, "true")
 		delete(body, "enabled")
-
-		// Register/update data source
-		if strings.EqualFold(enabled, "true") {
-			s.registerPluginDataSource(target)
-		}
 	}
 
-	// Save each config key
 	for key, val := range body {
 		if _, exists := target.Manifest.Config[key]; !exists {
-			continue // skip unknown keys
+			continue
 		}
-		configKey := "plugin_" + pluginID + "_" + key
-		s.store.SetConfig(configKey, val)
+		s.store.SetConfig("plugin_"+pluginID+"_"+key, val)
+		target.Config[key] = val
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-}
+	s.ensurePluginDataSource(target)
+	s.refreshRuntimePlugins()
 
-// registerPluginDataSource ensures a data_sources entry exists for this plugin.
-func (s *Server) registerPluginDataSource(p *plugin.Plugin) {
-	sourceID := "plugin_" + p.Manifest.ID
-	// Use INSERT OR IGNORE to avoid duplicates
-	s.store.ExecRaw(`
-		INSERT OR IGNORE INTO data_sources (id, name, source_type, enabled, config_json)
-		VALUES (?, ?, 'plugin', 1, '{}')
-	`, sourceID, p.Manifest.Name)
+	writeJSON(w, map[string]any{
+		"status":  "ok",
+		"enabled": target.Enabled,
+	})
 }

@@ -37,14 +37,14 @@ type Server struct {
 // NewServer creates a new Niyantra web server.
 func NewServer(logger *slog.Logger, s *store.Store, c *client.Client, port int, auth string, version string, bind string) *Server {
 	srv := &Server{
-		logger:   logger,
-		store:    s,
-		client:   c,
-		tracker:  newTrackerWithBaseline(s, logger),
-		notifier: notify.NewEngine(logger),
-		port:     port,
-		bind:     bind,
-		auth:     auth,
+		logger:    logger,
+		store:     s,
+		client:    c,
+		tracker:   newTrackerWithBaseline(s, logger),
+		notifier:  notify.NewEngine(logger),
+		port:      port,
+		bind:      bind,
+		auth:      auth,
 		agentMgr:  agent.NewManager(logger),
 		startTime: time.Now(),
 		Version:   version,
@@ -70,7 +70,7 @@ func NewServer(logger *slog.Logger, s *store.Store, c *client.Client, port int, 
 		for i, ss := range storeSubs {
 			subs[i] = notify.WebPushSubscription{
 				Endpoint: ss.Endpoint,
-				Keys: notify.WebPushKeys{Auth: ss.KeyAuth, P256dh: ss.KeyP256dh},
+				Keys:     notify.WebPushKeys{Auth: ss.KeyAuth, P256dh: ss.KeyP256dh},
 			}
 		}
 		return subs
@@ -135,25 +135,9 @@ func (s *Server) startPollingAgent() {
 	idleTimeout := time.Duration(s.store.GetConfigInt("session_idle_timeout", 1200)) * time.Second
 	ag.SetSessionManagers(idleTimeout)
 
-	// F18: Discover and load plugins
-	pluginsDir := plugin.DefaultPluginsDir()
-	plugins, errs := plugin.Discover(pluginsDir)
+	plugins, errs := s.loadConfiguredPlugins()
 	for _, e := range errs {
 		s.logger.Warn("Plugin discovery error", "error", e)
-	}
-	// Load enabled state and config for each plugin from SQLite
-	for _, p := range plugins {
-		p.Enabled = s.store.GetConfigBool("plugin_" + p.Manifest.ID + "_enabled")
-		for key := range p.Manifest.Config {
-			val := s.store.GetConfig("plugin_" + p.Manifest.ID + "_" + key)
-			if val != "" {
-				p.Config[key] = val
-			}
-		}
-		if p.Enabled {
-			// Register data source if not exists
-			s.registerPluginDataSource(p)
-		}
 	}
 	ag.SetPlugins(plugins)
 	if len(plugins) > 0 {
@@ -163,7 +147,7 @@ func (s *Server) startPollingAgent() {
 				enabled++
 			}
 		}
-		s.logger.Info("Plugins discovered", "total", len(plugins), "enabled", enabled, "dir", pluginsDir)
+		s.logger.Info("Plugins discovered", "total", len(plugins), "enabled", enabled, "dir", plugin.DefaultPluginsDir())
 	}
 
 	s.agentMgr.Start(ag)
@@ -194,9 +178,9 @@ func (s *Server) ListenAndServe() error {
 
 	// Initialize rate limiter: per-IP token bucket (1-minute window)
 	rl := newRateLimiter(1 * time.Minute)
-	rl.setLimit("snap", 10)    // 10 snap requests/min — prevents upstream API abuse
-	rl.setLimit("mutate", 30)  // 30 config/write requests/min
-	rl.setLimit("import", 2)   // 2 import requests/min — 50MB body limit
+	rl.setLimit("snap", 10)   // 10 snap requests/min — prevents upstream API abuse
+	rl.setLimit("mutate", 30) // 30 config/write requests/min
+	rl.setLimit("import", 2)  // 2 import requests/min — 50MB body limit
 
 	// Operational endpoints (no auth required — registered on inner mux)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)

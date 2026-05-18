@@ -46,6 +46,12 @@ export function initBudget(): void {
   document.getElementById('budget-overlay')!.addEventListener('click', function(e) {
     if ((e.target as HTMLElement).id === 'budget-overlay') closeBudget();
   });
+  document.addEventListener('click', function(e) {
+    var target = e.target as HTMLElement | null;
+    if (!target) return;
+    var trigger = target.closest('[data-budget-edit="true"]');
+    if (trigger) openBudgetModal();
+  });
   document.getElementById('budget-save')!.addEventListener('click', function() {
     var val = parseFloat((document.getElementById('f-budget') as HTMLInputElement).value) || 0;
     setBudget(val);
@@ -90,7 +96,7 @@ export function renderBudgetAlert(totalMonthly: number): string {
   return '<div class="budget-alert ' + cls + '">' +
     '<span class="budget-icon">' + icon + '</span>' +
     '<span class="budget-msg">' + msg + '</span>' +
-    '<button class="budget-btn" onclick="openBudgetModal()">Edit</button>' +
+    '<button class="budget-btn" data-budget-edit="true">Edit</button>' +
     '</div>';
 }
 

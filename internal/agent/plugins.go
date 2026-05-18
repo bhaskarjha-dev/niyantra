@@ -10,11 +10,12 @@ import (
 
 // pollPlugins runs all enabled plugins and stores their capture results.
 func (a *PollingAgent) pollPlugins(ctx context.Context) {
-	if a.plugins == nil {
+	plugins := a.Plugins()
+	if len(plugins) == 0 {
 		return
 	}
 
-	for _, p := range a.plugins {
+	for _, p := range plugins {
 		if !p.Enabled {
 			continue
 		}
@@ -84,5 +85,29 @@ func (a *PollingAgent) pollPlugins(ctx context.Context) {
 
 // SetPlugins sets the list of discovered plugins for the agent to poll.
 func (a *PollingAgent) SetPlugins(plugins []*plugin.Plugin) {
-	a.plugins = plugins
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if len(plugins) == 0 {
+		a.plugins = nil
+		return
+	}
+
+	copied := make([]*plugin.Plugin, len(plugins))
+	copy(copied, plugins)
+	a.plugins = copied
+}
+
+// Plugins returns a snapshot of the configured plugin list.
+func (a *PollingAgent) Plugins() []*plugin.Plugin {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if len(a.plugins) == 0 {
+		return nil
+	}
+
+	copied := make([]*plugin.Plugin, len(a.plugins))
+	copy(copied, a.plugins)
+	return copied
 }

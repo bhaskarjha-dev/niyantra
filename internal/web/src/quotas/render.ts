@@ -400,9 +400,10 @@ export function renderAccounts(data: any): void {
 
         // Intelligence badges from usage data
         var intellBadges = '';
-        if (usageDataCache && usageDataCache.models) {
-          for (var ui = 0; ui < usageDataCache.models.length; ui++) {
-            var um = usageDataCache.models[ui];
+        var usageModels = usageDataCache ? ((usageDataCache as any).models as any[] | undefined) : undefined;
+        if (usageModels) {
+          for (var ui = 0; ui < usageModels.length; ui++) {
+            var um = usageModels[ui];
             if (um.modelId === m.modelId && um.hasIntelligence) {
               var rateStr = (um.currentRate * 100).toFixed(1) + '%/hr';
               intellBadges += '<span class="rate-badge" title="Current consumption rate">' + rateStr + '</span>';

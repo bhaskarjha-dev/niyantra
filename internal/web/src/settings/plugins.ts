@@ -1,5 +1,6 @@
 // Niyantra Dashboard — Plugin System UI (F18)
 import { showToast, esc, formatTimeAgo } from '../core/utils';
+import { loadDataSources } from './data';
 
 interface PluginInfo {
   manifest: {
@@ -92,7 +93,7 @@ export function loadPlugins(): void {
           if (field.secret) {
             html += '<input type="password" class="plugin-config-input" data-plugin="' +
                     esc(p.manifest.id) + '" data-key="' + esc(key) + '"' +
-                    ' placeholder="' + (val === '••••••••' ? '•••••••• (configured)' : 'Enter ' + esc(field.label || key)) + '">';
+                    ' placeholder="' + (val === 'configured' ? 'configured' : 'Enter ' + esc(field.label || key)) + '">';
           } else {
             html += '<input type="text" class="plugin-config-input" data-plugin="' +
                     esc(p.manifest.id) + '" data-key="' + esc(key) + '"' +
@@ -125,6 +126,13 @@ export function loadPlugins(): void {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled: enabled ? 'true' : 'false' })
+        }).then(function(r) {
+          return r.json().then(function(data) {
+            if (!r.ok || data.error) {
+              throw new Error(data.error || 'Failed to update plugin');
+            }
+            return data;
+          });
         }).then(function() {
           showToast(enabled ? '🧩 Plugin enabled: ' + pluginId : '🧩 Plugin disabled: ' + pluginId, 'success');
           // Show/hide config + footer
@@ -133,8 +141,10 @@ export function loadPlugins(): void {
           var footer = card.querySelector('.plugin-footer') as HTMLElement;
           if (config) config.style.display = enabled ? '' : 'none';
           if (footer) footer.style.display = enabled ? '' : 'none';
-        }).catch(function() {
-          showToast('❌ Failed to update plugin', 'error');
+          loadDataSources();
+        }).catch(function(err) {
+          input.checked = !enabled;
+          showToast('❌ ' + (err instanceof Error ? err.message : 'Failed to update plugin'), 'error');
         });
       });
     });
@@ -155,15 +165,22 @@ export function loadPlugins(): void {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
+        }).then(function(r) {
+          return r.json().then(function(data) {
+            if (!r.ok || data.error) {
+              throw new Error(data.error || 'Failed to save config');
+            }
+            return data;
+          });
         }).then(function() {
           showToast('🧩 ' + key + ' saved', 'success');
           // Mask secret fields after saving
           if (input.type === 'password') {
             input.value = '';
-            input.placeholder = '•••••••• (configured)';
+            input.placeholder = 'configured';
           }
-        }).catch(function() {
-          showToast('❌ Failed to save config', 'error');
+        }).catch(function(err) {
+          showToast('❌ ' + (err instanceof Error ? err.message : 'Failed to save config'), 'error');
         });
       });
     });
@@ -180,19 +197,23 @@ export function loadPlugins(): void {
         resultEl.textContent = '';
 
         fetch('/api/plugins/' + pluginId + '/run', { method: 'POST' })
-          .then(function(r) { return r.json(); })
+          .then(function(r) {
+            return r.json().then(function(data) {
+              return { ok: r.ok, data: data };
+            });
+          })
           .then(function(data) {
-            if (data.error) {
-              resultEl.textContent = '❌ ' + data.error;
+            if (!data.ok || data.data.error) {
+              resultEl.textContent = '❌ ' + (data.data.error || 'Plugin test failed');
               resultEl.style.color = '#ef4444';
-            } else if (data.status === 'ok') {
-              var d = data.data || {};
+            } else if (data.data.status === 'ok') {
+              var d = data.data.data || {};
               resultEl.textContent = '✅ ' + (d.label || d.provider || 'OK') +
                 (d.usage_pct ? ' — ' + d.usage_pct.toFixed(1) + '%' : '') +
                 (d.usage_display ? ' (' + d.usage_display + ')' : '');
               resultEl.style.color = '#22c55e';
             } else {
-              resultEl.textContent = '⚠️ ' + (data.error || 'Unknown response');
+              resultEl.textContent = '⚠️ ' + (data.data.error || 'Unknown response');
               resultEl.style.color = '#f59e0b';
             }
           })

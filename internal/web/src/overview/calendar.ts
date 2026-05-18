@@ -47,9 +47,9 @@ export function renderRenewalCalendar(renewals: any[], subs: any[]): void {
     '<div class="calendar-header">' +
     '<h3>📅 Renewal Calendar</h3>' +
     '<div class="calendar-nav">' +
-    '<button class="calendar-nav-btn" onclick="calendarNav(-1)">‹</button>' +
+    '<button class="calendar-nav-btn" data-calendar-nav="-1">‹</button>' +
     '<span class="calendar-month-label">' + monthNames[month] + ' ' + year + '</span>' +
-    '<button class="calendar-nav-btn" onclick="calendarNav(1)">›</button>' +
+    '<button class="calendar-nav-btn" data-calendar-nav="1">›</button>' +
     '</div></div>';
 
   // Weekday headers
@@ -127,6 +127,13 @@ export function renderRenewalCalendar(renewals: any[], subs: any[]): void {
 
   html += '</div>';
   container.innerHTML = html;
+
+  container.querySelectorAll('[data-calendar-nav]').forEach(function(el) {
+    el.addEventListener('click', function() {
+      var btn = el as HTMLElement;
+      calendarNav(parseInt(btn.dataset.calendarNav || '0', 10));
+    });
+  });
 }
 
 export function calendarNav(delta: number): void {

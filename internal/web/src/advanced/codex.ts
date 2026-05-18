@@ -59,7 +59,7 @@ export function renderCodexCard(container: HTMLElement): void {
 
     var html = '<div class="overview-card codex-card">';
     html += '<div class="card-header"><h3>🤖 Codex / ChatGPT</h3>';
-    html += '<button class="btn-add" onclick="handleCodexSnap()" style="padding:4px 10px;font-size:11px">📸 Snap</button>';
+    html += '<button class="btn-add codex-snap-btn" style="padding:4px 10px;font-size:11px">📸 Snap</button>';
     html += '</div>';
 
     if (!data.installed) {
@@ -120,6 +120,13 @@ export function renderCodexCard(container: HTMLElement): void {
       existing.outerHTML = html;
     } else {
       container.insertAdjacentHTML('afterbegin', html);
+    }
+
+    var snapBtn = container.querySelector('.codex-snap-btn');
+    if (snapBtn) {
+      snapBtn.addEventListener('click', function() {
+        handleCodexSnap();
+      });
     }
   })
   .catch(function() {}); // Silently fail

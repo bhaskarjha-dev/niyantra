@@ -111,6 +111,43 @@ func TestConfigCRUD(t *testing.T) {
 	}
 }
 
+func TestSetConfigCreatesDynamicPluginKeys(t *testing.T) {
+	s := openTestDB(t)
+
+	old, err := s.SetConfig("plugin_fixture_api_key", "sekret")
+	if err != nil {
+		t.Fatalf("SetConfig dynamic plugin key: %v", err)
+	}
+	if old != "" {
+		t.Fatalf("expected empty old value for new key, got %q", old)
+	}
+
+	if got := s.GetConfig("plugin_fixture_api_key"); got != "sekret" {
+		t.Fatalf("GetConfig(plugin_fixture_api_key) = %q, want %q", got, "sekret")
+	}
+
+	entries, err := s.AllConfig("plugins")
+	if err != nil {
+		t.Fatalf("AllConfig(plugins): %v", err)
+	}
+
+	found := false
+	for _, entry := range entries {
+		if entry.Key == "plugin_fixture_api_key" {
+			found = true
+			if entry.ValueType != "string" {
+				t.Fatalf("ValueType = %q, want %q", entry.ValueType, "string")
+			}
+			if entry.Category != "plugins" {
+				t.Fatalf("Category = %q, want %q", entry.Category, "plugins")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected dynamic plugin config entry to appear in plugins category")
+	}
+}
+
 func TestRetentionCleanup(t *testing.T) {
 	s := openTestDB(t)
 

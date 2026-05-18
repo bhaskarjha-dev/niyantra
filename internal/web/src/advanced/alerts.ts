@@ -24,14 +24,28 @@ export function loadSystemAlerts(): void {
         '<div class="alert-banner-title">' + esc(a.category) + '</div>' +
         '<div class="alert-banner-msg">' + esc(a.message) + '</div>' +
         '</div>' +
-        '<button class="alert-banner-dismiss" onclick="dismissAlert(' + a.id + ')" title="Dismiss">&times;</button>' +
+        '<button class="alert-banner-dismiss" data-alert-dismiss="' + a.id + '" title="Dismiss">&times;</button>' +
         '</div>';
     }
     if (alerts.length > 3) {
-      html += '<div class="alert-more-link" onclick="switchToTab(\'overview\')">' +
+      html += '<div class="alert-more-link" data-alert-nav="overview">' +
         '+ ' + (alerts.length - 3) + ' more alert(s)</div>';
     }
     container.innerHTML = html;
+
+    container.querySelectorAll('[data-alert-dismiss]').forEach(function(el) {
+      el.addEventListener('click', function() {
+        var button = el as HTMLElement;
+        dismissAlert(button.dataset.alertDismiss || '');
+      });
+    });
+
+    var moreLink = container.querySelector('[data-alert-nav="overview"]');
+    if (moreLink) {
+      moreLink.addEventListener('click', function() {
+        switchToTab('overview');
+      });
+    }
   }).catch(function() {});
 }
 
