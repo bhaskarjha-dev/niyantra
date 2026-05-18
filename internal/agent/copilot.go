@@ -73,7 +73,7 @@ func (a *PollingAgent) pollCopilot(ctx context.Context) {
 	a.store.UpdateSourceCapture("copilot")
 
 	if a.notifier != nil {
-		a.notifier.CheckClaudeQuota("copilot_usage", snapshot.PremiumPct)
+		a.notifier.CheckUsedQuota("copilot_usage", "GitHub Copilot", snapshot.PremiumPct)
 	}
 
 	a.logger.Info("Copilot poll complete",

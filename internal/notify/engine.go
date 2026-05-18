@@ -15,16 +15,16 @@ type Engine struct {
 	mu        sync.Mutex
 	enabled   bool
 	threshold float64              // alert when remaining% drops below this (default 10)
-	guard     map[string]time.Time // model → time of last notification
+	guard     map[string]time.Time // guard key -> time of last notification
 	guardTTL  time.Duration        // how long to suppress re-notifications (default 6h)
 	logger    *slog.Logger
-	smtp      SMTPConfig      // F11: SMTP email delivery settings
-	webhook   WebhookConfig   // F22: Webhook delivery settings
-	webpush   WebPushConfig   // F19: WebPush delivery settings
-	digest    *DigestBatcher   // F8: Digest batching
+	smtp      SMTPConfig    // F11: SMTP email delivery settings
+	webhook   WebhookConfig // F22: Webhook delivery settings
+	webpush   WebPushConfig // F19: WebPush delivery settings
+	digest    *DigestBatcher
 
-	getSubscriptions func() []WebPushSubscription // F19: callback to get stored subscriptions
-	onNotify func(model string, remainingPct float64) // callback when notification fires
+	getSubscriptions func() []WebPushSubscription
+	onNotify         func(model string, remainingPct float64)
 }
 
 // NewEngine creates a notification engine with default settings.
@@ -126,7 +126,6 @@ func (e *Engine) ConfigureDigest(enabled bool, windowSec int) {
 	defer e.mu.Unlock()
 
 	if e.digest == nil {
-		// Create batcher with a flush callback that calls deliver()
 		e.digest = NewDigestBatcher(5*time.Minute, func(title, body string) {
 			e.deliver(title, body)
 		})
@@ -148,6 +147,7 @@ func (e *Engine) DigestEnabled() bool {
 	defer e.mu.Unlock()
 	return e.digest != nil && e.digest.IsEnabled()
 }
+
 // Threshold returns the current threshold.
 func (e *Engine) Threshold() float64 {
 	e.mu.Lock()
@@ -167,10 +167,20 @@ func (e *Engine) SetOnNotify(fn func(model string, remainingPct float64)) {
 // remainingPct is the percentage of quota remaining (0-100).
 // Guard: fires at most once per model until OnReset() is called.
 func (e *Engine) CheckQuota(model string, remainingPct float64) {
+	e.checkQuotaAlert(model, model, remainingPct)
+}
+
+// CheckUsedQuota converts a used percentage into a remaining percentage and
+// sends a provider-specific alert keyed by guardKey.
+func (e *Engine) CheckUsedQuota(guardKey, label string, usedPct float64) {
+	e.checkQuotaAlert(guardKey, label, 100.0-usedPct)
+}
+
+func (e *Engine) checkQuotaAlert(guardKey, label string, remainingPct float64) {
 	e.mu.Lock()
 	enabled := e.enabled
 	threshold := e.threshold
-	lastSent, exists := e.guard[model]
+	lastSent, exists := e.guard[guardKey]
 	alreadySent := exists && time.Since(lastSent) < e.guardTTL
 	e.mu.Unlock()
 
@@ -182,80 +192,73 @@ func (e *Engine) CheckQuota(model string, remainingPct float64) {
 		return
 	}
 
-	// F8: Route through digest batcher if enabled
 	e.mu.Lock()
 	digest := e.digest
 	e.mu.Unlock()
 
 	if digest != nil {
 		batched := digest.Add(DigestAlert{
-			Model:        model,
+			Model:        label,
 			RemainingPct: remainingPct,
-			Timestamp:     time.Now(),
+			Timestamp:    time.Now(),
 		})
 		if batched {
-			// Mark as notified and fire callback, but skip delivery (digest will deliver)
 			e.mu.Lock()
-			e.guard[model] = time.Now()
+			e.guard[guardKey] = time.Now()
 			cb := e.onNotify
 			e.mu.Unlock()
 			if cb != nil {
-				cb(model, remainingPct)
+				cb(label, remainingPct)
 			}
 			return
 		}
 	}
 
-	// Fire notification
-	title := fmt.Sprintf("⚠️ %s quota low", model)
-	body := fmt.Sprintf("%.1f%% remaining — consider switching models", remainingPct)
+	title := fmt.Sprintf("⚠️ %s quota low", label)
+	body := fmt.Sprintf("%.1f%% remaining - consider switching models", remainingPct)
 
 	e.logger.Info("Sending quota alert notification",
-		"model", model,
+		"model", label,
+		"guard_key", guardKey,
 		"remaining_pct", remainingPct,
 		"threshold", threshold)
 
-	// Channel 1: OS-native desktop notification
 	if err := Send(title, body); err != nil {
-		e.logger.Error("Failed to send OS notification", "error", err, "model", model)
-		// Continue — email may still succeed
+		e.logger.Error("Failed to send OS notification", "error", err, "model", label)
 	}
 
-	// Channel 2: SMTP email notification (F11)
 	e.mu.Lock()
 	smtpCfg := e.smtp
 	e.mu.Unlock()
 
 	if smtpCfg.IsConfigured() {
 		go func() {
-			subject := fmt.Sprintf("Niyantra Alert: %s quota low (%.1f%%)", model, remainingPct)
-			htmlBody := FormatQuotaAlertHTML(model, remainingPct, threshold)
+			subject := fmt.Sprintf("Niyantra Alert: %s quota low (%.1f%%)", label, remainingPct)
+			htmlBody := FormatQuotaAlertHTML(label, remainingPct, threshold)
 			if err := SendEmail(&smtpCfg, subject, htmlBody); err != nil {
-				e.logger.Error("Failed to send SMTP notification", "error", err, "model", model)
+				e.logger.Error("Failed to send SMTP notification", "error", err, "model", label)
 			} else {
-				e.logger.Info("SMTP quota alert sent", "model", model, "to", smtpCfg.To)
+				e.logger.Info("SMTP quota alert sent", "model", label, "to", smtpCfg.To)
 			}
 		}()
 	}
 
-	// Channel 3: Webhook notification (F22)
 	e.mu.Lock()
 	webhookCfg := e.webhook
 	e.mu.Unlock()
 
 	if webhookCfg.IsConfigured() {
 		go func() {
-			whTitle := fmt.Sprintf("⚠️ %s quota low", model)
-			whMsg := fmt.Sprintf("%.1f%% remaining (threshold: %.0f%%) — consider switching models", remainingPct, threshold)
+			whTitle := fmt.Sprintf("⚠️ %s quota low", label)
+			whMsg := fmt.Sprintf("%.1f%% remaining (threshold: %.0f%%) - consider switching models", remainingPct, threshold)
 			if err := SendWebhook(&webhookCfg, whTitle, whMsg, remainingPct); err != nil {
-				e.logger.Error("Failed to send webhook notification", "error", err, "model", model)
+				e.logger.Error("Failed to send webhook notification", "error", err, "model", label)
 			} else {
-				e.logger.Info("Webhook quota alert sent", "model", model, "type", webhookCfg.Type)
+				e.logger.Info("Webhook quota alert sent", "model", label, "type", webhookCfg.Type)
 			}
 		}()
 	}
 
-	// Channel 4: WebPush notification (F19)
 	e.mu.Lock()
 	webpushCfg := e.webpush
 	getSubs := e.getSubscriptions
@@ -267,42 +270,49 @@ func (e *Engine) CheckQuota(model string, remainingPct float64) {
 			if len(subs) == 0 {
 				return
 			}
-			payload := FormatQuotaAlertPush(model, remainingPct, threshold)
+			payload := FormatQuotaAlertPush(label, remainingPct, threshold)
 			for _, sub := range subs {
 				if err := SendWebPush(&webpushCfg, &sub, payload); err != nil {
-					e.logger.Error("Failed to send WebPush notification", "error", err, "model", model)
+					e.logger.Error("Failed to send WebPush notification", "error", err, "model", label)
 				} else {
 					epSnippet := sub.Endpoint
 					if len(epSnippet) > 50 {
 						epSnippet = epSnippet[:50]
 					}
-					e.logger.Info("WebPush quota alert sent", "model", model, "endpoint", epSnippet)
+					e.logger.Info("WebPush quota alert sent", "model", label, "endpoint", epSnippet)
 				}
 			}
 		}()
 	}
 
-	// Mark as notified for this cycle
 	e.mu.Lock()
-	e.guard[model] = time.Now()
+	e.guard[guardKey] = time.Now()
 	cb := e.onNotify
 	e.mu.Unlock()
 
-	// Fire the notification callback (system alert + activity log)
 	if cb != nil {
-		cb(model, remainingPct)
+		cb(label, remainingPct)
 	}
 }
 
 // CheckClaudeQuota fires a notification for Claude Code rate limits.
 // usedPct is the used percentage (0-100).
 func (e *Engine) CheckClaudeQuota(window string, usedPct float64) {
-	remaining := 100.0 - usedPct
-	key := "claude_" + window
-	e.CheckQuota(key, remaining)
+	e.CheckUsedQuota("claude_"+window, claudeQuotaLabel(window), usedPct)
 }
 
-// OnReset clears the guard for a model (cycle detected → can notify again).
+func claudeQuotaLabel(window string) string {
+	switch window {
+	case "five_hour":
+		return "Claude Code 5-hour"
+	case "seven_day":
+		return "Claude Code 7-day"
+	default:
+		return "Claude Code"
+	}
+}
+
+// OnReset clears the guard for a model (cycle detected -> can notify again).
 func (e *Engine) OnReset(model string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -333,7 +343,7 @@ func (e *Engine) ResetAllGuards() {
 // SendTest sends a test notification to verify the platform works.
 func (e *Engine) SendTest() error {
 	return Send(
-		"Niyantra — Test Notification",
+		"Niyantra - Test Notification",
 		fmt.Sprintf("Notifications are working! Threshold: %.0f%%. Time: %s",
 			e.Threshold(), time.Now().Format("15:04:05")),
 	)
@@ -349,7 +359,7 @@ func (e *Engine) SendTestEmail() error {
 		return fmt.Errorf("SMTP is not configured")
 	}
 
-	return SendEmail(&cfg, "Niyantra — SMTP Test", FormatTestEmailHTML())
+	return SendEmail(&cfg, "Niyantra - SMTP Test", FormatTestEmailHTML())
 }
 
 // SendTestWebhookFromEngine sends a test webhook to verify configuration (F22).
@@ -389,12 +399,10 @@ func (e *Engine) SendTestWebPushFromEngine() error {
 func (e *Engine) deliver(title, body string) {
 	e.logger.Info("Delivering notification", "title", title)
 
-	// Channel 1: OS-native
 	if err := Send(title, body); err != nil {
 		e.logger.Error("Failed to send OS notification", "error", err)
 	}
 
-	// Channel 2: SMTP
 	e.mu.Lock()
 	smtpCfg := e.smtp
 	e.mu.Unlock()
@@ -408,7 +416,6 @@ func (e *Engine) deliver(title, body string) {
 		}()
 	}
 
-	// Channel 3: Webhook
 	e.mu.Lock()
 	webhookCfg := e.webhook
 	e.mu.Unlock()
@@ -421,7 +428,6 @@ func (e *Engine) deliver(title, body string) {
 		}()
 	}
 
-	// Channel 4: WebPush
 	e.mu.Lock()
 	webpushCfg := e.webpush
 	getSubs := e.getSubscriptions

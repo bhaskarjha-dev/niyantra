@@ -78,7 +78,7 @@ func (a *PollingAgent) pollGemini(ctx context.Context) {
 	a.store.UpdateSourceCapture("gemini")
 
 	if a.notifier != nil {
-		a.notifier.CheckClaudeQuota("gemini_usage", snapshot.OverallUsedPct)
+		a.notifier.CheckUsedQuota("gemini_usage", "Gemini CLI", snapshot.OverallUsedPct)
 	}
 
 	a.logger.Info("Gemini poll complete",

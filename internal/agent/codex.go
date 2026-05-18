@@ -114,9 +114,9 @@ func (a *PollingAgent) pollCodex(ctx context.Context) {
 
 	// F9: Check Codex notification thresholds
 	if a.notifier != nil {
-		a.notifier.CheckClaudeQuota("codex_five_hour", snap.FiveHourPct)
+		a.notifier.CheckUsedQuota("codex_five_hour", "Codex 5-hour", snap.FiveHourPct)
 		if snap.SevenDayPct != nil {
-			a.notifier.CheckClaudeQuota("codex_seven_day", *snap.SevenDayPct)
+			a.notifier.CheckUsedQuota("codex_seven_day", "Codex 7-day", *snap.SevenDayPct)
 		}
 	}
 

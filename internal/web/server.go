@@ -86,7 +86,7 @@ func NewServer(logger *slog.Logger, s *store.Store, c *client.Client, port int, 
 	srv.notifier.SetOnNotify(func(model string, remainingPct float64) {
 		title := fmt.Sprintf("⚠️ %s quota low", model)
 		msg := fmt.Sprintf("%.1f%% remaining — consider switching models", remainingPct)
-		s.CreateAlert("quota_low_"+model, "warning", title, msg, map[string]interface{}{
+		s.CreateAlert("quota_low_"+sanitizeAlertKeyPart(model), "warning", title, msg, map[string]interface{}{
 			"model":        model,
 			"remainingPct": remainingPct,
 		})

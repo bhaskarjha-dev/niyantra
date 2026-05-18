@@ -73,7 +73,7 @@ func (a *PollingAgent) pollPlugins(ctx context.Context) {
 
 		// Check quota thresholds via notifier
 		if a.notifier != nil && result.Data.UsagePct > 0 {
-			a.notifier.CheckClaudeQuota("plugin_"+p.Manifest.ID, result.Data.UsagePct)
+			a.notifier.CheckUsedQuota("plugin_"+p.Manifest.ID, "Plugin "+p.Manifest.Name, result.Data.UsagePct)
 		}
 
 		a.logger.Info("Plugin capture complete",

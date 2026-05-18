@@ -78,7 +78,7 @@ func (a *PollingAgent) pollCursor(ctx context.Context) {
 	a.store.UpdateSourceCapture("cursor")
 
 	if a.notifier != nil {
-		a.notifier.CheckClaudeQuota("cursor_usage", snapshot.UsagePct())
+		a.notifier.CheckUsedQuota("cursor_usage", "Cursor", snapshot.UsagePct())
 	}
 
 	a.logger.Info("Cursor poll complete",

@@ -11,10 +11,6 @@ func TestCheckQuotaGuard(t *testing.T) {
 	e := NewEngine(slog.Default())
 	e.Configure(true, 15)
 
-	// Simulate — Send will fail on CI (no display), but guard logic is testable
-	// We test the guard mechanism, not the OS notification delivery.
-
-	// Guard should be empty
 	e.mu.Lock()
 	if !e.guard["test-model"].IsZero() {
 		t.Error("expected guard to be empty for test-model")
@@ -26,12 +22,10 @@ func TestOnResetClearsGuard(t *testing.T) {
 	e := NewEngine(slog.Default())
 	e.Configure(true, 10)
 
-	// Manually set guard
 	e.mu.Lock()
 	e.guard["claude_3.5_sonnet"] = time.Now()
 	e.mu.Unlock()
 
-	// OnReset should clear it
 	e.OnReset("claude_3.5_sonnet")
 
 	e.mu.Lock()
@@ -56,9 +50,6 @@ func TestOnNotifyCallback(t *testing.T) {
 		mu.Unlock()
 	})
 
-	// Manually set guard and then call to simulate a notification fire
-	// (We can't test the full Send path without OS notification support)
-	// Instead, test that the callback is stored and accessible
 	e.mu.Lock()
 	cb := e.onNotify
 	e.mu.Unlock()
@@ -67,7 +58,6 @@ func TestOnNotifyCallback(t *testing.T) {
 		t.Fatal("expected onNotify callback to be set")
 	}
 
-	// Call it directly to verify wiring
 	cb("gpt-4o", 8.5)
 
 	mu.Lock()
@@ -82,9 +72,8 @@ func TestOnNotifyCallback(t *testing.T) {
 
 func TestCheckQuotaSkipsWhenDisabled(t *testing.T) {
 	e := NewEngine(slog.Default())
-	e.Configure(false, 10) // disabled
+	e.Configure(false, 10)
 
-	// Should not fire — verify guard stays empty
 	e.CheckQuota("test-model", 5.0)
 
 	e.mu.Lock()
@@ -98,7 +87,6 @@ func TestCheckQuotaSkipsAboveThreshold(t *testing.T) {
 	e := NewEngine(slog.Default())
 	e.Configure(true, 10)
 
-	// 50% remaining is above 10% threshold — should not fire
 	e.CheckQuota("test-model", 50.0)
 
 	e.mu.Lock()
@@ -110,22 +98,63 @@ func TestCheckQuotaSkipsAboveThreshold(t *testing.T) {
 
 func TestCheckClaudeQuotaConvertsUsedToRemaining(t *testing.T) {
 	e := NewEngine(slog.Default())
-	e.Configure(true, 15) // threshold 15%
+	e.Configure(true, 15)
 
-	// 95% used = 5% remaining → should be below threshold
-	// We can't test the Send path, but verify CheckClaudeQuota calls CheckQuota
-	// with the converted key
+	var gotModel string
+	var gotRemaining float64
+	e.SetOnNotify(func(model string, remainingPct float64) {
+		gotModel = model
+		gotRemaining = remainingPct
+	})
+
 	e.CheckClaudeQuota("five_hour", 95.0)
 
-	// The key should be "claude_five_hour"
-	// Guard may or may not be set depending on whether Send succeeds
-	// (it will fail on CI — that's fine, we're testing the conversion logic)
+	e.mu.Lock()
+	guardSet := !e.guard["claude_five_hour"].IsZero()
+	e.mu.Unlock()
+
+	if !guardSet {
+		t.Fatal("expected guard to be set for claude_five_hour")
+	}
+	if gotModel != "Claude Code 5-hour" {
+		t.Fatalf("expected callback model %q, got %q", "Claude Code 5-hour", gotModel)
+	}
+	if gotRemaining != 5.0 {
+		t.Fatalf("expected remaining 5.0, got %.1f", gotRemaining)
+	}
+}
+
+func TestCheckUsedQuotaUsesProvidedLabelAndGuardKey(t *testing.T) {
+	e := NewEngine(slog.Default())
+	e.Configure(true, 20)
+
+	var gotModel string
+	var gotRemaining float64
+	e.SetOnNotify(func(model string, remainingPct float64) {
+		gotModel = model
+		gotRemaining = remainingPct
+	})
+
+	e.CheckUsedQuota("cursor_usage", "Cursor", 90.0)
+
+	e.mu.Lock()
+	guardSet := !e.guard["cursor_usage"].IsZero()
+	e.mu.Unlock()
+
+	if !guardSet {
+		t.Fatal("expected guard to be set for cursor_usage")
+	}
+	if gotModel != "Cursor" {
+		t.Fatalf("expected callback model %q, got %q", "Cursor", gotModel)
+	}
+	if gotRemaining != 10.0 {
+		t.Fatalf("expected remaining 10.0, got %.1f", gotRemaining)
+	}
 }
 
 func TestConfigureUpdatesSettings(t *testing.T) {
 	e := NewEngine(slog.Default())
 
-	// Default values
 	if e.Enabled() {
 		t.Error("expected disabled by default")
 	}
@@ -133,7 +162,6 @@ func TestConfigureUpdatesSettings(t *testing.T) {
 		t.Errorf("expected default threshold 10, got %.0f", e.Threshold())
 	}
 
-	// Configure
 	e.Configure(true, 25)
 	if !e.Enabled() {
 		t.Error("expected enabled after Configure")
@@ -142,7 +170,6 @@ func TestConfigureUpdatesSettings(t *testing.T) {
 		t.Errorf("expected threshold 25, got %.0f", e.Threshold())
 	}
 
-	// Threshold must be positive
 	e.Configure(true, -5)
 	if e.Threshold() != 25 {
 		t.Errorf("expected threshold to remain 25 for negative input, got %.0f", e.Threshold())
@@ -151,18 +178,14 @@ func TestConfigureUpdatesSettings(t *testing.T) {
 
 func TestSendTestReturnsError(t *testing.T) {
 	e := NewEngine(slog.Default())
-
-	// SendTest should return an error or nil depending on platform support
-	// Just verify it doesn't panic
 	_ = e.SendTest()
 }
 
 func TestGuardTTLExpiry(t *testing.T) {
 	e := NewEngine(slog.Default())
 	e.Configure(true, 10)
-	e.guardTTL = 100 * time.Millisecond // short TTL for testing
+	e.guardTTL = 100 * time.Millisecond
 
-	// First call below threshold — should fire and set guard
 	e.CheckQuota("codex_5h", 5.0)
 	e.mu.Lock()
 	guardSet := !e.guard["codex_5h"].IsZero()
@@ -171,7 +194,6 @@ func TestGuardTTLExpiry(t *testing.T) {
 		t.Fatal("expected guard to be set after CheckQuota below threshold")
 	}
 
-	// Immediate second call — should be suppressed by guard
 	e.mu.Lock()
 	guardBefore := e.guard["codex_5h"]
 	e.mu.Unlock()
@@ -185,10 +207,8 @@ func TestGuardTTLExpiry(t *testing.T) {
 		t.Error("expected guard timestamp to remain unchanged (suppressed)")
 	}
 
-	// Wait for TTL to expire
 	time.Sleep(150 * time.Millisecond)
 
-	// Third call — TTL expired, should fire again and update timestamp
 	e.CheckQuota("codex_5h", 5.0)
 	e.mu.Lock()
 	guardFinal := e.guard["codex_5h"]
@@ -202,13 +222,11 @@ func TestResetGuard(t *testing.T) {
 	e := NewEngine(slog.Default())
 	e.Configure(true, 10)
 
-	// Set guards for multiple models
 	e.mu.Lock()
 	e.guard["model_a"] = time.Now()
 	e.guard["model_b"] = time.Now()
 	e.mu.Unlock()
 
-	// Reset only model_a
 	e.ResetGuard("model_a")
 
 	e.mu.Lock()
@@ -225,14 +243,12 @@ func TestResetAllGuards(t *testing.T) {
 	e := NewEngine(slog.Default())
 	e.Configure(true, 10)
 
-	// Set guards for multiple models
 	e.mu.Lock()
 	e.guard["model_a"] = time.Now()
 	e.guard["model_b"] = time.Now()
 	e.guard["claude_5h"] = time.Now()
 	e.mu.Unlock()
 
-	// Reset all guards
 	e.ResetAllGuards()
 
 	e.mu.Lock()
