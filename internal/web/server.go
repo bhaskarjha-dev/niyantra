@@ -28,6 +28,7 @@ type Server struct {
 	port       int
 	bind       string // bind address (default: "127.0.0.1")
 	auth       string // "user:pass" or ""
+	httpMCP    bool
 	agentMgr   *agent.Manager
 	httpServer *http.Server
 	startTime  time.Time // set in NewServer for /healthz uptime
@@ -35,7 +36,7 @@ type Server struct {
 }
 
 // NewServer creates a new Niyantra web server.
-func NewServer(logger *slog.Logger, s *store.Store, c *client.Client, port int, auth string, version string, bind string) *Server {
+func NewServer(logger *slog.Logger, s *store.Store, c *client.Client, port int, auth string, version string, bind string, httpMCP bool) *Server {
 	srv := &Server{
 		logger:    logger,
 		store:     s,
@@ -45,6 +46,7 @@ func NewServer(logger *slog.Logger, s *store.Store, c *client.Client, port int, 
 		port:      port,
 		bind:      bind,
 		auth:      auth,
+		httpMCP:   httpMCP,
 		agentMgr:  agent.NewManager(logger),
 		startTime: time.Now(),
 		Version:   version,
@@ -74,6 +76,11 @@ func NewServer(logger *slog.Logger, s *store.Store, c *client.Client, port int, 
 			}
 		}
 		return subs
+	})
+	srv.notifier.SetDeleteSubscription(func(endpoint string) {
+		if err := srv.store.DeleteWebPushSubscription(endpoint); err != nil {
+			srv.logger.Warn("Failed to prune invalid WebPush subscription", "error", err)
+		}
 	})
 
 	// F9: Wire tracker → notifier reset callback.
@@ -266,11 +273,12 @@ func (s *Server) ListenAndServe() error {
 	mux.HandleFunc("GET /api/git-costs", s.handleGitCosts)
 
 	// Phase 15 routes: Streamable HTTP MCP (F14)
-	// The MCP SDK handler manages its own Origin/Content-Type verification,
-	// session management, and SSE streaming. We mount it directly so the
-	// security middleware doesn't interfere with the MCP protocol.
-	mcpSrv := mcpserver.New(s.store, s.tracker, s.logger, s.Version)
-	mux.Handle("/mcp", mcpSrv.HTTPHandler())
+	// Disabled by default. When enabled, the MCP SDK handler manages its own
+	// Origin/Content-Type verification, session management, and SSE streaming.
+	if s.httpMCP {
+		mcpSrv := mcpserver.New(s.store, s.tracker, s.logger, s.Version)
+		mux.Handle("/mcp", mcpSrv.HTTPHandler())
+	}
 
 	// Data management routes
 	mux.HandleFunc("GET /api/accounts", s.handleAccounts)

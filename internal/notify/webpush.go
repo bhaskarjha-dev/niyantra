@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -23,8 +24,8 @@ import (
 
 // WebPushSubscription represents a PushSubscription from the Push API.
 type WebPushSubscription struct {
-	Endpoint string       `json:"endpoint"`
-	Keys     WebPushKeys  `json:"keys"`
+	Endpoint string      `json:"endpoint"`
+	Keys     WebPushKeys `json:"keys"`
 }
 
 // WebPushKeys are the base64url-encoded keys from PushSubscription.getKey().
@@ -38,6 +39,41 @@ type WebPushConfig struct {
 	Enabled    bool
 	PublicKey  string // base64url-encoded VAPID public key
 	PrivateKey string // base64url-encoded VAPID private key
+}
+
+// WebPushError captures a push-service response so callers can decide whether
+// the subscription should be pruned.
+type WebPushError struct {
+	StatusCode int
+	Endpoint   string
+	Err        error
+}
+
+func (e *WebPushError) Error() string {
+	if e == nil {
+		return "<nil>"
+	}
+	if e.Err != nil {
+		return fmt.Sprintf("webpush: push service returned HTTP %d for %s: %v", e.StatusCode, e.Endpoint, e.Err)
+	}
+	return fmt.Sprintf("webpush: push service returned HTTP %d for %s", e.StatusCode, e.Endpoint)
+}
+
+func (e *WebPushError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+// IsPermanentWebPushError returns true when the subscription is no longer
+// usable and should be pruned locally.
+func IsPermanentWebPushError(err error) bool {
+	var wpErr *WebPushError
+	if !errors.As(err, &wpErr) {
+		return false
+	}
+	return wpErr.StatusCode == http.StatusNotFound || wpErr.StatusCode == http.StatusGone
 }
 
 // IsConfigured returns true if VAPID keys are present and WebPush is enabled.
@@ -197,7 +233,10 @@ func SendWebPush(cfg *WebPushConfig, sub *WebPushSubscription, payload []byte) e
 	io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("webpush: push service returned HTTP %d", resp.StatusCode)
+		return &WebPushError{
+			StatusCode: resp.StatusCode,
+			Endpoint:   sub.Endpoint,
+		}
 	}
 	return nil
 }

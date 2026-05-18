@@ -91,8 +91,37 @@ func dedupWindow(t time.Time) (string, string) {
 	return start, end
 }
 
+func importAccountKey(provider, email string) string {
+	if provider == "" {
+		provider = "antigravity"
+	}
+	return provider + "\x00" + email
+}
+
+func resolveImportAccountID(s *Store, accountKeyToID map[string]int64, provider, email, planName string) (int64, bool, error) {
+	if email == "" {
+		return 0, false, nil
+	}
+	key := importAccountKey(provider, email)
+	if id, ok := accountKeyToID[key]; ok {
+		return id, false, nil
+	}
+	var existingID int64
+	err := s.db.QueryRow(`SELECT id FROM accounts WHERE email = ? AND provider = ?`, email, provider).Scan(&existingID)
+	if err == nil {
+		accountKeyToID[key] = existingID
+		return existingID, false, nil
+	}
+	id, err := s.GetOrCreateAccount(email, planName, provider)
+	if err != nil {
+		return 0, false, err
+	}
+	accountKeyToID[key] = id
+	return id, true, nil
+}
+
 // ImportJSON imports data from a JSON export, using additive merge with deduplication.
-// Accounts are deduped by email. Subscriptions by platform+email.
+// Accounts are deduped by provider+email. Subscriptions by platform+email.
 // Snapshots by account+captured_at (1-second window). Config is never overwritten.
 func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 	result := &ImportResult{}
@@ -108,7 +137,7 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 	}
 
 	// ── Import accounts (dedup by email) ──
-	emailToID := make(map[string]int64)
+	accountKeyToID := make(map[string]int64)
 	for _, raw := range envelope.Accounts {
 		var acct importAccount
 		if err := json.Unmarshal(raw, &acct); err != nil {
@@ -129,7 +158,7 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 		var existingID int64
 		err := s.db.QueryRow(`SELECT id FROM accounts WHERE email = ? AND provider = ?`, acct.Email, provider).Scan(&existingID)
 		if err == nil {
-			emailToID[acct.Email] = existingID
+			accountKeyToID[importAccountKey(provider, acct.Email)] = existingID
 			result.AccountsSkipped++
 			continue
 		}
@@ -141,7 +170,7 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 			continue
 		}
 		id, _ := res.LastInsertId()
-		emailToID[acct.Email] = id
+		accountKeyToID[importAccountKey(provider, acct.Email)] = id
 		result.AccountsCreated++
 	}
 
@@ -186,12 +215,15 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 			continue
 		}
 
-		// Resolve account ID — try email mapping first, then raw account_id
-		accountID := snap.AccountID
-		if snap.Email != "" {
-			if id, ok := emailToID[snap.Email]; ok {
-				accountID = id
-			}
+		// Resolve account ID — antigravity snapshots belong to the antigravity
+		// provider namespace even when the same email exists elsewhere.
+		accountID, created, err := resolveImportAccountID(s, accountKeyToID, "antigravity", snap.Email, snap.PlanName)
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("snapshot account resolve %q: %v", snap.Email, err))
+			continue
+		}
+		if created {
+			result.AccountsCreated++
 		}
 		if accountID == 0 {
 			continue
@@ -276,14 +308,15 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 	// ── Import Codex snapshots ──
 	for _, raw := range envelope.CodexSnaps {
 		var snap struct {
-			AccountID     string   `json:"accountId"`
-			Email         string   `json:"email"`
-			FiveHourPct   float64  `json:"fiveHourPct"`
-			SevenDayPct   *float64 `json:"sevenDayPct"`
-			PlanType      string   `json:"planType"`
+			AccountID      string   `json:"accountId"`
+			OwnerAccountID int64    `json:"ownerAccountId"`
+			Email          string   `json:"email"`
+			FiveHourPct    float64  `json:"fiveHourPct"`
+			SevenDayPct    *float64 `json:"sevenDayPct"`
+			PlanType       string   `json:"planType"`
 			CreditsBalance *float64 `json:"creditsBalance"`
-			CapturedAt    string   `json:"capturedAt"`
-			CaptureMethod string   `json:"captureMethod"`
+			CapturedAt     string   `json:"capturedAt"`
+			CaptureMethod  string   `json:"captureMethod"`
 		}
 		if err := json.Unmarshal(raw, &snap); err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("codex snap parse: %v", err))
@@ -309,11 +342,23 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 		if method == "" {
 			method = "imported"
 		}
+		ownerAccountID := snap.OwnerAccountID
+		if ownerAccountID == 0 && snap.Email != "" {
+			var created bool
+			ownerAccountID, created, err = resolveImportAccountID(s, accountKeyToID, "codex", snap.Email, snap.PlanType)
+			if err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("codex owner resolve %q: %v", snap.Email, err))
+				continue
+			}
+			if created {
+				result.AccountsCreated++
+			}
+		}
 		_, err = s.db.Exec(`
-			INSERT INTO codex_snapshots (account_id, email, five_hour_pct, seven_day_pct,
+			INSERT INTO codex_snapshots (account_id, owner_account_id, email, five_hour_pct, seven_day_pct,
 				plan_type, credits_balance, captured_at, capture_method, capture_source)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'json')`,
-			snap.AccountID, snap.Email, snap.FiveHourPct, snap.SevenDayPct,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'json')`,
+			snap.AccountID, ownerAccountID, snap.Email, snap.FiveHourPct, snap.SevenDayPct,
 			snap.PlanType, snap.CreditsBalance, snap.CapturedAt, method)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("codex snap insert: %v", err))
@@ -325,12 +370,12 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 	// ── Import Cursor snapshots ──
 	for _, raw := range envelope.CursorSnaps {
 		var snap struct {
-			Email       string  `json:"email"`
-			PremiumUsed int     `json:"premiumUsed"`
-			PremiumLimit int    `json:"premiumLimit"`
-			UsagePct    float64 `json:"usagePct"`
-			PlanType    string  `json:"planType"`
-			CapturedAt  string  `json:"capturedAt"`
+			Email        string  `json:"email"`
+			PremiumUsed  int     `json:"premiumUsed"`
+			PremiumLimit int     `json:"premiumLimit"`
+			UsagePct     float64 `json:"usagePct"`
+			PlanType     string  `json:"planType"`
+			CapturedAt   string  `json:"capturedAt"`
 		}
 		if err := json.Unmarshal(raw, &snap); err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("cursor snap parse: %v", err))
@@ -352,11 +397,19 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 			result.CursorDuped++
 			continue
 		}
+		accountID, created, err := resolveImportAccountID(s, accountKeyToID, "cursor", snap.Email, snap.PlanType)
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("cursor owner resolve %q: %v", snap.Email, err))
+			continue
+		}
+		if created {
+			result.AccountsCreated++
+		}
 		_, err = s.db.Exec(`
-			INSERT INTO cursor_snapshots (email, premium_used, premium_limit, usage_pct,
+			INSERT INTO cursor_snapshots (account_id, email, premium_used, premium_limit, usage_pct,
 				plan_type, captured_at, capture_method, capture_source)
-			VALUES (?, ?, ?, ?, ?, ?, 'imported', 'json')`,
-			snap.Email, snap.PremiumUsed, snap.PremiumLimit, snap.UsagePct,
+			VALUES (?, ?, ?, ?, ?, ?, ?, 'imported', 'json')`,
+			accountID, snap.Email, snap.PremiumUsed, snap.PremiumLimit, snap.UsagePct,
 			snap.PlanType, snap.CapturedAt)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("cursor snap insert: %v", err))
@@ -395,11 +448,19 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 			result.GeminiDuped++
 			continue
 		}
+		accountID, created, err := resolveImportAccountID(s, accountKeyToID, "gemini", snap.Email, snap.Tier)
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("gemini owner resolve %q: %v", snap.Email, err))
+			continue
+		}
+		if created {
+			result.AccountsCreated++
+		}
 		_, err = s.db.Exec(`
-			INSERT INTO gemini_snapshots (email, tier, overall_pct, models_json, project_id,
+			INSERT INTO gemini_snapshots (account_id, email, tier, overall_pct, models_json, project_id,
 				captured_at, capture_method, capture_source)
-			VALUES (?, ?, ?, ?, ?, ?, 'imported', 'json')`,
-			snap.Email, snap.Tier, snap.OverallPct, snap.ModelsJSON,
+			VALUES (?, ?, ?, ?, ?, ?, ?, 'imported', 'json')`,
+			accountID, snap.Email, snap.Tier, snap.OverallPct, snap.ModelsJSON,
 			snap.ProjectID, snap.CapturedAt)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("gemini snap insert: %v", err))
@@ -438,11 +499,19 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 			result.CopilotDuped++
 			continue
 		}
+		accountID, created, err := resolveImportAccountID(s, accountKeyToID, "copilot", snap.Email, snap.Plan)
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("copilot owner resolve %q: %v", snap.Email, err))
+			continue
+		}
+		if created {
+			result.AccountsCreated++
+		}
 		_, err = s.db.Exec(`
-			INSERT INTO copilot_snapshots (email, username, plan, premium_pct, chat_pct,
+			INSERT INTO copilot_snapshots (account_id, email, username, plan, premium_pct, chat_pct,
 				captured_at, capture_method, capture_source)
-			VALUES (?, ?, ?, ?, ?, ?, 'imported', 'json')`,
-			snap.Email, snap.Username, snap.Plan, snap.PremiumPct,
+			VALUES (?, ?, ?, ?, ?, ?, ?, 'imported', 'json')`,
+			accountID, snap.Email, snap.Username, snap.Plan, snap.PremiumPct,
 			snap.ChatPct, snap.CapturedAt)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("copilot snap insert: %v", err))

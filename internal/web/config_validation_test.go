@@ -13,7 +13,7 @@ import (
 func testServerWithStore(t *testing.T) *Server {
 	t.Helper()
 	dir := t.TempDir()
-	s, err := store.Open(filepath.Join(dir, "config_validation_test.db"))
+	s, err := store.Open(filepath.Join(dir, "config_validation_test.db"), store.WithSecretBackend(store.NewMemorySecretBackend()))
 	if err != nil {
 		t.Fatalf("failed to open store: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestValidateConfigValue_Int(t *testing.T) {
 		{"poll_interval", "300", true},
 		{"poll_interval", "30", true},
 		{"poll_interval", "3600", true},
-		{"poll_interval", "29", false},  // below minimum
+		{"poll_interval", "29", false},   // below minimum
 		{"poll_interval", "3601", false}, // above maximum
 		{"poll_interval", "abc", false},  // not a number
 		{"retention_days", "365", true},

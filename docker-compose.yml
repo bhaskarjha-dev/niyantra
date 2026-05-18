@@ -10,7 +10,7 @@ services:
 
     # Port mapping: host:container
     ports:
-      - "${NIYANTRA_PORT:-9222}:9222"
+      - "127.0.0.1:${NIYANTRA_PORT:-9222}:9222"
 
     # Volume mount for persistent SQLite database
     # Pre-create with: mkdir -p ./niyantra-data
@@ -21,6 +21,7 @@ services:
     environment:
       NIYANTRA_DB: /data/niyantra.db
       NIYANTRA_BIND: "0.0.0.0"
+      NIYANTRA_ALLOW_REMOTE: "true"
 
     # Container health check against /healthz endpoint
     healthcheck:

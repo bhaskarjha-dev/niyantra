@@ -1,6 +1,7 @@
 package web
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -31,7 +32,9 @@ func (s *Server) basicAuth(next http.Handler) http.Handler {
 			return
 		}
 		u, p, ok := r.BasicAuth()
-		if !ok || u != user || p != pass {
+		if !ok ||
+			subtle.ConstantTimeCompare([]byte(u), []byte(user)) != 1 ||
+			subtle.ConstantTimeCompare([]byte(p), []byte(pass)) != 1 {
 			w.Header().Set("WWW-Authenticate", `Basic realm="Niyantra"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return

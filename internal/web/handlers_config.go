@@ -6,24 +6,11 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/bhaskarjha-com/niyantra/internal/claude"
 	"github.com/bhaskarjha-com/niyantra/internal/notify"
 	"github.com/bhaskarjha-com/niyantra/internal/store"
 )
-
-// sensitiveConfigKeys contains config keys whose values must never be
-// exposed via the API or logged to the activity log.
-var sensitiveConfigKeys = map[string]bool{
-	"copilot_pat":            true,
-	"cursor_session_token":   true,
-	"gemini_client_secret":   true,
-	"smtp_pass":              true,
-	"smtp_user":              true,
-	"webhook_secret":         true,
-	"webpush_vapid_private":  true,
-}
 
 // isSensitiveKey returns true if a config key contains a secret value
 // that must be masked in API responses and activity logs.
@@ -31,21 +18,7 @@ var sensitiveConfigKeys = map[string]bool{
 // whose manifest field has secret: true (stored as plugin_{id}_{key}
 // where the key name contains "api_key", "token", "secret", or "password").
 func isSensitiveKey(key string) bool {
-	if sensitiveConfigKeys[key] {
-		return true
-	}
-	// Pattern-match plugin config keys: plugin_{id}_{fieldname}
-	// Fields declared as secret in plugin.json manifest are stored with these
-	// naming patterns. We match conservatively on the suffix.
-	if strings.HasPrefix(key, "plugin_") {
-		lk := strings.ToLower(key)
-		for _, pattern := range []string{"_api_key", "_token", "_secret", "_password", "_pat", "_credential"} {
-			if strings.HasSuffix(lk, pattern) {
-				return true
-			}
-		}
-	}
-	return false
+	return store.IsSensitiveConfigKey(key)
 }
 
 // maskConfigEntries replaces sensitive config values with "configured"

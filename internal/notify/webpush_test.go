@@ -258,6 +258,9 @@ func TestSendWebPushHTTPError(t *testing.T) {
 	if err == nil {
 		t.Error("expected error on HTTP 410")
 	}
+	if !IsPermanentWebPushError(err) {
+		t.Fatal("expected HTTP 410 push error to be classified as permanent")
+	}
 }
 
 func TestSendTestWebPushNotConfigured(t *testing.T) {

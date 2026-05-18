@@ -57,12 +57,14 @@ func (s *Store) LatestPerAccount() ([]*client.Snapshot, error) {
 			COALESCE(s.capture_method,'manual'), COALESCE(s.capture_source,'cli'), COALESCE(s.source_id,'antigravity'),
 			COALESCE(s.ai_credits_json,'')
 		FROM snapshots s
-		INNER JOIN (
-			SELECT account_id, MAX(id) as max_id
-			FROM snapshots
-			GROUP BY account_id
-		) latest ON s.id = latest.max_id
-		ORDER BY s.captured_at DESC
+		WHERE s.id = (
+			SELECT s2.id
+			FROM snapshots s2
+			WHERE s2.account_id = s.account_id
+			ORDER BY s2.captured_at DESC, s2.id DESC
+			LIMIT 1
+		)
+		ORDER BY s.captured_at DESC, s.id DESC
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("store: query latest snapshots: %w", err)

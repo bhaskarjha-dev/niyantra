@@ -78,9 +78,18 @@ func (s *Server) handleCodexSnap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var ownerAccountID int64
+	if creds.Email != "" {
+		ownerAccountID, err = s.store.GetOrCreateAccount(creds.Email, usage.PlanType, "codex")
+		if err != nil {
+			s.logger.Warn("Failed to resolve local Codex account ownership", "email", creds.Email, "error", err)
+		}
+	}
+
 	// Build and store snapshot
 	snap := &store.CodexSnapshot{
 		AccountID:      creds.AccountID,
+		OwnerAccountID: ownerAccountID,
 		Email:          creds.Email,
 		FiveHourPct:    0,
 		PlanType:       usage.PlanType,

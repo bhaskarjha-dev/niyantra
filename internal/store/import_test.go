@@ -12,7 +12,7 @@ import (
 func testImportStore(t *testing.T) *Store {
 	t.Helper()
 	dir := t.TempDir()
-	s, err := Open(filepath.Join(dir, "import_test.db"))
+	s, err := Open(filepath.Join(dir, "import_test.db"), WithSecretBackend(NewMemorySecretBackend()))
 	if err != nil {
 		t.Fatalf("failed to open test store: %v", err)
 	}
@@ -102,6 +102,56 @@ func TestImportJSON_AccountsDedup(t *testing.T) {
 	}
 }
 
+func TestImportJSON_SameEmailDifferentProvidersStayDistinct(t *testing.T) {
+	s := testImportStore(t)
+	capturedAt := time.Now().UTC().Format(time.RFC3339)
+
+	data := buildExportJSON(t, map[string]interface{}{
+		"accounts": []map[string]string{
+			{"email": "shared@example.com", "plan_name": "Ultra", "provider": "antigravity"},
+			{"email": "shared@example.com", "plan_name": "Plus", "provider": "codex"},
+		},
+		"snapshots": []map[string]interface{}{
+			{
+				"email":       "shared@example.com",
+				"captured_at": capturedAt,
+				"models_json": `[{"modelId":"claude-sonnet-4.6","remainingPercent":55}]`,
+				"plan_name":   "Ultra",
+			},
+		},
+	})
+
+	result, err := s.ImportJSON(data)
+	if err != nil {
+		t.Fatalf("import failed: %v", err)
+	}
+	if result.AccountsCreated != 2 {
+		t.Fatalf("expected 2 accounts created, got %d", result.AccountsCreated)
+	}
+	if result.SnapshotsImported != 1 {
+		t.Fatalf("expected 1 snapshot imported, got %d", result.SnapshotsImported)
+	}
+
+	var antigravityID, codexID int64
+	if err := s.db.QueryRow(`SELECT id FROM accounts WHERE email = ? AND provider = ?`, "shared@example.com", "antigravity").Scan(&antigravityID); err != nil {
+		t.Fatalf("lookup antigravity account: %v", err)
+	}
+	if err := s.db.QueryRow(`SELECT id FROM accounts WHERE email = ? AND provider = ?`, "shared@example.com", "codex").Scan(&codexID); err != nil {
+		t.Fatalf("lookup codex account: %v", err)
+	}
+	if antigravityID == codexID {
+		t.Fatal("same email across providers should not collapse to one account")
+	}
+
+	var snapshotAccountID int64
+	if err := s.db.QueryRow(`SELECT account_id FROM snapshots LIMIT 1`).Scan(&snapshotAccountID); err != nil {
+		t.Fatalf("lookup imported snapshot: %v", err)
+	}
+	if snapshotAccountID != antigravityID {
+		t.Fatalf("snapshot account_id = %d, want antigravity account %d", snapshotAccountID, antigravityID)
+	}
+}
+
 func TestImportJSON_Subscriptions(t *testing.T) {
 	s := testImportStore(t)
 	data := buildExportJSON(t, map[string]interface{}{
@@ -162,6 +212,16 @@ func TestImportJSON_CodexSnapshots(t *testing.T) {
 	if result.CodexImported != 1 {
 		t.Errorf("expected 1 codex snapshot imported, got %d", result.CodexImported)
 	}
+	if result.AccountsCreated != 1 {
+		t.Errorf("expected 1 codex account created, got %d", result.AccountsCreated)
+	}
+	var ownerAccountID int64
+	if err := s.db.QueryRow(`SELECT owner_account_id FROM codex_snapshots LIMIT 1`).Scan(&ownerAccountID); err != nil {
+		t.Fatalf("lookup codex owner_account_id: %v", err)
+	}
+	if ownerAccountID == 0 {
+		t.Fatal("expected imported codex snapshot to resolve a local owner_account_id")
+	}
 
 	// Dedup check
 	result2, _ := s.ImportJSON(data)
@@ -185,6 +245,9 @@ func TestImportJSON_CursorSnapshots(t *testing.T) {
 	if result.CursorImported != 1 {
 		t.Errorf("expected 1 cursor snapshot imported, got %d", result.CursorImported)
 	}
+	if result.AccountsCreated != 1 {
+		t.Errorf("expected 1 cursor account created, got %d", result.AccountsCreated)
+	}
 
 	result2, _ := s.ImportJSON(data)
 	if result2.CursorDuped != 1 {
@@ -207,6 +270,9 @@ func TestImportJSON_GeminiSnapshots(t *testing.T) {
 	if result.GeminiImported != 1 {
 		t.Errorf("expected 1 gemini snapshot imported, got %d", result.GeminiImported)
 	}
+	if result.AccountsCreated != 1 {
+		t.Errorf("expected 1 gemini account created, got %d", result.AccountsCreated)
+	}
 
 	result2, _ := s.ImportJSON(data)
 	if result2.GeminiDuped != 1 {
@@ -228,6 +294,9 @@ func TestImportJSON_CopilotSnapshots(t *testing.T) {
 	}
 	if result.CopilotImported != 1 {
 		t.Errorf("expected 1 copilot snapshot imported, got %d", result.CopilotImported)
+	}
+	if result.AccountsCreated != 1 {
+		t.Errorf("expected 1 copilot account created, got %d", result.AccountsCreated)
 	}
 
 	result2, _ := s.ImportJSON(data)
@@ -295,8 +364,8 @@ func TestImportJSON_FullRoundTrip(t *testing.T) {
 		t.Fatalf("full import failed: %v", err)
 	}
 
-	if result.AccountsCreated != 1 {
-		t.Errorf("accounts: expected 1 created, got %d", result.AccountsCreated)
+	if result.AccountsCreated != 3 {
+		t.Errorf("accounts: expected 3 created, got %d", result.AccountsCreated)
 	}
 	if result.SubsCreated != 1 {
 		t.Errorf("subs: expected 1 created, got %d", result.SubsCreated)

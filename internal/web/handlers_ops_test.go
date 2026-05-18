@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"testing"
 
@@ -15,7 +16,7 @@ func openTestStore(t *testing.T) *store.Store {
 	t.Helper()
 
 	dbPath := filepath.Join(t.TempDir(), "niyantra-test.db")
-	s, err := store.Open(dbPath)
+	s, err := store.Open(dbPath, store.WithSecretBackend(store.NewMemorySecretBackend()))
 	if err != nil {
 		t.Fatalf("store.Open(%q): %v", dbPath, err)
 	}
@@ -82,17 +83,37 @@ func TestHandleExportJSONMasksSensitiveConfig(t *testing.T) {
 }
 
 func TestGitRepoPathFromRequest(t *testing.T) {
+	baseDir := t.TempDir()
+	insideDir := filepath.Join(baseDir, "subdir")
+
 	t.Run("defaults to current directory", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/git-costs?days=30", nil)
-		if got := gitRepoPathFromRequest(req); got != "." {
-			t.Fatalf("gitRepoPathFromRequest() = %q, want %q", got, ".")
+		got, err := gitRepoPathFromRequest(baseDir, req)
+		if err != nil {
+			t.Fatalf("gitRepoPathFromRequest() unexpected error: %v", err)
+		}
+		if got != filepath.Clean(baseDir) {
+			t.Fatalf("gitRepoPathFromRequest() = %q, want %q", got, filepath.Clean(baseDir))
 		}
 	})
 
-	t.Run("uses explicit repo query", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/git-costs?repo=%20D:/work/repo%20", nil)
-		if got := gitRepoPathFromRequest(req); got != "D:/work/repo" {
-			t.Fatalf("gitRepoPathFromRequest() = %q, want %q", got, "D:/work/repo")
+	t.Run("uses explicit repo query within base dir", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/git-costs?repo="+url.QueryEscape(insideDir), nil)
+		got, err := gitRepoPathFromRequest(baseDir, req)
+		if err != nil {
+			t.Fatalf("gitRepoPathFromRequest() unexpected error: %v", err)
+		}
+		want := filepath.Clean(insideDir)
+		if got != want {
+			t.Fatalf("gitRepoPathFromRequest() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("rejects paths outside base dir", func(t *testing.T) {
+		outsideDir := filepath.Join(filepath.Dir(baseDir), "other-repo")
+		req := httptest.NewRequest(http.MethodGet, "/api/git-costs?repo="+url.QueryEscape(outsideDir), nil)
+		if _, err := gitRepoPathFromRequest(baseDir, req); err == nil {
+			t.Fatal("expected outside path to be rejected")
 		}
 	})
 }

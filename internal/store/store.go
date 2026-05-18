@@ -16,15 +16,18 @@ import (
 func isColumnExistsError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "duplicate column")
 }
+
 // Store provides SQLite-backed persistence for Niyantra.
 type Store struct {
-	db   *sql.DB
-	path string
+	db                    *sql.DB
+	path                  string
+	secrets               SecretBackend
+	allowPlaintextSecrets bool
 }
 
 // Open creates or opens a Niyantra database at the given path.
 // Parent directories are created automatically.
-func Open(dbPath string) (*Store, error) {
+func Open(dbPath string, opts ...OpenOption) (*Store, error) {
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("store: creating directory %s: %w", dir, err)
@@ -47,11 +50,24 @@ func Open(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("store: setting busy_timeout: %w", err)
 	}
 
-	s := &Store{db: db, path: dbPath}
+	s := &Store{
+		db:      db,
+		path:    dbPath,
+		secrets: newDefaultSecretBackend(),
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(s)
+		}
+	}
 
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("store: migration failed: %w", err)
+	}
+	if err := s.migrateSensitiveConfigSecrets(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("store: secret migration failed: %w", err)
 	}
 
 	return s, nil
@@ -337,6 +353,7 @@ func (s *Store) migrate() error {
 			CREATE TABLE IF NOT EXISTS codex_snapshots (
 				id              INTEGER PRIMARY KEY AUTOINCREMENT,
 				account_id      TEXT    DEFAULT '',
+				owner_account_id INTEGER DEFAULT 0,
 				five_hour_pct   REAL    NOT NULL,
 				seven_day_pct   REAL,
 				code_review_pct REAL,
@@ -352,6 +369,8 @@ func (s *Store) migrate() error {
 				ON codex_snapshots(captured_at DESC);
 			CREATE INDEX IF NOT EXISTS idx_codex_snapshots_account
 				ON codex_snapshots(account_id, captured_at DESC);
+			CREATE INDEX IF NOT EXISTS idx_codex_snapshots_owner_account
+				ON codex_snapshots(owner_account_id, captured_at DESC);
 
 			CREATE TABLE IF NOT EXISTS usage_sessions (
 				id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -789,6 +808,42 @@ func (s *Store) migrate() error {
 		}
 
 		if err := s.setUserVersion(19); err != nil {
+			return err
+		}
+	}
+
+	if s.getUserVersion() < 20 {
+		if _, err := s.db.Exec(`ALTER TABLE codex_snapshots ADD COLUMN owner_account_id INTEGER DEFAULT 0`); err != nil {
+			if !isColumnExistsError(err) {
+				return fmt.Errorf("store: alter codex_snapshots (owner_account_id): %w", err)
+			}
+		}
+		if _, err := s.db.Exec(`
+			CREATE INDEX IF NOT EXISTS idx_codex_snapshots_owner_account
+				ON codex_snapshots(owner_account_id, captured_at DESC)
+		`); err != nil {
+			return fmt.Errorf("store: index codex_snapshots(owner_account_id): %w", err)
+		}
+		if _, err := s.db.Exec(`
+			UPDATE codex_snapshots
+			SET owner_account_id = (
+				SELECT a.id
+				FROM accounts a
+				WHERE a.provider = 'codex' AND a.email = codex_snapshots.email
+				LIMIT 1
+			)
+			WHERE COALESCE(owner_account_id, 0) = 0
+			  AND COALESCE(email, '') != ''
+			  AND EXISTS (
+				SELECT 1
+				FROM accounts a
+				WHERE a.provider = 'codex' AND a.email = codex_snapshots.email
+			  )
+		`); err != nil {
+			return fmt.Errorf("store: backfill codex owner_account_id: %w", err)
+		}
+
+		if err := s.setUserVersion(20); err != nil {
 			return err
 		}
 	}

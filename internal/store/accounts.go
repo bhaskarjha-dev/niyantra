@@ -105,34 +105,45 @@ func (s *Store) UpdateAccountMeta(accountID int64, notes, tags, pinnedGroup stri
 	return err
 }
 
-// DeleteAccount removes an account and all its associated data.
-// Returns the total number of deleted rows across all tables.
+// DeleteAccount removes an account and the rows explicitly owned by its local
+// account ID. Provider-native rows without a local ownership FK still remain
+// out of scope until they can be modeled safely.
 func (s *Store) DeleteAccount(accountID int64) (int64, error) {
-	var totalDeleted int64
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("store: begin delete account %d: %w", accountID, err)
+	}
+	defer tx.Rollback()
 
-	// Delete in dependency order: children first
-	tables := []struct {
+	var totalDeleted int64
+	steps := []struct {
+		name  string
 		query string
-		col   string
 	}{
-		{"DELETE FROM snapshots WHERE account_id = ?", "snapshots"},
-		{"DELETE FROM antigravity_reset_cycles WHERE account_id = ?", "reset_cycles"},
-		{"DELETE FROM codex_snapshots WHERE account_id = ?", "codex_snapshots"},
-		{"DELETE FROM cursor_snapshots WHERE account_id = ?", "cursor_snapshots"},
-		{"DELETE FROM gemini_snapshots WHERE account_id = ?", "gemini_snapshots"},
-		{"DELETE FROM copilot_snapshots WHERE account_id = ?", "copilot_snapshots"},
-		{"DELETE FROM accounts WHERE id = ?", "accounts"},
+		{"activity_log", `DELETE FROM activity_log WHERE snapshot_id IN (SELECT id FROM snapshots WHERE account_id = ?)`},
+		{"usage_logs", `DELETE FROM usage_logs WHERE subscription_id IN (SELECT id FROM subscriptions WHERE account_id = ?)`},
+		{"subscriptions", `DELETE FROM subscriptions WHERE account_id = ?`},
+		{"snapshots", `DELETE FROM snapshots WHERE account_id = ?`},
+		{"reset_cycles", `DELETE FROM antigravity_reset_cycles WHERE account_id = ?`},
+		{"codex_snapshots", `DELETE FROM codex_snapshots WHERE owner_account_id = ?`},
+		{"cursor_snapshots", `DELETE FROM cursor_snapshots WHERE account_id = ?`},
+		{"gemini_snapshots", `DELETE FROM gemini_snapshots WHERE account_id = ?`},
+		{"copilot_snapshots", `DELETE FROM copilot_snapshots WHERE account_id = ?`},
+		{"accounts", `DELETE FROM accounts WHERE id = ?`},
 	}
 
-	for _, t := range tables {
-		result, err := s.db.Exec(t.query, accountID)
+	for _, step := range steps {
+		result, err := tx.Exec(step.query, accountID)
 		if err != nil {
-			return totalDeleted, fmt.Errorf("store: delete %s for account %d: %w", t.col, accountID, err)
+			return totalDeleted, fmt.Errorf("store: delete %s for account %d: %w", step.name, accountID, err)
 		}
 		n, _ := result.RowsAffected()
 		totalDeleted += n
 	}
 
+	if err := tx.Commit(); err != nil {
+		return totalDeleted, fmt.Errorf("store: commit delete account %d: %w", accountID, err)
+	}
 	return totalDeleted, nil
 }
 

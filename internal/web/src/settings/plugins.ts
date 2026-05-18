@@ -42,7 +42,10 @@ export function loadPlugins(): void {
       return;
     }
 
-    var html = '';
+    var html = '<div class="plugin-warning">' +
+      '<strong>Trusted local code only.</strong> Enabling or running a plugin executes its entry point with your current user permissions. ' +
+      'Plugins can read local files, environment variables, network resources, and any secrets already stored in Niyantra.' +
+      '</div>';
 
     // Show discovery errors if any
     if (errors.length > 0) {
@@ -106,7 +109,7 @@ export function loadPlugins(): void {
 
       // Test run button
       html += '<div class="plugin-footer" style="' + (p.enabled ? '' : 'display:none') + '">';
-      html += '<button class="btn-sm plugin-test-btn" data-plugin="' + esc(p.manifest.id) + '">▶ Test Run</button>';
+      html += '<button class="btn-sm plugin-test-btn" data-plugin="' + esc(p.manifest.id) + '">Run Trusted Plugin</button>';
       html += '<span class="plugin-test-result" id="plugin-result-' + esc(p.manifest.id) + '"></span>';
       html += '</div>';
 
@@ -192,8 +195,12 @@ export function loadPlugins(): void {
         var pluginId = btn.dataset.plugin!;
         var resultEl = document.getElementById('plugin-result-' + pluginId)!;
 
+        if (!confirm('Run trusted plugin "' + pluginId + '" now?\n\nPlugins run as local subprocesses with access to your files, environment, network, and stored Niyantra secrets.')) {
+          return;
+        }
+
         btn.disabled = true;
-        btn.textContent = '⏳ Running...';
+        btn.textContent = 'Running trusted plugin...';
         resultEl.textContent = '';
 
         fetch('/api/plugins/' + pluginId + '/run', { method: 'POST' })
@@ -223,7 +230,7 @@ export function loadPlugins(): void {
           })
           .finally(function() {
             btn.disabled = false;
-            btn.textContent = '▶ Test Run';
+            btn.textContent = 'Run Trusted Plugin';
           });
       });
     });

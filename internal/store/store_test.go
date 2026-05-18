@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -11,7 +12,7 @@ import (
 // openTestDB creates an in-memory Store for testing.
 func openTestDB(t *testing.T) *Store {
 	t.Helper()
-	s, err := Open(":memory:")
+	s, err := Open(":memory:", WithSecretBackend(NewMemorySecretBackend()))
 	if err != nil {
 		t.Fatalf("Open(:memory:) failed: %v", err)
 	}
@@ -22,10 +23,10 @@ func openTestDB(t *testing.T) *Store {
 func TestOpenAndMigrate(t *testing.T) {
 	s := openTestDB(t)
 
-	// Verify schema version is 19
+	// Verify schema version is 20
 	v := s.getUserVersion()
-	if v != 19 {
-		t.Errorf("expected schema version 19, got %d", v)
+	if v != 20 {
+		t.Errorf("expected schema version 20, got %d", v)
 	}
 
 	// Insert a snapshot and query it back
@@ -108,6 +109,114 @@ func TestConfigCRUD(t *testing.T) {
 	// Test bool accessor
 	if !s.GetConfigBool("auto_capture") {
 		t.Error("expected GetConfigBool to return true")
+	}
+}
+
+func TestSensitiveConfigValuesUseSecretBackend(t *testing.T) {
+	s := openTestDB(t)
+
+	if _, err := s.SetConfig("copilot_pat", "ghp_secret_123"); err != nil {
+		t.Fatalf("SetConfig(copilot_pat): %v", err)
+	}
+
+	raw := s.getConfigRaw("copilot_pat")
+	if raw == "" {
+		t.Fatal("expected stored secret ref, got empty value")
+	}
+	if raw == "ghp_secret_123" {
+		t.Fatal("sensitive config was stored in plaintext instead of a secret ref")
+	}
+	if !isSecretRef(raw) {
+		t.Fatalf("expected secret ref storage, got %q", raw)
+	}
+
+	if got := s.GetConfig("copilot_pat"); got != "ghp_secret_123" {
+		t.Fatalf("GetConfig(copilot_pat) = %q, want %q", got, "ghp_secret_123")
+	}
+}
+
+func TestSensitiveConfigMigrationFromPlaintext(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "secret-migration.db")
+
+	legacy, err := Open(
+		dbPath,
+		WithSecretBackend(nil),
+		WithInsecurePlaintextSecrets(true),
+	)
+	if err != nil {
+		t.Fatalf("Open legacy store: %v", err)
+	}
+	if _, err := legacy.SetConfig("smtp_pass", "legacy-secret"); err != nil {
+		t.Fatalf("SetConfig legacy smtp_pass: %v", err)
+	}
+	if got := legacy.getConfigRaw("smtp_pass"); got != "legacy-secret" {
+		t.Fatalf("legacy raw value = %q, want plaintext", got)
+	}
+	legacy.Close()
+
+	current, err := Open(
+		dbPath,
+		WithSecretBackend(NewMemorySecretBackend()),
+	)
+	if err != nil {
+		t.Fatalf("Open migrated store: %v", err)
+	}
+	defer current.Close()
+
+	raw := current.getConfigRaw("smtp_pass")
+	if raw == "legacy-secret" {
+		t.Fatal("expected plaintext secret to migrate into secret backend storage")
+	}
+	if !isSecretRef(raw) {
+		t.Fatalf("expected migrated secret ref, got %q", raw)
+	}
+	if got := current.GetConfig("smtp_pass"); got != "legacy-secret" {
+		t.Fatalf("GetConfig(smtp_pass) = %q, want %q", got, "legacy-secret")
+	}
+}
+
+func TestCodexOwnerAccountMigrationBackfillsFromEmail(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "codex-owner-backfill.db")
+
+	seed, err := Open(dbPath, WithSecretBackend(NewMemorySecretBackend()))
+	if err != nil {
+		t.Fatalf("Open seed store: %v", err)
+	}
+
+	accountID, err := seed.GetOrCreateAccount("backfill@example.com", "Plus", "codex")
+	if err != nil {
+		t.Fatalf("GetOrCreateAccount: %v", err)
+	}
+	if _, err := seed.InsertCodexSnapshot(&CodexSnapshot{
+		AccountID:      "org-backfill",
+		OwnerAccountID: accountID,
+		Email:          "backfill@example.com",
+		FiveHourPct:    35,
+		CaptureMethod:  "manual",
+		CaptureSource:  "test",
+	}); err != nil {
+		t.Fatalf("InsertCodexSnapshot: %v", err)
+	}
+	if _, err := seed.db.Exec(`UPDATE codex_snapshots SET owner_account_id = 0`); err != nil {
+		t.Fatalf("zero owner_account_id: %v", err)
+	}
+	if _, err := seed.db.Exec(`PRAGMA user_version = 19`); err != nil {
+		t.Fatalf("downgrade user_version: %v", err)
+	}
+	seed.Close()
+
+	reopened, err := Open(dbPath, WithSecretBackend(NewMemorySecretBackend()))
+	if err != nil {
+		t.Fatalf("Open migrated store: %v", err)
+	}
+	defer reopened.Close()
+
+	var ownerAccountID int64
+	if err := reopened.db.QueryRow(`SELECT owner_account_id FROM codex_snapshots LIMIT 1`).Scan(&ownerAccountID); err != nil {
+		t.Fatalf("lookup owner_account_id: %v", err)
+	}
+	if ownerAccountID != accountID {
+		t.Fatalf("owner_account_id = %d, want %d", ownerAccountID, accountID)
 	}
 }
 
@@ -228,6 +337,55 @@ func TestInsertAndQuerySnapshotWithAICredits(t *testing.T) {
 	json.Unmarshal(b, &credits)
 	if credits[0].CreditAmount != 1000 {
 		t.Errorf("expected credit amount 1000, got %f", credits[0].CreditAmount)
+	}
+}
+
+func TestLatestPerAccountUsesNewestCapturedAt(t *testing.T) {
+	s := openTestDB(t)
+
+	accountID, err := s.GetOrCreateAccount("latest@example.com", "Pro", "antigravity")
+	if err != nil {
+		t.Fatalf("GetOrCreateAccount: %v", err)
+	}
+
+	newer := time.Now().UTC()
+	older := newer.Add(-2 * time.Hour)
+
+	if _, err := s.InsertSnapshot(&client.Snapshot{
+		AccountID:     accountID,
+		CapturedAt:    newer,
+		Email:         "latest@example.com",
+		PlanName:      "Pro",
+		Models:        []client.ModelQuota{{ModelID: "newer", RemainingFraction: 0.9, RemainingPercent: 90}},
+		CaptureMethod: "manual",
+		CaptureSource: "ui",
+		SourceID:      "antigravity",
+	}); err != nil {
+		t.Fatalf("insert newer snapshot: %v", err)
+	}
+
+	if _, err := s.InsertSnapshot(&client.Snapshot{
+		AccountID:     accountID,
+		CapturedAt:    older,
+		Email:         "latest@example.com",
+		PlanName:      "Pro",
+		Models:        []client.ModelQuota{{ModelID: "older", RemainingFraction: 0.2, RemainingPercent: 20}},
+		CaptureMethod: "imported",
+		CaptureSource: "json",
+		SourceID:      "import",
+	}); err != nil {
+		t.Fatalf("insert older snapshot: %v", err)
+	}
+
+	snaps, err := s.LatestPerAccount()
+	if err != nil {
+		t.Fatalf("LatestPerAccount: %v", err)
+	}
+	if len(snaps) != 1 {
+		t.Fatalf("expected 1 snapshot, got %d", len(snaps))
+	}
+	if len(snaps[0].Models) != 1 || snaps[0].Models[0].ModelID != "newer" {
+		t.Fatalf("LatestPerAccount returned wrong snapshot: %+v", snaps[0].Models)
 	}
 }
 
@@ -792,6 +950,163 @@ func TestDeleteAccountRemovesGeminiSnapshots(t *testing.T) {
 	}
 }
 
+func TestDeleteAccountRemovesCodexSnapshotsAndSubscriptions(t *testing.T) {
+	s := openTestDB(t)
+
+	accountID, err := s.GetOrCreateAccount("codex-delete@example.com", "Plus", "codex")
+	if err != nil {
+		t.Fatalf("GetOrCreateAccount: %v", err)
+	}
+
+	if _, err := s.InsertSubscription(&Subscription{
+		Platform:     "Codex",
+		Category:     "coding",
+		PlanName:     "Plus",
+		Status:       "active",
+		CostAmount:   20,
+		CostCurrency: "USD",
+		BillingCycle: "monthly",
+		AccountID:    accountID,
+		Email:        "codex-delete@example.com",
+	}); err != nil {
+		t.Fatalf("InsertSubscription: %v", err)
+	}
+
+	if _, err := s.InsertCodexSnapshot(&CodexSnapshot{
+		AccountID:      "org-delete",
+		OwnerAccountID: accountID,
+		Email:          "codex-delete@example.com",
+		FiveHourPct:    25,
+		CaptureMethod:  "manual",
+		CaptureSource:  "test",
+	}); err != nil {
+		t.Fatalf("InsertCodexSnapshot: %v", err)
+	}
+
+	if got := s.SubscriptionCount(); got != 1 {
+		t.Fatalf("subscription count before delete = %d, want 1", got)
+	}
+	if got := len(mustCodexHistory(t, s)); got != 1 {
+		t.Fatalf("codex snapshot count before delete = %d, want 1", got)
+	}
+
+	if _, err := s.DeleteAccount(accountID); err != nil {
+		t.Fatalf("DeleteAccount: %v", err)
+	}
+
+	if got := s.SubscriptionCount(); got != 0 {
+		t.Fatalf("subscription count after delete = %d, want 0", got)
+	}
+	if got := len(mustCodexHistory(t, s)); got != 0 {
+		t.Fatalf("codex snapshot count after delete = %d, want 0", got)
+	}
+}
+
+func TestGenerateInsightsUsesTruthfulTypes(t *testing.T) {
+	s := openTestDB(t)
+
+	if _, err := s.SetConfig("budget_monthly", "50"); err != nil {
+		t.Fatalf("SetConfig budget_monthly: %v", err)
+	}
+	if _, err := s.SetConfig("currency", "USD"); err != nil {
+		t.Fatalf("SetConfig currency: %v", err)
+	}
+
+	daysAhead := func(n int) string {
+		return time.Now().Add(time.Duration(n) * 24 * time.Hour).Format("2006-01-02")
+	}
+
+	if _, err := s.InsertSubscription(&Subscription{
+		Platform:     "Claude",
+		Category:     "coding",
+		Status:       "active",
+		CostAmount:   30,
+		CostCurrency: "USD",
+		BillingCycle: "monthly",
+		NextRenewal:  daysAhead(2),
+	}); err != nil {
+		t.Fatalf("InsertSubscription renewal: %v", err)
+	}
+	if _, err := s.InsertSubscription(&Subscription{
+		Platform:     "Cursor",
+		Category:     "coding",
+		Status:       "trial",
+		CostAmount:   10,
+		CostCurrency: "USD",
+		BillingCycle: "monthly",
+		TrialEndsAt:  daysAhead(3),
+	}); err != nil {
+		t.Fatalf("InsertSubscription trial: %v", err)
+	}
+	if _, err := s.InsertSubscription(&Subscription{
+		Platform:     "Gemini",
+		Category:     "coding",
+		Status:       "active",
+		CostAmount:   20,
+		CostCurrency: "USD",
+		BillingCycle: "monthly",
+	}); err != nil {
+		t.Fatalf("InsertSubscription overlap: %v", err)
+	}
+
+	autoAccountID, err := s.GetOrCreateAccount("unused@example.com", "Pro", "antigravity")
+	if err != nil {
+		t.Fatalf("GetOrCreateAccount auto-tracked: %v", err)
+	}
+	if _, err := s.InsertSubscription(&Subscription{
+		Platform:     "Antigravity",
+		Category:     "coding",
+		Status:       "active",
+		CostAmount:   5,
+		CostCurrency: "USD",
+		BillingCycle: "monthly",
+		AutoTracked:  true,
+		AccountID:    autoAccountID,
+		Email:        "unused@example.com",
+	}); err != nil {
+		t.Fatalf("InsertSubscription auto-tracked: %v", err)
+	}
+	if _, err := s.InsertSnapshot(&client.Snapshot{
+		AccountID:     autoAccountID,
+		CapturedAt:    time.Now().Add(-40 * 24 * time.Hour).UTC(),
+		Email:         "unused@example.com",
+		PlanName:      "Pro",
+		CaptureMethod: "manual",
+		CaptureSource: "test",
+		SourceID:      "antigravity",
+		Models: []client.ModelQuota{
+			{ModelID: "claude-sonnet", Label: "Claude Sonnet", RemainingFraction: 0.5, RemainingPercent: 50},
+		},
+	}); err != nil {
+		t.Fatalf("InsertSnapshot old activity: %v", err)
+	}
+
+	insights, err := s.GenerateInsights()
+	if err != nil {
+		t.Fatalf("GenerateInsights: %v", err)
+	}
+
+	gotTypes := make(map[string]bool, len(insights))
+	for _, insight := range insights {
+		gotTypes[insight.Type] = true
+		if insight.Type == "annual_savings" || insight.Type == "anomaly" {
+			t.Fatalf("unexpected legacy insight type %q present", insight.Type)
+		}
+	}
+
+	for _, want := range []string{
+		"renewal_imminent",
+		"trial_expiring",
+		"category_overlap",
+		"unused_subscription",
+		"budget_exceeded",
+	} {
+		if !gotTypes[want] {
+			t.Fatalf("expected insight type %q, got %v", want, gotTypes)
+		}
+	}
+}
+
 func TestUnifiedAccountModel(t *testing.T) {
 	s := openTestDB(t)
 
@@ -1066,4 +1381,13 @@ func TestTokenUsageRetention(t *testing.T) {
 	if rows[0].Date != "2026-05-14" {
 		t.Errorf("expected remaining row date '2026-05-14', got %q", rows[0].Date)
 	}
+}
+
+func mustCodexHistory(t *testing.T, s *Store) []*CodexSnapshot {
+	t.Helper()
+	history, err := s.CodexHistory(time.Now().UTC().Add(-24 * time.Hour))
+	if err != nil {
+		t.Fatalf("CodexHistory: %v", err)
+	}
+	return history
 }

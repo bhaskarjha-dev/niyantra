@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -441,8 +442,9 @@ func (s *Server) handleClaudeUsage(w http.ResponseWriter, r *http.Request) {
 
 // ── Phase 15: Token Usage Analytics (F13) ────────────────────────
 
-// handleTokenUsage returns unified token usage analytics across all providers.
-// Combines Claude Code's granular JSONL data with estimated data from store.
+// handleTokenUsage returns observed token usage analytics from the sources that
+// currently exist: Claude Code JSONL session files plus any persisted
+// token_usage rows already written into the local store.
 func (s *Server) handleTokenUsage(w http.ResponseWriter, r *http.Request) {
 	days := 30
 	if d := r.URL.Query().Get("days"); d != "" {
@@ -510,7 +512,16 @@ func (s *Server) handleTokenUsage(w http.ResponseWriter, r *http.Request) {
 
 // handleGitCosts correlates git commits with AI token consumption.
 func (s *Server) handleGitCosts(w http.ResponseWriter, r *http.Request) {
-	repoPath := gitRepoPathFromRequest(r)
+	cwd, err := os.Getwd()
+	if err != nil {
+		jsonError(w, "cannot determine working directory", http.StatusInternalServerError)
+		return
+	}
+	repoPath, err := gitRepoPathFromRequest(cwd, r)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	days := 30
 	if d := r.URL.Query().Get("days"); d != "" {
@@ -538,10 +549,33 @@ func (s *Server) handleGitCosts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, result)
 }
 
-func gitRepoPathFromRequest(r *http.Request) string {
+func gitRepoPathFromRequest(baseDir string, r *http.Request) (string, error) {
 	repoPath := strings.TrimSpace(r.URL.Query().Get("repo"))
 	if repoPath == "" {
-		return "."
+		return filepath.Clean(baseDir), nil
 	}
-	return repoPath
+	return resolveGitRepoPath(baseDir, repoPath)
+}
+
+func resolveGitRepoPath(baseDir, requested string) (string, error) {
+	baseAbs, err := filepath.Abs(baseDir)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve working directory: %w", err)
+	}
+	requestedPath := strings.TrimSpace(requested)
+	if !filepath.IsAbs(requestedPath) {
+		requestedPath = filepath.Join(baseAbs, requestedPath)
+	}
+	requestedAbs, err := filepath.Abs(requestedPath)
+	if err != nil {
+		return "", fmt.Errorf("invalid repo path: %w", err)
+	}
+	rel, err := filepath.Rel(baseAbs, requestedAbs)
+	if err != nil {
+		return "", fmt.Errorf("invalid repo path: %w", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("repo path must stay within %s", baseAbs)
+	}
+	return requestedAbs, nil
 }

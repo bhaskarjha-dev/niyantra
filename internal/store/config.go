@@ -19,12 +19,7 @@ type ConfigEntry struct {
 
 // GetConfig returns a single config value as string.
 func (s *Store) GetConfig(key string) string {
-	var val string
-	err := s.db.QueryRow(`SELECT value FROM config WHERE key = ?`, key).Scan(&val)
-	if err != nil {
-		return ""
-	}
-	return val
+	return s.resolveConfigValue(key, s.getConfigRaw(key))
 }
 
 // GetConfigInt returns a config value as int with a default fallback.
@@ -62,6 +57,21 @@ func (s *Store) GetConfigBool(key string) bool {
 func (s *Store) SetConfig(key, value string) (string, error) {
 	oldVal := s.GetConfig(key)
 	valueType, category, label := inferConfigMetadata(key, value)
+	storedValue := value
+	existingRaw := s.getConfigRaw(key)
+
+	if IsSensitiveConfigKey(key) {
+		if value == "" {
+			s.deleteStoredSecretRef(existingRaw)
+			storedValue = ""
+		} else {
+			secured, err := s.secureValueForStorage(key, value, existingRaw)
+			if err != nil {
+				return "", err
+			}
+			storedValue = secured
+		}
+	}
 
 	_, err := s.db.Exec(`
 		INSERT INTO config (key, value, value_type, category, label, description, updated_at)
@@ -69,7 +79,7 @@ func (s *Store) SetConfig(key, value string) (string, error) {
 		ON CONFLICT(key) DO UPDATE SET
 			value = excluded.value,
 			updated_at = datetime('now')
-	`, key, value, valueType, category, label)
+	`, key, storedValue, valueType, category, label)
 	if err != nil {
 		return "", fmt.Errorf("store: update config %s: %w", key, err)
 	}
@@ -122,6 +132,7 @@ func (s *Store) AllConfig(category string) ([]*ConfigEntry, error) {
 		if err := rows.Scan(&e.Key, &e.Value, &e.ValueType, &e.Category, &e.Label, &e.Description, &e.UpdatedAt); err != nil {
 			return nil, err
 		}
+		e.Value = s.resolveConfigValue(e.Key, e.Value)
 		entries = append(entries, e)
 	}
 	return entries, nil
@@ -138,7 +149,7 @@ func (s *Store) ConfigMap() map[string]string {
 	for rows.Next() {
 		var k, v string
 		if err := rows.Scan(&k, &v); err == nil {
-			m[k] = v
+			m[k] = s.resolveConfigValue(k, v)
 		}
 	}
 	return m

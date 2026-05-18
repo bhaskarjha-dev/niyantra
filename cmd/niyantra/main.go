@@ -6,7 +6,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -42,6 +41,9 @@ func main() {
 	port := fs.Int("port", envInt("NIYANTRA_PORT", 9222), "Dashboard port")
 	auth := fs.String("auth", envString("NIYANTRA_AUTH", ""), "HTTP basic auth (user:pass)")
 	bind := fs.String("bind", envString("NIYANTRA_BIND", "127.0.0.1"), "Bind address")
+	allowRemote := fs.Bool("allow-remote", envBool("NIYANTRA_ALLOW_REMOTE", false), "Allow non-local bind addresses")
+	httpMCP := fs.Bool("mcp-http", envBool("NIYANTRA_MCP_HTTP", false), "Enable Streamable HTTP MCP at /mcp")
+	insecurePlaintextSecrets := fs.Bool("insecure-plaintext-secrets", envBool("NIYANTRA_INSECURE_PLAINTEXT_SECRETS", false), "Allow sensitive config values to remain plaintext in SQLite when secure OS secret storage is unavailable")
 	fs.Parse(os.Args[2:])
 
 	// Logger
@@ -53,23 +55,23 @@ func main() {
 
 	switch cmd {
 	case "snap":
-		cmdSnap(logger, *dbPath)
+		cmdSnap(logger, *dbPath, *insecurePlaintextSecrets)
 	case "status":
-		cmdStatus(logger, *dbPath)
+		cmdStatus(logger, *dbPath, *insecurePlaintextSecrets)
 	case "serve":
-		cmdServe(logger, *dbPath, *port, *auth, *bind)
+		cmdServe(logger, *dbPath, *port, *auth, *bind, *allowRemote, *httpMCP, *insecurePlaintextSecrets)
 	case "mcp":
-		cmdMCP(logger, *dbPath)
+		cmdMCP(logger, *dbPath, *insecurePlaintextSecrets)
 	case "backup":
-		cmdBackup(logger, *dbPath)
+		cmdBackup(logger, *dbPath, *insecurePlaintextSecrets)
 	case "restore":
 		if fs.NArg() < 1 {
 			fmt.Fprintln(os.Stderr, "Usage: niyantra restore <backup-file>")
 			os.Exit(1)
 		}
-		cmdRestore(logger, *dbPath, fs.Arg(0))
+		cmdRestore(logger, *dbPath, fs.Arg(0), *insecurePlaintextSecrets)
 	case "demo":
-		cmdDemo(logger, *dbPath)
+		cmdDemo(logger, *dbPath, *insecurePlaintextSecrets)
 	case "version":
 		fmt.Printf("niyantra %s\n", version)
 	case "healthcheck":
@@ -84,7 +86,7 @@ func main() {
 }
 
 // cmdSnap captures the current Antigravity account's quota.
-func cmdSnap(logger *slog.Logger, dbPath string) {
+func cmdSnap(logger *slog.Logger, dbPath string, allowPlaintextSecrets bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -109,7 +111,7 @@ func cmdSnap(logger *slog.Logger, dbPath string) {
 	snap.SourceID = "antigravity"
 
 	// 3. Store
-	db, err := store.Open(dbPath)
+	db, err := openStore(dbPath, allowPlaintextSecrets)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 		os.Exit(1)
@@ -162,8 +164,8 @@ func cmdSnap(logger *slog.Logger, dbPath string) {
 }
 
 // cmdStatus shows readiness for all tracked accounts.
-func cmdStatus(logger *slog.Logger, dbPath string) {
-	db, err := store.Open(dbPath)
+func cmdStatus(logger *slog.Logger, dbPath string, allowPlaintextSecrets bool) {
+	db, err := openStore(dbPath, allowPlaintextSecrets)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 		os.Exit(1)
@@ -238,14 +240,18 @@ func cmdStatus(logger *slog.Logger, dbPath string) {
 }
 
 // cmdServe starts the web dashboard.
-func cmdServe(logger *slog.Logger, dbPath string, port int, auth string, bind string) {
+func cmdServe(logger *slog.Logger, dbPath string, port int, auth string, bind string, allowRemote bool, httpMCP bool, allowPlaintextSecrets bool) {
 	authEnabled, authErr := validateServeAuthConfig(auth)
 	if authErr != nil {
 		fmt.Fprintf(os.Stderr, "Error: invalid --auth / NIYANTRA_AUTH value: %v\n", authErr)
 		os.Exit(1)
 	}
+	if err := validateServeExposure(bind, authEnabled, allowRemote, httpMCP); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
-	db, err := store.Open(dbPath)
+	db, err := openStore(dbPath, allowPlaintextSecrets)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 		os.Exit(1)
@@ -254,7 +260,7 @@ func cmdServe(logger *slog.Logger, dbPath string, port int, auth string, bind st
 
 	c := client.New(logger)
 
-	srv := web.NewServer(logger, db, c, port, auth, version, bind)
+	srv := web.NewServer(logger, db, c, port, auth, version, bind, httpMCP)
 	defer srv.Shutdown()
 
 	autoCapture := db.GetConfigBool("auto_capture")
@@ -285,13 +291,18 @@ func cmdServe(logger *slog.Logger, dbPath string, port int, auth string, bind st
 	}
 	fmt.Println("  ╚══════════════════════════════════════╝")
 
-	// Security warning: binding to non-localhost without auth exposes the
-	// dashboard (and all quota/config data) to any machine on the network.
-	if shouldWarnInsecureBind(bind, authEnabled) {
+	if httpMCP {
+		fmt.Println("  HTTP MCP: enabled")
+	}
+
+	// Security warning: explicit non-local binds expose the dashboard to any
+	// client that can reach the listener. Docker users should prefer host
+	// loopback publishing unless remote access is genuinely required.
+	if shouldWarnInsecureBind(bind, authEnabled, allowRemote) {
 		fmt.Println()
 		fmt.Println("  ⚠️  WARNING: Dashboard is bound to " + bind + " without authentication!")
-		fmt.Println("     Any device on your network can access your data.")
-		fmt.Println("     To secure: niyantra serve --bind " + bind + " --auth user:pass")
+		fmt.Println("  Anyone who can reach this listener can read dashboard data and downloads.")
+		fmt.Println("  Prefer localhost-only publishing or add --auth user:pass before wider exposure.")
 	}
 
 	fmt.Println()
@@ -318,9 +329,9 @@ func cmdServe(logger *slog.Logger, dbPath string, port int, auth string, bind st
 }
 
 // cmdMCP starts the MCP server over stdio for AI agent integration.
-func cmdMCP(logger *slog.Logger, dbPath string) {
+func cmdMCP(logger *slog.Logger, dbPath string, allowPlaintextSecrets bool) {
 	// Open store read-only (MCP server only queries data)
-	s, err := store.Open(dbPath)
+	s, err := openStore(dbPath, allowPlaintextSecrets)
 	if err != nil {
 		logger.Error("failed to open database", "error", err)
 		os.Exit(1)
@@ -341,8 +352,7 @@ func cmdMCP(logger *slog.Logger, dbPath string) {
 }
 
 // cmdBackup creates a timestamped backup of the database file.
-func cmdBackup(logger *slog.Logger, dbPath string) {
-	// Check source exists
+func cmdBackup(logger *slog.Logger, dbPath string, allowPlaintextSecrets bool) {
 	info, err := os.Stat(dbPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Database not found: %s\n", dbPath)
@@ -353,22 +363,7 @@ func cmdBackup(logger *slog.Logger, dbPath string) {
 	backupName := fmt.Sprintf("niyantra-%s.db.bak", time.Now().Format("2006-01-02-150405"))
 	backupPath := filepath.Join(dir, backupName)
 
-	// Copy file
-	src, err := os.Open(dbPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Cannot open database: %v\n", err)
-		os.Exit(1)
-	}
-	defer src.Close()
-
-	dst, err := os.Create(backupPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Cannot create backup: %v\n", err)
-		os.Exit(1)
-	}
-	defer dst.Close()
-
-	written, err := io.Copy(dst, src)
+	written, err := createDatabaseBackup(dbPath, backupPath, allowPlaintextSecrets)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Backup failed: %v\n", err)
 		os.Exit(1)
@@ -378,21 +373,13 @@ func cmdBackup(logger *slog.Logger, dbPath string) {
 }
 
 // cmdRestore restores a database from a backup file.
-func cmdRestore(logger *slog.Logger, dbPath, backupPath string) {
+func cmdRestore(logger *slog.Logger, dbPath, backupPath string, allowPlaintextSecrets bool) {
 	// Validate backup exists
 	backupInfo, err := os.Stat(backupPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Backup file not found: %s\n", backupPath)
 		os.Exit(1)
 	}
-
-	// Validate backup is a valid Niyantra database by checking schema version
-	backupStore, err := store.Open(backupPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Invalid backup file: %v\n", err)
-		os.Exit(1)
-	}
-	backupStore.Close()
 
 	// Confirm with user
 	fmt.Printf("⚠️  This will replace your current database with:\n")
@@ -407,22 +394,7 @@ func cmdRestore(logger *slog.Logger, dbPath, backupPath string) {
 		return
 	}
 
-	// Copy backup over current DB
-	src, err := os.Open(backupPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Cannot open backup: %v\n", err)
-		os.Exit(1)
-	}
-	defer src.Close()
-
-	dst, err := os.Create(dbPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Cannot write database: %v\n", err)
-		os.Exit(1)
-	}
-	defer dst.Close()
-
-	written, err := io.Copy(dst, src)
+	written, err := restoreDatabaseFromBackup(dbPath, backupPath, allowPlaintextSecrets)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Restore failed: %v\n", err)
 		os.Exit(1)
@@ -432,8 +404,8 @@ func cmdRestore(logger *slog.Logger, dbPath, backupPath string) {
 }
 
 // cmdDemo seeds the database with sample data for evaluation and screenshots.
-func cmdDemo(logger *slog.Logger, dbPath string) {
-	db, err := store.Open(dbPath)
+func cmdDemo(logger *slog.Logger, dbPath string, allowPlaintextSecrets bool) {
+	db, err := openStore(dbPath, allowPlaintextSecrets)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 		os.Exit(1)
@@ -614,6 +586,9 @@ Commands:
 Flags:
   --port     Dashboard port (default: 9222)
   --bind     Bind address (default: 127.0.0.1)
+  --allow-remote  Allow non-local bind addresses
+  --mcp-http  Enable Streamable HTTP MCP on /mcp
+  --insecure-plaintext-secrets  Allow secrets to stay plaintext in SQLite when OS keychain storage is unavailable
   --db       Database path (default: ~/.niyantra/niyantra.db)
   --auth     HTTP basic auth for dashboard (user:pass)
   --debug    Enable verbose logging
@@ -621,6 +596,9 @@ Flags:
 Environment Variables:
   NIYANTRA_PORT   Dashboard port (overridden by --port)
   NIYANTRA_BIND   Bind address (overridden by --bind)
+  NIYANTRA_ALLOW_REMOTE  Allow non-local bind addresses
+  NIYANTRA_MCP_HTTP  Enable Streamable HTTP MCP on /mcp
+  NIYANTRA_INSECURE_PLAINTEXT_SECRETS  Allow plaintext SQLite secret storage
   NIYANTRA_DB     Database path (overridden by --db)
   NIYANTRA_AUTH   HTTP basic auth (overridden by --auth)`)
 }
@@ -678,6 +656,23 @@ func envInt(key string, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+// envBool returns the boolean value of an environment variable, or fallback if unset/invalid.
+func envBool(key string, fallback bool) bool {
+	if v := os.Getenv(key); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			return b
+		}
+	}
+	return fallback
+}
+
+func openStore(dbPath string, allowPlaintextSecrets bool) (*store.Store, error) {
+	return store.Open(
+		dbPath,
+		store.WithInsecurePlaintextSecrets(allowPlaintextSecrets),
+	)
 }
 
 // cmdHealthcheck performs a Docker health probe by hitting /healthz on localhost.
