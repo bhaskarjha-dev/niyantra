@@ -128,6 +128,10 @@ func (s *Server) handleForecast(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	result["dataQuality"] = "heuristic"
+	result["methodology"] = "sliding_window_burn_rate"
+	result["disclaimer"] = "Forecasts are extrapolated from recent snapshot deltas (60-min window). They reflect current usage patterns, not guaranteed exhaustion times."
+
 	writeJSON(w, result)
 }
 

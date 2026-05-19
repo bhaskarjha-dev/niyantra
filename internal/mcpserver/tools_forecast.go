@@ -36,13 +36,18 @@ type ForecastAccountOut struct {
 type ForecastOutput struct {
 	Antigravity []ForecastAccountOut `json:"antigravity,omitempty"`
 	Message     string               `json:"message"`
+	DataQuality string               `json:"dataQuality"` // "heuristic" — not ground-truth billing data
+	Methodology string               `json:"methodology"` // description of the estimation technique
 }
 
 // ── Forecast Tool Handlers ───────────────────────────────────────
 
 // handleQuotaForecast returns time-to-exhaustion forecasts for Antigravity accounts.
 func (m *MCPServer) handleQuotaForecast(_ context.Context, _ *mcp.CallToolRequest, _ EmptyInput) (*mcp.CallToolResult, ForecastOutput, error) {
-	out := ForecastOutput{}
+	out := ForecastOutput{
+		DataQuality: "heuristic",
+		Methodology: "sliding_window_burn_rate_extrapolation",
+	}
 
 	// Antigravity accounts
 	snapshots, err := m.store.LatestPerAccount()
