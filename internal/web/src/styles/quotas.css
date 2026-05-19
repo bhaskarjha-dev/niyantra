@@ -135,6 +135,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 260px;
 }
 
 .account-meta {
@@ -301,9 +302,10 @@
 }
 .account-card:last-child { border-bottom: none; }
 .account-card:hover { border-left-color: var(--accent); }
-.account-card.status-ready:hover { border-left-color: var(--green); }
-.account-card.status-low:hover { border-left-color: var(--amber); }
-.account-card.status-empty:hover { border-left-color: var(--red); }
+/* Status-coded left borders — always visible, not just hover */
+.account-card.status-ready { border-left-color: var(--green); }
+.account-card.status-low { border-left-color: var(--amber); }
+.account-card.status-empty { border-left-color: var(--red); }
 .account-card .account-row { cursor: pointer; border-bottom: none; }
 
 /* ── Chevron ── */

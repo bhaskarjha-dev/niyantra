@@ -462,10 +462,10 @@ body {
 .grid-col-credits,
 .grid-col-status,
 .grid-col-snap {
-  font-size: 11px;
+  font-size: var(--text-sm, 12px);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   color: var(--text-muted);
 }
 .grid-col-group,
@@ -613,6 +613,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 260px;
 }
 .account-meta {
   display: flex;
@@ -791,13 +792,13 @@ body {
 .account-card:hover {
   border-left-color: var(--accent);
 }
-.account-card.status-ready:hover {
+.account-card.status-ready {
   border-left-color: var(--green);
 }
-.account-card.status-low:hover {
+.account-card.status-low {
   border-left-color: var(--amber);
 }
-.account-card.status-empty:hover {
+.account-card.status-empty {
   border-left-color: var(--red);
 }
 .account-card .account-row {
@@ -1474,6 +1475,10 @@ body {
 }
 .filter-select:hover {
   border-color: var(--border-hover);
+}
+.filter-select.filter-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-glow);
 }
 .subs-grid {
   display: flex;
@@ -2771,6 +2776,31 @@ kbd {
   color: var(--text-muted);
   font-size: var(--text-sm);
   margin-top: var(--space-1);
+}
+.settings-subsection-header {
+  color: var(--text-secondary);
+  margin: 20px 0 var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-4);
+}
+.webpush-badge {
+  font-size: var(--text-sm);
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-xs);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+.font-mono {
+  font-family:
+    "SF Mono",
+    "Cascadia Code",
+    "Fira Code",
+    monospace;
+  font-size: var(--text-sm);
 }
 @media (max-width: 768px) {
   .settings-page {

@@ -259,6 +259,31 @@ kbd {
   margin-top: var(--space-1);
 }
 
+/* ── Notification Subsection Headers (replaces inline h4 styles) ── */
+.settings-subsection-header {
+  color: var(--text-secondary);
+  margin: 20px 0 var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-4);
+}
+
+.webpush-badge {
+  font-size: var(--text-sm);
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-xs);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+
+.font-mono {
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-size: var(--text-sm);
+}
+
 /* ── Responsive ── */
 
 @media (max-width: 768px) {

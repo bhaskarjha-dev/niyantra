@@ -290,10 +290,10 @@
 }
 
 .grid-col-account, .grid-col-group, .grid-col-credits, .grid-col-status, .grid-col-snap {
-  font-size: 11px;
+  font-size: var(--text-sm, 12px);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   color: var(--text-muted);
 }
 

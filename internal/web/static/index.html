@@ -67,10 +67,10 @@
 
         <main class="main">
             <!-- Tab: Quotas (existing auto-tracked) -->
-            <section class="tab-panel active" id="panel-quotas">
+            <section class="tab-panel active" id="panel-quotas" role="tabpanel">
                 <div id="onboarding-container"></div>
                 <div class="quota-toolbar">
-                    <input type="text" id="quota-search" class="search-input" placeholder="Search accounts..." autocomplete="off">
+                    <input type="text" id="quota-search" class="search-input" placeholder="Search by email, plan, or tag..." autocomplete="off">
                     <div class="quota-filters">
                         <select id="quota-filter-status" class="filter-select">
                             <option value="all">All Status</option>
@@ -118,7 +118,7 @@
             </section>
 
             <!-- Tab: Subscriptions (manual tracking) -->
-            <section class="tab-panel" id="panel-subscriptions">
+            <section class="tab-panel" id="panel-subscriptions" role="tabpanel">
                 <div class="subs-toolbar">
                     <div class="subs-summary" id="subs-summary">0 subscriptions</div>
                     <div class="subs-filters">
@@ -143,13 +143,13 @@
                     </div>
                 </div>
                 <div class="search-bar">
-                    <input type="text" id="search-subs" class="form-input search-input" placeholder="🔍 Search subscriptions...">
+                    <input type="text" id="search-subs" class="form-input search-input" placeholder="Search by name, email, or category...">
                 </div>
                 <div id="subs-grid" class="subs-grid"></div>
             </section>
 
             <!-- Tab: Overview -->
-            <section class="tab-panel" id="panel-overview">
+            <section class="tab-panel" id="panel-overview" role="tabpanel">
                 <div id="overview-content" class="overview-content"></div>
             </section>
 
@@ -197,7 +197,7 @@
                                 <span>How often to auto-capture quota snapshots</span>
                             </div>
                             <div class="settings-control">
-                                <select id="s-poll-interval" class="form-input" style="width:120px">
+                                <select id="s-poll-interval" class="form-input input-narrow">
                                     <option value="60">1 min</option>
                                     <option value="120">2 min</option>
                                     <option value="300">5 min</option>
@@ -312,7 +312,7 @@
                                 <span>GitHub PAT with <code>read:user</code> scope. <a href="https://github.com/settings/tokens" target="_blank" style="color:var(--accent)">Create one →</a></span>
                             </div>
                             <div class="settings-control">
-                                <input type="password" id="s-copilot-pat" class="form-input" placeholder="ghp_..." style="width:220px;font-family:monospace;font-size:12px">
+                                <input type="password" id="s-copilot-pat" class="form-input input-medium font-mono" placeholder="ghp_...">
                             </div>
                         </div>
                         <div id="copilot-status-settings" class="polling-status" style="display:none"></div>
@@ -413,8 +413,8 @@
                                 <span>Notify when remaining drops below this %</span>
                             </div>
                             <div class="settings-control">
-                                <input type="number" id="s-notify-threshold" class="form-input" min="5" max="50" style="width:80px">
-                                <span style="color:var(--text-muted);font-size:12px;margin-left:4px">%</span>
+                                <input type="number" id="s-notify-threshold" class="form-input input-narrow" min="5" max="50">
+                                <span class="settings-unit">%</span>
                             </div>
                         </div>
                         <div class="settings-row" id="notify-test-row" style="display:none">
@@ -423,12 +423,12 @@
                                 <span>Send a test notification to verify</span>
                             </div>
                             <div class="settings-control">
-                                <button class="btn-add" id="notify-test-btn" style="padding:6px 12px;font-size:12px">🔔 Test</button>
+                                <button class="btn-add export-btn" id="notify-test-btn">🔔 Test</button>
                             </div>
                         </div>
 
                         <!-- F11: SMTP Email Notifications -->
-                        <h4 style="color:var(--text-secondary);margin:20px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;border-top:1px solid var(--border);padding-top:16px">📧 Email Notifications</h4>
+                        <h4 class="settings-subsection-header">📧 Email Notifications</h4>
                         <div class="settings-row">
                             <div class="settings-label">
                                 <strong>SMTP Email Delivery</strong>
@@ -448,7 +448,7 @@
                                     <span>Server hostname (e.g. smtp.gmail.com)</span>
                                 </div>
                                 <div class="settings-control">
-                                    <input type="text" id="s-smtp-host" class="form-input" placeholder="smtp.gmail.com" style="width:200px;font-size:12px">
+                                    <input type="text" id="s-smtp-host" class="form-input input-medium font-mono" placeholder="smtp.gmail.com">
                                 </div>
                             </div>
                             <div class="settings-row">
@@ -457,7 +457,7 @@
                                     <span>587 (STARTTLS), 465 (TLS), 25 (plain)</span>
                                 </div>
                                 <div class="settings-control">
-                                    <select id="s-smtp-port" class="form-input" style="width:100px">
+                                    <select id="s-smtp-port" class="form-input input-narrow">
                                         <option value="587">587</option>
                                         <option value="465">465</option>
                                         <option value="25">25</option>
@@ -470,7 +470,7 @@
                                     <span>Transport-level security mode</span>
                                 </div>
                                 <div class="settings-control">
-                                    <select id="s-smtp-tls" class="form-input" style="width:130px">
+                                    <select id="s-smtp-tls" class="form-input input-narrow">
                                         <option value="starttls">STARTTLS</option>
                                         <option value="tls">TLS/SSL</option>
                                         <option value="none">None</option>
@@ -483,7 +483,7 @@
                                     <span>SMTP authentication username</span>
                                 </div>
                                 <div class="settings-control">
-                                    <input type="text" id="s-smtp-user" class="form-input" placeholder="user@gmail.com" style="width:200px;font-size:12px">
+                                    <input type="text" id="s-smtp-user" class="form-input input-medium font-mono" placeholder="user@gmail.com">
                                 </div>
                             </div>
                             <div class="settings-row">
@@ -492,7 +492,7 @@
                                     <span>SMTP password or app-specific password</span>
                                 </div>
                                 <div class="settings-control">
-                                    <input type="password" id="s-smtp-pass" class="form-input" placeholder="••••••••" style="width:200px;font-size:12px;font-family:monospace">
+                                    <input type="password" id="s-smtp-pass" class="form-input input-medium font-mono" placeholder="••••••••">
                                 </div>
                             </div>
                             <div class="settings-row">
@@ -501,7 +501,7 @@
                                     <span>Sender email address</span>
                                 </div>
                                 <div class="settings-control">
-                                    <input type="email" id="s-smtp-from" class="form-input" placeholder="niyantra@yourdomain.com" style="width:200px;font-size:12px">
+                                    <input type="email" id="s-smtp-from" class="form-input input-medium font-mono" placeholder="niyantra@yourdomain.com">
                                 </div>
                             </div>
                             <div class="settings-row">
@@ -510,7 +510,7 @@
                                     <span>Recipient email(s), comma-separated</span>
                                 </div>
                                 <div class="settings-control">
-                                    <input type="text" id="s-smtp-to" class="form-input" placeholder="you@example.com" style="width:200px;font-size:12px">
+                                    <input type="text" id="s-smtp-to" class="form-input input-medium font-mono" placeholder="you@example.com">
                                 </div>
                             </div>
                             <div class="settings-row" id="smtp-test-row">
@@ -519,13 +519,13 @@
                                     <span>Send a test email to verify SMTP config</span>
                                 </div>
                                 <div class="settings-control">
-                                    <button class="btn-add" id="smtp-test-btn" style="padding:6px 12px;font-size:12px">📧 Send Test</button>
+                                    <button class="btn-add export-btn" id="smtp-test-btn">📧 Send Test</button>
                                 </div>
                             </div>
                         </div>
 
                         <!-- F22: Webhook Notifications -->
-                        <h4 style="color:var(--text-secondary);margin:20px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;border-top:1px solid var(--border);padding-top:16px">🔗 Webhook Notifications</h4>
+                        <h4 class="settings-subsection-header">🔗 Webhook Notifications</h4>
                         <div class="settings-row">
                             <div class="settings-label">
                                 <strong>Webhook Delivery</strong>
@@ -545,7 +545,7 @@
                                     <span>Target notification service</span>
                                 </div>
                                 <div class="settings-control">
-                                    <select id="s-webhook-type" class="form-input" style="width:140px">
+                                    <select id="s-webhook-type" class="form-input input-medium">
                                         <option value="discord">🎮 Discord</option>
                                         <option value="telegram">📱 Telegram</option>
                                         <option value="slack">💼 Slack</option>
@@ -559,7 +559,7 @@
                                     <span id="webhook-url-hint">Discord/Slack webhook URL</span>
                                 </div>
                                 <div class="settings-control">
-                                    <input type="text" id="s-webhook-url" class="form-input" placeholder="https://discord.com/api/webhooks/..." style="width:280px;font-size:12px">
+                                    <input type="text" id="s-webhook-url" class="form-input input-wide font-mono" placeholder="https://discord.com/api/webhooks/...">
                                 </div>
                             </div>
                             <div class="settings-row" id="webhook-secret-row">
@@ -568,7 +568,7 @@
                                     <span id="webhook-secret-hint">Bot token (Telegram) or auth header (Generic)</span>
                                 </div>
                                 <div class="settings-control">
-                                    <input type="password" id="s-webhook-secret" class="form-input" placeholder="••••••••" style="width:200px;font-size:12px;font-family:monospace">
+                                    <input type="password" id="s-webhook-secret" class="form-input input-medium font-mono" placeholder="••••••••">
                                 </div>
                             </div>
                             <div class="settings-row" id="webhook-test-row">
@@ -577,13 +577,13 @@
                                     <span>Send a test notification to verify config</span>
                                 </div>
                                 <div class="settings-control">
-                                    <button class="btn-add" id="webhook-test-btn" style="padding:6px 12px;font-size:12px">🔗 Send Test</button>
+                                    <button class="btn-add export-btn" id="webhook-test-btn">🔗 Send Test</button>
                                 </div>
                             </div>
                         </div>
 
                         <!-- F19: WebPush Notifications -->
-                        <h4 style="color:var(--text-secondary);margin:20px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;border-top:1px solid var(--border);padding-top:16px">🔔 Browser Push Notifications</h4>
+                        <h4 class="settings-subsection-header">🔔 Browser Push Notifications</h4>
                         <div class="settings-row">
                             <div class="settings-label">
                                 <strong>WebPush Delivery</strong>
@@ -602,9 +602,9 @@
                                     <strong>Subscription Status</strong>
                                     <span id="webpush-status-hint">Check if this browser is subscribed</span>
                                 </div>
-                                <div class="settings-control" style="display:flex;gap:8px;align-items:center">
-                                    <span id="webpush-status-badge" style="font-size:12px;padding:3px 8px;border-radius:4px;background:var(--bg-tertiary);color:var(--text-secondary)">checking...</span>
-                                    <button class="btn-add" id="webpush-subscribe-btn" style="padding:6px 12px;font-size:12px">🔔 Subscribe</button>
+                                <div class="settings-control export-btns">
+                                    <span id="webpush-status-badge" class="webpush-badge">checking...</span>
+                                    <button class="btn-add export-btn" id="webpush-subscribe-btn">🔔 Subscribe</button>
                                 </div>
                             </div>
                             <div class="settings-row">
@@ -613,7 +613,7 @@
                                     <span>Send a test notification to all subscribed browsers</span>
                                 </div>
                                 <div class="settings-control">
-                                    <button class="btn-add" id="webpush-test-btn" style="padding:6px 12px;font-size:12px">🔔 Send Test</button>
+                                    <button class="btn-add export-btn" id="webpush-test-btn">🔔 Send Test</button>
                                 </div>
                             </div>
                         </div>
@@ -867,7 +867,7 @@
                     <button class="modal-close" id="budget-close">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Set a monthly AI spending threshold. You'll see a warning on the Overview tab when your total exceeds this.</p>
+                    <p class="settings-muted">Set a monthly AI spending threshold. You'll see a warning on the Overview tab when your total exceeds this.</p>
                     <div class="form-group">
                         <label for="f-budget">Monthly Budget ($)</label>
                         <input type="number" id="f-budget" class="form-input" step="1" min="0" placeholder="e.g. 200">

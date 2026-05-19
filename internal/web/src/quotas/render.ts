@@ -194,6 +194,12 @@ export function renderAccounts(data: any): void {
   // F4: Update tag filter strip on data refresh
   renderTagFilterStrip(data);
 
+  // Q-M2: Visual indication on active filters
+  var statusFilterEl = document.getElementById('quota-filter-status');
+  var providerFilterEl = document.getElementById('quota-filter-provider');
+  if (statusFilterEl) statusFilterEl.classList.toggle('filter-active', (statusFilterEl as HTMLSelectElement).value !== 'all');
+  if (providerFilterEl) providerFilterEl.classList.toggle('filter-active', (providerFilterEl as HTMLSelectElement).value !== 'all');
+
   var acctCount = (data.accounts || []).length;
   var parts = [];
   if (acctCount > 0) parts.push(acctCount + ' Antigravity');
@@ -477,7 +483,7 @@ export function renderAccounts(data: any): void {
       '</div></div>' +
       groupCells +
       creditsCell +
-      '<div class="snap-cell"><span class="snap-ago">' + esc(acc.stalenessLabel) + '</span></div>' +
+      '<div class="snap-cell"><span class="snap-ago" title="' + esc(acc.lastSeen || '') + '">' + esc(acc.stalenessLabel) + '</span></div>' +
       '<div class="status-cell"><span class="health-dot ' + dotCls + '">● ' + badgeText + '</span></div>' +
       '</div>' +
       modelsHTML +
@@ -588,7 +594,7 @@ export function renderCodexProviderSection(cs: any): string {
   var sevenRem = Math.max(0, 100 - sevenUsed);
   var sevenCls = sevenRem > 50 ? 'good' : sevenRem > 20 ? 'ok' : sevenRem > 0 ? 'warning' : 'exhausted';
   var sevenReset = cs.sevenDayReset ? formatResetTime(cs.sevenDayReset) : '';
-  var capturedAgo = cs.capturedAt ? formatTimeAgo(cs.capturedAt) : 'unknown';
+  var capturedAgo = cs.capturedAt ? formatTimeAgo(cs.capturedAt) : '\u2014';
   var dotCls = (fiveUsed >= 80 || sevenUsed >= 80) ? 'dot-low' : 'dot-ready';
   var dotText = dotCls === 'dot-ready' ? 'Ready' : 'Low';
   var displayName = cs.email || (cs.accountId && cs.accountId.length > 12 ? cs.accountId.substring(0,6) + '..' + cs.accountId.slice(-6) : (cs.accountId || 'Codex'));
@@ -628,7 +634,7 @@ export function renderClaudeProviderSection(cl: any): string {
   var clSeven = cl.sevenDayPct ? cl.sevenDayPct : 0;
   var clSevenRem = Math.max(0, 100 - clSeven);
   var clSevenCls = clSevenRem > 50 ? 'good' : clSevenRem > 20 ? 'ok' : clSevenRem > 0 ? 'warning' : 'exhausted';
-  var clAgo = cl.capturedAt ? formatTimeAgo(cl.capturedAt) : 'unknown';
+  var clAgo = cl.capturedAt ? formatTimeAgo(cl.capturedAt) : '\u2014';
   var dotCls = (clFive >= 80 || clSeven >= 80) ? 'dot-low' : 'dot-ready';
   var dotText = dotCls === 'dot-ready' ? 'Ready' : 'Low';
   var clCollapseClass = collapsedProviders.has('section-claude') ? ' collapsed' : '';
@@ -678,7 +684,7 @@ export function renderCursorProviderSection(cs: any): string {
   var usagePct = cs.usagePct || 0;
   var remaining = Math.max(0, 100 - usagePct);
   var cls = remaining > 50 ? 'good' : remaining > 20 ? 'ok' : remaining > 0 ? 'warning' : 'exhausted';
-  var capturedAgo = cs.capturedAt ? formatTimeAgo(cs.capturedAt) : 'unknown';
+  var capturedAgo = cs.capturedAt ? formatTimeAgo(cs.capturedAt) : '\u2014';
   var dotCls = usagePct >= 80 ? 'dot-low' : 'dot-ready';
   var dotText = dotCls === 'dot-ready' ? 'Ready' : 'Low';
   var displayName = cs.email || 'Cursor';
@@ -748,7 +754,7 @@ export function renderGeminiProviderSection(gs: any): string {
   var overallPct = gs.overallPct || 0;
   var remaining = Math.max(0, 100 - overallPct);
   var cls = remaining > 50 ? 'good' : remaining > 20 ? 'ok' : remaining > 0 ? 'warning' : 'exhausted';
-  var capturedAgo = gs.capturedAt ? formatTimeAgo(gs.capturedAt) : 'unknown';
+  var capturedAgo = gs.capturedAt ? formatTimeAgo(gs.capturedAt) : '\u2014';
   var dotCls = overallPct >= 80 ? 'dot-low' : 'dot-ready';
   var dotText = dotCls === 'dot-ready' ? 'Ready' : 'Low';
   var displayName = gs.email || 'Gemini CLI';
@@ -768,7 +774,7 @@ export function renderGeminiProviderSection(gs: any): string {
           var mRemPct = Math.max(0, 100 - mUsedPct);
           var mCls = mRemPct > 50 ? 'good' : mRemPct > 20 ? 'ok' : mRemPct > 0 ? 'warning' : 'exhausted';
           var mResetStr = m.resetTime ? formatResetTime(m.resetTime) : '';
-          var tierLabel = (m.tier || m.modelId || 'unknown');
+          var tierLabel = (m.tier || m.modelId || 'Other');
           modelRows += '<div class="cursor-model-row">' +
             '<span class="cursor-model-name">' + esc(m.modelId || tierLabel) + '</span>' +
             '<div class="quota-minibar"><div class="quota-minibar-fill ' + mCls + '" style="width:' + mRemPct + '%"></div></div>' +
@@ -821,7 +827,7 @@ export function renderCopilotProviderSection(cp: any): string {
   var chatRem = Math.max(0, 100 - chatPct);
   var chatCls = chatRem > 50 ? 'good' : chatRem > 20 ? 'ok' : chatRem > 0 ? 'warning' : 'exhausted';
 
-  var capturedAgo = cp.capturedAt ? formatTimeAgo(cp.capturedAt) : 'unknown';
+  var capturedAgo = cp.capturedAt ? formatTimeAgo(cp.capturedAt) : '\u2014';
   var dotCls = premiumPct >= 80 ? 'dot-low' : 'dot-ready';
   var dotText = dotCls === 'dot-ready' ? 'Ready' : 'Low';
   var displayName = cp.username || cp.email || 'Copilot';
