@@ -248,9 +248,13 @@
     var btns = document.querySelectorAll(".tab-btn");
     btns.forEach(function(b) {
       b.classList.remove("active");
+      b.setAttribute("aria-selected", "false");
     });
     var target = document.querySelector('.tab-btn[data-tab="' + tabName + '"]');
-    if (target) target.classList.add("active");
+    if (target) {
+      target.classList.add("active");
+      target.setAttribute("aria-selected", "true");
+    }
     document.querySelectorAll(".tab-panel").forEach(function(p) {
       p.classList.remove("active");
     });
@@ -4706,6 +4710,7 @@
     document.getElementById("activity-filter").addEventListener("change", loadActivityLog);
     loadActivityLog();
     loadPlugins();
+    initSettingsNav();
   }
   function migrateLocalStorage(cfg) {
     var lsBudget = localStorage.getItem("niyantra-budget");
@@ -4719,6 +4724,55 @@
       updateConfig("currency", lsCurrency);
       serverConfig["currency"] = lsCurrency;
       localStorage.removeItem("niyantra-currency");
+    }
+  }
+  function initSettingsNav() {
+    var nav = document.querySelector(".settings-nav");
+    if (!nav) return;
+    var links = nav.querySelectorAll(".settings-nav-link");
+    var sections = [];
+    links.forEach(function(link) {
+      var id = link.getAttribute("data-section");
+      if (id) {
+        var section = document.getElementById(id);
+        if (section) sections.push(section);
+      }
+    });
+    links.forEach(function(link) {
+      link.addEventListener("click", function() {
+        var id = link.getAttribute("data-section");
+        if (!id) return;
+        var target = document.getElementById(id);
+        if (target) {
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+          links.forEach(function(l) {
+            l.classList.remove("active");
+          });
+          link.classList.add("active");
+        }
+      });
+    });
+    if ("IntersectionObserver" in window) {
+      var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            var id = entry.target.id;
+            links.forEach(function(link) {
+              if (link.getAttribute("data-section") === id) {
+                link.classList.add("active");
+              } else {
+                link.classList.remove("active");
+              }
+            });
+          }
+        });
+      }, {
+        rootMargin: "-20% 0px -60% 0px",
+        threshold: 0
+      });
+      sections.forEach(function(section) {
+        observer.observe(section);
+      });
     }
   }
 
