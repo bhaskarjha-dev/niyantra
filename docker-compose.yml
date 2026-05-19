@@ -18,10 +18,14 @@ services:
       - ./niyantra-data:/data
 
     # Environment variables for Docker context
+    # NIYANTRA_AUTH is REQUIRED — set in .env or environment before starting.
+    # Example .env: NIYANTRA_AUTH=admin:your-secure-password
     environment:
       NIYANTRA_DB: /data/niyantra.db
       NIYANTRA_BIND: "0.0.0.0"
       NIYANTRA_ALLOW_REMOTE: "true"
+      NIYANTRA_BEHIND_HTTPS_PROXY: "true"
+      NIYANTRA_AUTH: "${NIYANTRA_AUTH:?ERROR: Set NIYANTRA_AUTH=user:pass in .env or environment}"
 
     # Container health check against /healthz endpoint
     healthcheck:

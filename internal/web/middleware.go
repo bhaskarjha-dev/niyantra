@@ -105,16 +105,18 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// REST API mutation endpoints also reject browser cross-origin requests.
-		// CORS alone only controls response visibility; it does not stop a
-		// browser from sending a state-changing request to localhost. Rejecting
-		// unsafe methods with a foreign Origin closes that CSRF/dns-rebind path
-		// while preserving CLI clients, which normally send no Origin header.
-		if strings.HasPrefix(r.URL.Path, "/api/") && isUnsafeMethod(r.Method) && crossOrigin {
+		// REST API endpoints reject ALL browser cross-origin requests (reads
+		// AND mutations). CORS alone does not protect GET endpoints: a foreign
+		// page can fetch('/api/export/json') and, even if the browser hides the
+		// response from JS, certain attack vectors (DNS-rebinding, service
+		// workers, img/form-based exfiltration) can still capture data.
+		// CLI tools and MCP SDK clients send no Origin header, so they are
+		// unaffected by this gate.
+		if strings.HasPrefix(r.URL.Path, "/api/") && crossOrigin {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
 			json.NewEncoder(w).Encode(map[string]string{
-				"error": "cross-origin API mutations are not allowed",
+				"error": "cross-origin API requests are not allowed",
 			})
 			return
 		}

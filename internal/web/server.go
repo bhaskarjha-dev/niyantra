@@ -20,36 +20,38 @@ import (
 
 // Server is the Niyantra HTTP server.
 type Server struct {
-	logger     *slog.Logger
-	store      *store.Store
-	client     *client.Client
-	tracker    *tracker.Tracker
-	notifier   *notify.Engine
-	port       int
-	bind       string // bind address (default: "127.0.0.1")
-	auth       string // "user:pass" or ""
-	httpMCP    bool
-	agentMgr   *agent.Manager
-	httpServer *http.Server
-	startTime  time.Time // set in NewServer for /healthz uptime
-	Version    string    // injected at startup (e.g. "0.12.0")
+	logger        *slog.Logger
+	store         *store.Store
+	client        *client.Client
+	tracker       *tracker.Tracker
+	notifier      *notify.Engine
+	port          int
+	bind          string // bind address (default: "127.0.0.1")
+	auth          string // "user:pass" or ""
+	httpMCP       bool
+	enablePlugins bool   // opt-in gate for F18 plugin system
+	agentMgr      *agent.Manager
+	httpServer    *http.Server
+	startTime     time.Time // set in NewServer for /healthz uptime
+	Version       string    // injected at startup (e.g. "0.12.0")
 }
 
 // NewServer creates a new Niyantra web server.
-func NewServer(logger *slog.Logger, s *store.Store, c *client.Client, port int, auth string, version string, bind string, httpMCP bool) *Server {
+func NewServer(logger *slog.Logger, s *store.Store, c *client.Client, port int, auth string, version string, bind string, httpMCP bool, enablePlugins bool) *Server {
 	srv := &Server{
-		logger:    logger,
-		store:     s,
-		client:    c,
-		tracker:   newTrackerWithBaseline(s, logger),
-		notifier:  notify.NewEngine(logger),
-		port:      port,
-		bind:      bind,
-		auth:      auth,
-		httpMCP:   httpMCP,
-		agentMgr:  agent.NewManager(logger),
-		startTime: time.Now(),
-		Version:   version,
+		logger:        logger,
+		store:         s,
+		client:        c,
+		tracker:       newTrackerWithBaseline(s, logger),
+		notifier:      notify.NewEngine(logger),
+		port:          port,
+		bind:          bind,
+		auth:          auth,
+		httpMCP:       httpMCP,
+		enablePlugins: enablePlugins,
+		agentMgr:      agent.NewManager(logger),
+		startTime:     time.Now(),
+		Version:       version,
 	}
 
 	// Configure notification engine from stored settings
@@ -293,10 +295,22 @@ func (s *Server) ListenAndServe() error {
 	mux.HandleFunc("POST /api/snap/adjust", s.handleSnapAdjust)
 
 	// Phase 16 routes: Plugin System (F18)
-	mux.HandleFunc("GET /api/plugins", s.handlePlugins)
-	mux.HandleFunc("GET /api/plugins/{id}/status", s.handlePluginStatus)
-	mux.HandleFunc("POST /api/plugins/{id}/run", s.handlePluginRun)
-	mux.HandleFunc("PUT /api/plugins/{id}/config", s.handlePluginConfig)
+	// Gated behind --enable-plugins / NIYANTRA_ENABLE_PLUGINS because plugins
+	// execute unsandboxed subprocesses with the current user's OS permissions.
+	if s.enablePlugins {
+		mux.HandleFunc("GET /api/plugins", s.handlePlugins)
+		mux.HandleFunc("GET /api/plugins/{id}/status", s.handlePluginStatus)
+		mux.HandleFunc("POST /api/plugins/{id}/run", s.handlePluginRun)
+		mux.HandleFunc("PUT /api/plugins/{id}/config", s.handlePluginConfig)
+	} else {
+		pluginsDisabled := func(w http.ResponseWriter, r *http.Request) {
+			jsonError(w, "plugin system is disabled; start with --enable-plugins or NIYANTRA_ENABLE_PLUGINS=true", http.StatusForbidden)
+		}
+		mux.HandleFunc("GET /api/plugins", pluginsDisabled)
+		mux.HandleFunc("GET /api/plugins/{id}/status", pluginsDisabled)
+		mux.HandleFunc("POST /api/plugins/{id}/run", pluginsDisabled)
+		mux.HandleFunc("PUT /api/plugins/{id}/config", pluginsDisabled)
+	}
 
 	// Static files (embedded in prod, disk in dev)
 	staticFS, err := fs.Sub(staticFiles, "static")

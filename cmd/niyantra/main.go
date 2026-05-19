@@ -44,6 +44,7 @@ func main() {
 	allowRemote := fs.Bool("allow-remote", envBool("NIYANTRA_ALLOW_REMOTE", false), "Allow non-local bind addresses")
 	behindHTTPSProxy := fs.Bool("behind-https-proxy", envBool("NIYANTRA_BEHIND_HTTPS_PROXY", false), "Acknowledge that non-local HTTP is protected by an HTTPS reverse proxy")
 	httpMCP := fs.Bool("mcp-http", envBool("NIYANTRA_MCP_HTTP", false), "Enable Streamable HTTP MCP at /mcp")
+	enablePlugins := fs.Bool("enable-plugins", envBool("NIYANTRA_ENABLE_PLUGINS", false), "Enable the F18 plugin system (plugins execute with your OS user permissions)")
 	insecurePlaintextSecrets := fs.Bool("insecure-plaintext-secrets", envBool("NIYANTRA_INSECURE_PLAINTEXT_SECRETS", false), "Allow sensitive config values to remain plaintext in SQLite when secure OS secret storage is unavailable")
 	fs.Parse(os.Args[2:])
 
@@ -60,7 +61,7 @@ func main() {
 	case "status":
 		cmdStatus(logger, *dbPath, *insecurePlaintextSecrets)
 	case "serve":
-		cmdServe(logger, *dbPath, *port, *auth, *bind, *allowRemote, *behindHTTPSProxy, *httpMCP, *insecurePlaintextSecrets)
+		cmdServe(logger, *dbPath, *port, *auth, *bind, *allowRemote, *behindHTTPSProxy, *httpMCP, *enablePlugins, *insecurePlaintextSecrets)
 	case "mcp":
 		cmdMCP(logger, *dbPath, *insecurePlaintextSecrets)
 	case "backup":
@@ -241,7 +242,7 @@ func cmdStatus(logger *slog.Logger, dbPath string, allowPlaintextSecrets bool) {
 }
 
 // cmdServe starts the web dashboard.
-func cmdServe(logger *slog.Logger, dbPath string, port int, auth string, bind string, allowRemote bool, behindHTTPSProxy bool, httpMCP bool, allowPlaintextSecrets bool) {
+func cmdServe(logger *slog.Logger, dbPath string, port int, auth string, bind string, allowRemote bool, behindHTTPSProxy bool, httpMCP bool, enablePlugins bool, allowPlaintextSecrets bool) {
 	authEnabled, authErr := validateServeAuthConfig(auth)
 	if authErr != nil {
 		fmt.Fprintf(os.Stderr, "Error: invalid --auth / NIYANTRA_AUTH value: %v\n", authErr)
@@ -261,7 +262,7 @@ func cmdServe(logger *slog.Logger, dbPath string, port int, auth string, bind st
 
 	c := client.New(logger)
 
-	srv := web.NewServer(logger, db, c, port, auth, version, bind, httpMCP)
+	srv := web.NewServer(logger, db, c, port, auth, version, bind, httpMCP, enablePlugins)
 	defer srv.Shutdown()
 
 	autoCapture := db.GetConfigBool("auto_capture")

@@ -9,13 +9,13 @@ import (
 	"testing"
 )
 
-// TestCORSBlocksCrossOrigin verifies that requests from non-localhost origins
-// do not receive Access-Control-Allow-Origin header.
+// TestCORSBlocksCrossOrigin verifies that GET requests from non-localhost
+// origins are rejected with 403 (not merely hidden by CORS).
 func TestCORSBlocksCrossOrigin(t *testing.T) {
 	srv := &Server{port: 9222}
 
 	handler := srv.securityMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
+		t.Error("next handler should not be called for cross-origin API GET")
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
@@ -24,6 +24,9 @@ func TestCORSBlocksCrossOrigin(t *testing.T) {
 
 	handler.ServeHTTP(rec, req)
 
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for cross-origin API GET, got %d", rec.Code)
+	}
 	if cors := rec.Header().Get("Access-Control-Allow-Origin"); cors != "" {
 		t.Errorf("expected no CORS header for evil origin, got %q", cors)
 	}
@@ -48,8 +51,66 @@ func TestAPIMutationBlocksCrossOrigin(t *testing.T) {
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 for cross-origin API mutation, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "cross-origin API mutations") {
+	if !strings.Contains(rec.Body.String(), "cross-origin API requests are not allowed") {
 		t.Fatalf("expected cross-origin error body, got %q", rec.Body.String())
+	}
+}
+
+// TestAPIGETBlocksCrossOriginExfiltration verifies that a malicious webpage
+// cannot read Niyantra data via cross-origin GET to /api/export/json,
+// /api/config, /api/accounts, or any other read endpoint.
+func TestAPIGETBlocksCrossOriginExfiltration(t *testing.T) {
+	srv := &Server{port: 9222}
+
+	handler := srv.securityMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("next handler should not be called for cross-origin GET")
+	}))
+
+	for _, path := range []string{
+		"/api/export/json",
+		"/api/config",
+		"/api/accounts",
+		"/api/status",
+		"/api/activity",
+		"/api/sessions",
+		"/api/codex/status",
+		"/api/cursor/status",
+		"/api/copilot/status",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Origin", "http://evil.example")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s: expected 403 for cross-origin GET, got %d", path, rec.Code)
+		}
+	}
+}
+
+// TestAPIAllowsNoOriginGET verifies that CLI tools (no Origin header) can
+// still read API endpoints — only browser cross-origin is blocked.
+func TestAPIAllowsNoOriginGET(t *testing.T) {
+	srv := &Server{port: 9222}
+
+	called := false
+	handler := srv.securityMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	// No Origin header — simulates curl/CLI
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if !called {
+		t.Error("handler should be called for requests with no Origin header")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 for no-origin GET, got %d", rec.Code)
 	}
 }
 
