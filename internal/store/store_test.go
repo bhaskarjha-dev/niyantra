@@ -1423,3 +1423,64 @@ func mustCodexHistory(t *testing.T, s *Store) []*CodexSnapshot {
 	}
 	return history
 }
+
+// TestMigrationIdempotency verifies that running migrations twice on the
+// same database does not produce errors. This ensures that the columnExists
+// helper and version checks are correct.
+func TestMigrationIdempotency(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "idempotent.db")
+
+	// First open: runs all migrations v1→v20
+	s1, err := Open(dbPath, WithSecretBackend(NewMemorySecretBackend()))
+	if err != nil {
+		t.Fatalf("First open failed: %v", err)
+	}
+	v1 := s1.getUserVersion()
+	s1.Close()
+
+	// Second open: should succeed with no errors (all migrations already applied)
+	s2, err := Open(dbPath, WithSecretBackend(NewMemorySecretBackend()))
+	if err != nil {
+		t.Fatalf("Second open (idempotency) failed: %v", err)
+	}
+	defer s2.Close()
+
+	v2 := s2.getUserVersion()
+	if v1 != v2 {
+		t.Errorf("schema version changed between opens: %d → %d", v1, v2)
+	}
+
+	// Verify integrity
+	issues, err := s2.IntegrityCheck()
+	if err != nil {
+		t.Fatalf("IntegrityCheck after re-open: %v", err)
+	}
+	if len(issues) != 0 {
+		t.Fatalf("integrity issues after idempotent re-open: %v", issues)
+	}
+}
+
+// TestColumnExists verifies the columnExists helper returns correct results.
+func TestColumnExists(t *testing.T) {
+	s := openTestDB(t)
+
+	// Known columns should exist
+	if !columnExists(s.db, "accounts", "email") {
+		t.Error("expected accounts.email to exist")
+	}
+	if !columnExists(s.db, "accounts", "notes") {
+		t.Error("expected accounts.notes to exist")
+	}
+	if !columnExists(s.db, "snapshots", "ai_credits_json") {
+		t.Error("expected snapshots.ai_credits_json to exist")
+	}
+
+	// Unknown columns should not exist
+	if columnExists(s.db, "accounts", "nonexistent_column") {
+		t.Error("expected nonexistent_column to not exist")
+	}
+	if columnExists(s.db, "nonexistent_table", "id") {
+		t.Error("expected nonexistent_table.id to not exist")
+	}
+}
+
