@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Niyantra — AI Subscription & Quota Dashboard</title>
     <meta name="description" content="Track AI subscriptions, quotas, and credits in one place. Auto-detect quotas, manually track any AI service.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0a0e17">
@@ -55,11 +58,11 @@
         <div id="alert-banner-container" class="alert-banner-container"></div>
 
         <!-- Tab Navigation -->
-        <nav class="tab-nav" id="tab-nav">
-            <button class="tab-btn active" data-tab="quotas">Quotas</button>
-            <button class="tab-btn" data-tab="subscriptions">Subscriptions</button>
-            <button class="tab-btn" data-tab="overview">Overview</button>
-            <button class="tab-btn" data-tab="settings">Settings</button>
+        <nav class="tab-nav" id="tab-nav" role="tablist" aria-label="Dashboard navigation">
+            <button class="tab-btn active" data-tab="quotas" role="tab" aria-selected="true" aria-controls="panel-quotas">Quotas</button>
+            <button class="tab-btn" data-tab="subscriptions" role="tab" aria-selected="false" aria-controls="panel-subscriptions">Subscriptions</button>
+            <button class="tab-btn" data-tab="overview" role="tab" aria-selected="false" aria-controls="panel-overview">Overview</button>
+            <button class="tab-btn" data-tab="settings" role="tab" aria-selected="false" aria-controls="panel-settings">Settings</button>
         </nav>
 
         <main class="main">
@@ -151,9 +154,30 @@
             </section>
 
             <!-- Tab: Settings -->
-            <section class="tab-panel" id="panel-settings">
+            <section class="tab-panel" id="panel-settings" role="tabpanel">
                 <div class="settings-page">
-                    <div class="settings-section">
+                    <!-- Settings Sidebar Navigation -->
+                    <nav class="settings-nav" aria-label="Settings sections">
+                        <button class="settings-nav-link active" data-section="s-sources"><span class="settings-nav-icon">⚡</span> Sources</button>
+                        <button class="settings-nav-link" data-section="s-claude"><span class="settings-nav-icon">🔗</span> Claude</button>
+                        <button class="settings-nav-link" data-section="s-codex"><span class="settings-nav-icon">🤖</span> Codex</button>
+                        <button class="settings-nav-link" data-section="s-cursor"><span class="settings-nav-icon">🖱️</span> Cursor</button>
+                        <button class="settings-nav-link" data-section="s-gemini"><span class="settings-nav-icon">✨</span> Gemini</button>
+                        <button class="settings-nav-link" data-section="s-copilot"><span class="settings-nav-icon">🐙</span> Copilot</button>
+                        <button class="settings-nav-link" data-section="s-plugins"><span class="settings-nav-icon">🧩</span> Plugins</button>
+                        <div class="settings-nav-divider"></div>
+                        <button class="settings-nav-link" data-section="s-budget"><span class="settings-nav-icon">🎨</span> Display</button>
+                        <button class="settings-nav-link" data-section="s-pricing"><span class="settings-nav-icon">💰</span> Pricing</button>
+                        <button class="settings-nav-link" data-section="s-notify"><span class="settings-nav-icon">🔔</span> Notify</button>
+                        <div class="settings-nav-divider"></div>
+                        <button class="settings-nav-link" data-section="s-data"><span class="settings-nav-icon">💾</span> Data</button>
+                        <button class="settings-nav-link" data-section="s-activity"><span class="settings-nav-icon">📋</span> Activity</button>
+                        <button class="settings-nav-link" data-section="s-shortcuts"><span class="settings-nav-icon">⌨️</span> Keys</button>
+                        <button class="settings-nav-link" data-section="s-about"><span class="settings-nav-icon">ℹ️</span> About</button>
+                    </nav>
+                    <!-- Settings Content Area -->
+                    <div class="settings-content">
+                    <div class="settings-section" id="s-sources">
                         <h3>⚡ Capture &amp; Sources</h3>
                         <div class="settings-row">
                             <div class="settings-label">
@@ -200,7 +224,7 @@
                         <div class="data-sources-list" id="data-sources-list"></div>
                     </div>
 
-                    <div class="settings-section">
+                    <div class="settings-section" id="s-claude">
                         <h3>🔗 Claude Code Bridge</h3>
                         <div class="settings-row">
                             <div class="settings-label">
@@ -217,7 +241,7 @@
                         <div id="claude-bridge-status" class="polling-status" style="display:none"></div>
                     </div>
 
-                    <div class="settings-section">
+                    <div class="settings-section" id="s-codex">
                         <h3>🤖 Codex / ChatGPT</h3>
                         <div class="settings-row">
                             <div class="settings-label">
@@ -234,7 +258,7 @@
                         <div id="codex-status-settings" class="polling-status" style="display:none"></div>
                     </div>
 
-                    <div class="settings-section">
+                    <div class="settings-section" id="s-cursor">
                         <h3>🖱️ Cursor</h3>
                         <div class="settings-row">
                             <div class="settings-label">
@@ -251,7 +275,7 @@
                         <div id="cursor-status-settings" class="polling-status" style="display:none"></div>
                     </div>
 
-                    <div class="settings-section">
+                    <div class="settings-section" id="s-gemini">
                         <h3>✨ Gemini CLI</h3>
                         <div class="settings-row">
                             <div class="settings-label">
@@ -268,7 +292,7 @@
                         <div id="gemini-status-settings" class="polling-status" style="display:none"></div>
                     </div>
 
-                    <div class="settings-section">
+                    <div class="settings-section" id="s-copilot">
                         <h3>🐙 GitHub Copilot</h3>
                         <div class="settings-row">
                             <div class="settings-label">
@@ -294,13 +318,13 @@
                         <div id="copilot-status-settings" class="polling-status" style="display:none"></div>
                     </div>
 
-                    <div class="settings-section">
+                    <div class="settings-section" id="s-plugins">
                         <h3>🧩 Plugins</h3>
                         <p class="settings-desc">External data source plugins from <code>~/.niyantra/plugins/</code>. Write scripts in any language to track custom AI services.</p>
                         <div id="plugins-list"></div>
                     </div>
 
-                    <div class="settings-section">
+                    <div class="settings-section" id="s-budget">
                         <h3>🎨 Budget &amp; Display</h3>
                         <div class="settings-row">
                             <div class="settings-label">
@@ -345,7 +369,7 @@
                         </div>
                     </div>
 
-                    <div class="settings-section">
+                    <div class="settings-section" id="s-pricing">
                         <h3>💰 Model Pricing</h3>
                         <p class="settings-desc">Per-model token pricing ($/1M tokens). Used by cost estimation features. Prices are pre-filled with current market rates.</p>
                         <div class="pricing-table-wrap" id="pricing-table-wrap">
@@ -369,7 +393,7 @@
                         </div>
                     </div>
 
-                    <div class="settings-section">
+                    <div class="settings-section" id="s-notify">
                         <h3>🔔 Notifications</h3>
                         <div class="settings-row">
                             <div class="settings-label">
@@ -595,7 +619,7 @@
                         </div>
                     </div>
 
-                    <div class="settings-section">
+                    <div class="settings-section" id="s-data">
                         <h3>💾 Data Management</h3>
                         <div class="settings-row">
                             <div class="settings-label">
@@ -640,7 +664,7 @@
                         <div id="import-result" class="polling-status" style="display:none"></div>
                     </div>
 
-                    <div class="settings-section">
+                    <div class="settings-section" id="s-activity">
                         <h3>📋 Activity Log</h3>
                         <div class="activity-controls">
                             <select id="activity-filter" class="form-input" style="width:160px">
@@ -658,7 +682,7 @@
                         </div>
                     </div>
 
-                    <div class="settings-section">
+                    <div class="settings-section" id="s-shortcuts">
                         <h3>⌨️ Keyboard Shortcuts</h3>
                         <div class="shortcuts-grid">
                             <div class="shortcut-item"><kbd>1</kbd> Quotas tab</div>
@@ -673,7 +697,7 @@
                         </div>
                     </div>
 
-                    <div class="settings-section">
+                    <div class="settings-section" id="s-about">
                         <h3>ℹ️ About</h3>
                         <div class="settings-about">
                             <p><strong>Niyantra</strong> — AI Operations Dashboard</p>
@@ -681,6 +705,7 @@
                             <p style="color:var(--text-muted);font-size:12px;margin-top:4px" id="s-about-info">Loading...</p>
                         </div>
                     </div>
+                    </div> <!-- /.settings-content -->
                 </div>
             </section>
 

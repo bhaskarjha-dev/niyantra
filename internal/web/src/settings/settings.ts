@@ -636,6 +636,9 @@ export function initSettings(): void {
 
   // F18: Load plugins
   loadPlugins();
+
+  // ── UX: Settings Sidebar Navigation ──
+  initSettingsNav();
 }
 
 // One-time migration of localStorage budget/currency to server config
@@ -656,3 +659,59 @@ export function migrateLocalStorage(cfg: Record<string, string>): void {
 }
 
 // ════════════════════════════════════════════
+
+// ── UX: Settings Sidebar Navigation ──
+function initSettingsNav(): void {
+  var nav = document.querySelector('.settings-nav');
+  if (!nav) return;
+
+  var links = nav.querySelectorAll('.settings-nav-link') as NodeListOf<HTMLButtonElement>;
+  var sections: HTMLElement[] = [];
+  links.forEach(function(link) {
+    var id = link.getAttribute('data-section');
+    if (id) {
+      var section = document.getElementById(id);
+      if (section) sections.push(section);
+    }
+  });
+
+  // Click handler: smooth scroll to section
+  links.forEach(function(link) {
+    link.addEventListener('click', function() {
+      var id = link.getAttribute('data-section');
+      if (!id) return;
+      var target = document.getElementById(id);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Update active state immediately on click
+        links.forEach(function(l) { l.classList.remove('active'); });
+        link.classList.add('active');
+      }
+    });
+  });
+
+  // Scrollspy: update active link as user scrolls
+  if ('IntersectionObserver' in window) {
+    var observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          var id = entry.target.id;
+          links.forEach(function(link) {
+            if (link.getAttribute('data-section') === id) {
+              link.classList.add('active');
+            } else {
+              link.classList.remove('active');
+            }
+          });
+        }
+      });
+    }, {
+      rootMargin: '-20% 0px -60% 0px',
+      threshold: 0
+    });
+
+    sections.forEach(function(section) {
+      observer.observe(section);
+    });
+  }
+}
