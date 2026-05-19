@@ -257,15 +257,17 @@ export function renderSubCard(sub: any) {
     badgesHTML = badgesHTML.replace(/<span[^>]*>AUTO<\/span>/i, '');
   }
 
-  // M1: Generate a unique accent color from platform+email for visual differentiation
-  var colorSeed = (sub.platform || '') + (sub.email || '') + sub.id;
-  var hue = 0;
-  for (var ci = 0; ci < colorSeed.length; ci++) {
-    hue = (hue + colorSeed.charCodeAt(ci) * 31) % 360;
+  // UX: Status-based card border via data-status attribute (replaces random hue)
+  var cardStatus = (sub.status || 'active').toLowerCase();
+  var expiringSoonClass = '';
+  if (sub.daysUntilRenewal !== undefined && sub.daysUntilRenewal <= 7 && sub.daysUntilRenewal >= 0) {
+    expiringSoonClass = ' expiring-soon';
   }
-  var accentStyle = 'border-left: 3px solid hsl(' + hue + ', 60%, 55%)';
+  if (sub.daysUntilTrialEnd !== undefined && sub.daysUntilTrialEnd !== null && sub.daysUntilTrialEnd <= 7 && sub.daysUntilTrialEnd >= 0) {
+    expiringSoonClass = ' expiring-soon';
+  }
 
-  return '<div class="sub-card" data-sub-id="' + sub.id + '" style="' + accentStyle + '">' +
+  return '<div class="sub-card' + expiringSoonClass + '" data-sub-id="' + sub.id + '" data-status="' + esc(cardStatus) + '">' +
     '<div class="sub-card-header">' +
     '<div class="sub-card-title">' + cardTitle + '</div>' +
     '<div class="sub-card-badges">' + trialHTML + badgesHTML + '</div>' +
@@ -279,7 +281,7 @@ export function renderSubCard(sub: any) {
     renewalHTML +
     '<div class="sub-card-actions">' +
     '<button class="btn-edit-card" data-edit-id="' + sub.id + '">Edit</button>' +
-    '<button class="btn-delete-card" data-delete-id="' + sub.id + '" data-delete-name="' + esc(sub.platform) + '">Delete</button>' +
+    '<button class="btn-delete-card btn-danger" data-delete-id="' + sub.id + '" data-delete-name="' + esc(sub.platform) + '">Delete</button>' +
     '</div>' +
     '</div>';
 }

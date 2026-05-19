@@ -452,19 +452,20 @@ export function renderAccounts(data: any): void {
       var expandedCls = isExpanded ? ' is-expanded' : '';
       modelsHTML = '<div class="model-details' + expandedCls + '" id="' + accId + '">' + modelRows +
         '<div class="account-actions">' +
-        '<button class="btn-clear-snaps" data-clear-account="' + acc.accountId + '" data-clear-email="' + esc(acc.email) + '" title="Delete all snapshots for this account">Clear Snapshots</button>' +
-        '<button class="btn-delete-account" data-delete-account="' + acc.accountId + '" data-delete-email="' + esc(acc.email) + '" title="Remove account and all its data">Remove Account</button>' +
+        '<button class="btn-clear-snaps btn-warning" data-clear-account="' + acc.accountId + '" data-clear-email="' + esc(acc.email) + '" title="Delete all snapshots for this account">Clear Snapshots</button>' +
+        '<button class="btn-delete-account btn-danger" data-delete-account="' + acc.accountId + '" data-delete-email="' + esc(acc.email) + '" title="Remove account and all its data">Remove Account</button>' +
         '</div></div>';
     }
 
     var chevronCls = isExpanded ? 'chevron expanded' : 'chevron';
     // Bug 5 fix: Dim based on quota readiness, not snap age.
     // Accounts with any depleted group get dimmed; fully ready = bright.
-    var staleStyle = '';
-    if (!acc.isReady) {
-      staleStyle = ' style="opacity:0.6"';
-    }
-    html += '<div class="account-card"' + staleStyle + '>' +
+    // UX: Status class for CSS border signaling (replaces opacity dimming anti-pattern)
+    var statusClass = '';
+    if (allExhausted(acc)) statusClass = ' status-empty';
+    else if (!acc.isReady) statusClass = ' status-low';
+    else statusClass = ' status-ready';
+    html += '<div class="account-card' + statusClass + '">' +
       '<div class="account-row" data-toggle="' + accId + '">' +
       '<div class="account-info">' +
       '<div class="account-email"><span class="' + chevronCls + '" id="chev-' + accId + '">▸</span> ' + esc(acc.email) +
@@ -477,7 +478,7 @@ export function renderAccounts(data: any): void {
       groupCells +
       creditsCell +
       '<div class="snap-cell"><span class="snap-ago">' + esc(acc.stalenessLabel) + '</span></div>' +
-      '<div style="text-align:center"><span class="health-dot ' + dotCls + '">● ' + badgeText + '</span></div>' +
+      '<div class="status-cell"><span class="health-dot ' + dotCls + '">● ' + badgeText + '</span></div>' +
       '</div>' +
       modelsHTML +
       '</div>';
@@ -616,7 +617,7 @@ export function renderCodexProviderSection(cs: any): string {
     (sevenReset ? '<span class="quota-reset">\u21bb ' + sevenReset + '</span>' : '') + '</div>' +
     '<div class="credits-cell"><span class="credit-amount">' + creditsStr + '</span></div>' +
     '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
-    '<div style="text-align:center"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
+    '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
     '</div></div></div></div>';
 }
 
@@ -650,7 +651,7 @@ export function renderClaudeProviderSection(cl: any): string {
     '<div class="quota-cell"><span class="quota-pct ' + clSevenCls + '">' + clSevenRem.toFixed(0) + '%</span>' +
     '<div class="quota-minibar"><div class="quota-minibar-fill ' + clSevenCls + '" style="width:' + clSevenRem + '%"></div></div></div>' +
     '<div class="snap-cell"><span class="snap-ago">' + clAgo + '</span></div>' +
-    '<div style="text-align:center"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
+    '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
     '</div></div></div></div>';
 }
 
@@ -731,7 +732,7 @@ export function renderCursorProviderSection(cs: any): string {
     '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div>' +
     '<div class="quota-cell"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span></div>' +
     '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
-    '<div style="text-align:center"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
+    '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
     '</div>' + modelRows + '</div></div></div>';
 }
 
@@ -797,7 +798,7 @@ export function renderGeminiProviderSection(gs: any): string {
     '<div class="quota-cell" title="Arithmetic mean across reported Gemini model buckets"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span>' +
     '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div>' +
     '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
-    '<div style="text-align:center"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
+    '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
     '</div>' + modelRows + '</div></div></div>';
 }
 
@@ -847,6 +848,6 @@ export function renderCopilotProviderSection(cp: any): string {
     '<div class="quota-cell"><span class="quota-pct ' + chatCls + '">' + chatRem.toFixed(0) + '% left</span>' +
     '<div class="quota-minibar"><div class="quota-minibar-fill ' + chatCls + '" style="width:' + chatRem + '%"></div></div></div>' +
     '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
-    '<div style="text-align:center"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
+    '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
     '</div></div></div></div>';
 }

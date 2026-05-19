@@ -627,8 +627,8 @@
                                 <span>How long to keep activity log and old snapshots</span>
                             </div>
                             <div class="settings-control">
-                                <input type="number" id="s-retention" class="form-input" min="30" max="3650" style="width:80px">
-                                <span style="color:var(--text-muted);font-size:12px;margin-left:4px">days</span>
+                                <input type="number" id="s-retention" class="form-input input-narrow" min="30" max="3650">
+                                <span class="settings-unit">days</span>
                             </div>
                         </div>
                         <div class="settings-row">
@@ -636,9 +636,9 @@
                                 <strong>Redacted JSON Export</strong>
                                 <span>Shareable import/export file with secrets masked and recent history only</span>
                             </div>
-                            <div class="settings-control" style="display:flex;gap:6px">
-                                <a class="btn-add" href="/api/export/csv" download style="text-decoration:none;display:inline-flex;padding:6px 10px;font-size:12px">📥 CSV</a>
-                                <a class="btn-add" href="/api/export/json" download id="export-json-btn" style="text-decoration:none;display:inline-flex;padding:6px 10px;font-size:12px">📦 Redacted JSON</a>
+                            <div class="settings-control export-btns">
+                                <a class="btn-add export-btn" href="/api/export/csv" download>📥 CSV</a>
+                                <a class="btn-add export-btn" href="/api/export/json" download id="export-json-btn">📦 Redacted JSON</a>
                             </div>
                         </div>
                         <div class="settings-row">
@@ -647,8 +647,8 @@
                                 <span id="s-db-path">Full local SQLite backup for complete restore fidelity</span>
                             </div>
                             <div class="settings-control">
-                                <span id="s-db-size" style="color:var(--text-muted);font-size:12px;margin-right:8px"></span>
-                                <button class="btn-add" id="settings-backup-btn" style="padding:6px 10px;font-size:12px">💾 Backup</button>
+                                <span id="s-db-size" class="settings-unit"></span>
+                                <button class="btn-add export-btn" id="settings-backup-btn">💾 Backup</button>
                             </div>
                         </div>
                         <div class="settings-row">
@@ -658,7 +658,7 @@
                             </div>
                             <div class="settings-control">
                                 <input type="file" id="import-file" accept=".json" style="display:none">
-                                <button class="btn-add" id="import-json-btn" style="padding:6px 10px;font-size:12px">📥 Import JSON</button>
+                                <button class="btn-add export-btn" id="import-json-btn">📥 Import JSON</button>
                             </div>
                         </div>
                         <div id="import-result" class="polling-status" style="display:none"></div>
@@ -667,7 +667,7 @@
                     <div class="settings-section" id="s-activity">
                         <h3>📋 Activity Log</h3>
                         <div class="activity-controls">
-                            <select id="activity-filter" class="form-input" style="width:160px">
+                            <select id="activity-filter" class="form-input input-medium">
                                 <option value="">All Events</option>
                                 <option value="snap">Snaps</option>
                                 <option value="snap_failed">Failed Snaps</option>
@@ -675,7 +675,7 @@
                                 <option value="quota_alert">Quota Alerts</option>
                                 <option value="server_start">Server Start</option>
                             </select>
-                            <button class="btn-add" id="activity-refresh" style="padding:6px 10px;font-size:12px">↻ Refresh</button>
+                            <button class="btn-add export-btn" id="activity-refresh">↻ Refresh</button>
                         </div>
                         <div class="activity-log" id="activity-log">
                             <div class="activity-empty">No activity yet</div>
@@ -701,8 +701,8 @@
                         <h3>ℹ️ About</h3>
                         <div class="settings-about">
                             <p><strong>Niyantra</strong> — AI Operations Dashboard</p>
-                            <p style="color:var(--text-muted);font-size:12px">Local-first. Full provenance. Open source.</p>
-                            <p style="color:var(--text-muted);font-size:12px;margin-top:4px" id="s-about-info">Loading...</p>
+                            <p class="settings-muted">Local-first. Full provenance. Open source.</p>
+                            <p class="settings-muted" id="s-about-info">Loading...</p>
                         </div>
                     </div>
                     </div> <!-- /.settings-content -->
