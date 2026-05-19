@@ -37,9 +37,15 @@ export function initTabs(): void {
 
 export function switchToTab(tabName: string): void {
   var btns = document.querySelectorAll('.tab-btn');
-  btns.forEach(function(b) { b.classList.remove('active'); });
+  btns.forEach(function(b) {
+    b.classList.remove('active');
+    b.setAttribute('aria-selected', 'false');
+  });
   var target = document.querySelector('.tab-btn[data-tab="' + tabName + '"]');
-  if (target) target.classList.add('active');
+  if (target) {
+    target.classList.add('active');
+    target.setAttribute('aria-selected', 'true');
+  }
 
   document.querySelectorAll('.tab-panel').forEach(function(p) {
     p.classList.remove('active');
