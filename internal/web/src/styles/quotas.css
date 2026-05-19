@@ -234,23 +234,23 @@
 /* Q4: Mini progress bars */
 .quota-minibar {
   width: 100%;
-  max-width: 56px;
-  height: 3px;
+  max-width: 72px;
+  height: 10px;
   background: var(--border);
-  border-radius: 2px;
+  border-radius: 5px;
   overflow: hidden;
 }
 
 .quota-minibar-fill {
   height: 100%;
-  border-radius: 2px;
+  border-radius: 5px;
   transition: width 600ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .quota-minibar-fill.good { background: var(--green); }
 .quota-minibar-fill.ok { background: var(--accent); }
-.quota-minibar-fill.warning { background: var(--amber); }
-.quota-minibar-fill.exhausted { background: var(--red); }
+.quota-minibar-fill.warning { background: var(--amber); box-shadow: 0 0 8px rgba(251, 191, 36, 0.4); }
+.quota-minibar-fill.exhausted { background: var(--red); box-shadow: 0 0 8px rgba(248, 113, 113, 0.4); }
 
 /* ── Status Badge ── */
 
@@ -268,15 +268,20 @@
 .status-badge.partial { background: var(--amber-bg); color: var(--amber); }
 .status-badge.exhausted { background: var(--red-bg); color: var(--red); }
 
-/* Q5: Health Dot indicators */
+/* Q5: Health indicators — upgraded to pill badges */
 .health-dot {
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   white-space: nowrap;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
-.health-dot.dot-ready { color: var(--green); }
-.health-dot.dot-low { color: var(--amber); }
-.health-dot.dot-empty { color: var(--red); }
+.health-dot.dot-ready { color: var(--green); background: var(--green-bg); }
+.health-dot.dot-low { color: var(--amber); background: var(--amber-bg); }
+.health-dot.dot-empty { color: var(--red); background: var(--red-bg); }
 
 /* Q3: Last Snap column */
 .snap-cell { text-align: center; }
@@ -291,10 +296,13 @@
 .account-card {
   border-bottom: 1px solid var(--border);
   border-left: 3px solid transparent;
-  transition: border-left-color 150ms;
+  transition: border-left-color 200ms ease, background var(--transition-fast);
 }
 .account-card:last-child { border-bottom: none; }
 .account-card:hover { border-left-color: var(--accent); }
+.account-card.status-ready:hover { border-left-color: var(--green); }
+.account-card.status-low:hover { border-left-color: var(--amber); }
+.account-card.status-empty:hover { border-left-color: var(--red); }
 .account-card .account-row { cursor: pointer; border-bottom: none; }
 
 /* ── Chevron ── */
@@ -372,13 +380,13 @@
 .model-indicator { width: 3px; height: 18px; border-radius: 2px; flex-shrink: 0; }
 .model-label { flex: 0 0 200px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.model-bar-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; min-width: 60px; }
+.model-bar-track { flex: 1; height: 10px; background: var(--border); border-radius: 5px; overflow: hidden; min-width: 60px; }
 
-.model-bar-fill { height: 100%; border-radius: 3px; transition: width 300ms ease; }
+.model-bar-fill { height: 100%; border-radius: 5px; transition: width 300ms ease; }
 .model-bar-fill.good { background: var(--green); }
 .model-bar-fill.ok { background: var(--accent); }
-.model-bar-fill.warning { background: var(--amber); }
-.model-bar-fill.exhausted { background: var(--red); }
+.model-bar-fill.warning { background: var(--amber); box-shadow: 0 0 6px rgba(251, 191, 36, 0.3); }
+.model-bar-fill.exhausted { background: var(--red); box-shadow: 0 0 6px rgba(248, 113, 113, 0.3); }
 
 .model-pct { width: 36px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 .model-pct.good { color: var(--green); }
