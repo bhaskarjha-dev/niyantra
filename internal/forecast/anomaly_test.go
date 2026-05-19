@@ -13,9 +13,9 @@ func TestMeanAndStdDev(t *testing.T) {
 		wantStd  float64
 	}{
 		{"empty", nil, 0, 0},
-		{"single", []float64{5}, 5, 0},
-		{"identical", []float64{3, 3, 3, 3}, 3, 0},
-		{"basic", []float64{2, 4, 4, 4, 5, 5, 7, 9}, 5, 2},
+		{"single", []float64{5}, 0, 0},                      // N<=1 returns (0,0) — can't compute sample stddev
+		{"identical", []float64{3, 3, 3, 3}, 3, 0},           // zero variance
+		{"basic", []float64{2, 4, 4, 4, 5, 5, 7, 9}, 5, 2.14}, // sample stddev = sqrt(32/7) ≈ 2.138
 	}
 
 	for _, tt := range tests {

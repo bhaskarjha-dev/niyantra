@@ -10,11 +10,27 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// isColumnExistsError returns true if the error is a SQLite "duplicate column"
-// error, which is expected when ALTER TABLE ADD COLUMN runs on a column that
-// was already added in a previous migration run.
-func isColumnExistsError(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "duplicate column")
+// columnExists checks whether a column already exists in a table using PRAGMA table_info.
+// This replaces fragile string-matching on error messages ("duplicate column").
+func columnExists(db *sql.DB, table, column string) bool {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notnull, pk int
+		var dflt *string
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			return false
+		}
+		if name == column {
+			return true
+		}
+	}
+	return false
 }
 
 // Store provides SQLite-backed persistence for Niyantra.
@@ -321,20 +337,15 @@ func (s *Store) migrate() error {
 		}
 
 		// Add provenance columns to snapshots (ALTER TABLE is separate — can't be in multi-statement)
-		// S4: Log errors instead of swallowing them (duplicate column errors are expected on re-run)
-		if _, err := s.db.Exec(`ALTER TABLE snapshots ADD COLUMN capture_method TEXT NOT NULL DEFAULT 'manual'`); err != nil {
-			if !isColumnExistsError(err) {
-				return fmt.Errorf("store: alter snapshots (capture_method): %w", err)
-			}
-		}
-		if _, err := s.db.Exec(`ALTER TABLE snapshots ADD COLUMN capture_source TEXT NOT NULL DEFAULT 'cli'`); err != nil {
-			if !isColumnExistsError(err) {
-				return fmt.Errorf("store: alter snapshots (capture_source): %w", err)
-			}
-		}
-		if _, err := s.db.Exec(`ALTER TABLE snapshots ADD COLUMN source_id TEXT NOT NULL DEFAULT 'antigravity'`); err != nil {
-			if !isColumnExistsError(err) {
-				return fmt.Errorf("store: alter snapshots (source_id): %w", err)
+		for _, col := range []struct{ name, def string }{
+			{"capture_method", "TEXT NOT NULL DEFAULT 'manual'"},
+			{"capture_source", "TEXT NOT NULL DEFAULT 'cli'"},
+			{"source_id", "TEXT NOT NULL DEFAULT 'antigravity'"},
+		} {
+			if !columnExists(s.db, "snapshots", col.name) {
+				if _, err := s.db.Exec(fmt.Sprintf(`ALTER TABLE snapshots ADD COLUMN %s %s`, col.name, col.def)); err != nil {
+					return fmt.Errorf("store: alter snapshots (%s): %w", col.name, err)
+				}
 			}
 		}
 
@@ -501,8 +512,8 @@ func (s *Store) migrate() error {
 
 	// ── v8: AI Credits tracking ──────────────────────────────────────
 	if s.getUserVersion() < 8 {
-		if _, err := s.db.Exec(`ALTER TABLE snapshots ADD COLUMN ai_credits_json TEXT DEFAULT ''`); err != nil {
-			if !isColumnExistsError(err) {
+		if !columnExists(s.db, "snapshots", "ai_credits_json") {
+			if _, err := s.db.Exec(`ALTER TABLE snapshots ADD COLUMN ai_credits_json TEXT DEFAULT ''`); err != nil {
 				return fmt.Errorf("store: alter snapshots (ai_credits_json): %w", err)
 			}
 		}
@@ -512,8 +523,8 @@ func (s *Store) migrate() error {
 	}
 	// ── v9: Codex email tracking ────────────────────────────────────
 	if s.getUserVersion() < 9 {
-		if _, err := s.db.Exec(`ALTER TABLE codex_snapshots ADD COLUMN email TEXT DEFAULT ''`); err != nil {
-			if !isColumnExistsError(err) {
+		if !columnExists(s.db, "codex_snapshots", "email") {
+			if _, err := s.db.Exec(`ALTER TABLE codex_snapshots ADD COLUMN email TEXT DEFAULT ''`); err != nil {
 				return fmt.Errorf("store: alter codex_snapshots (email): %w", err)
 			}
 		}
@@ -524,19 +535,15 @@ func (s *Store) migrate() error {
 
 	// ── v10: Account notes, tags, pinned group (Phase 13: F1, F3) ────
 	if s.getUserVersion() < 10 {
-		if _, err := s.db.Exec(`ALTER TABLE accounts ADD COLUMN notes TEXT DEFAULT ''`); err != nil {
-			if !isColumnExistsError(err) {
-				return fmt.Errorf("store: alter accounts (notes): %w", err)
-			}
-		}
-		if _, err := s.db.Exec(`ALTER TABLE accounts ADD COLUMN tags TEXT DEFAULT ''`); err != nil {
-			if !isColumnExistsError(err) {
-				return fmt.Errorf("store: alter accounts (tags): %w", err)
-			}
-		}
-		if _, err := s.db.Exec(`ALTER TABLE accounts ADD COLUMN pinned_group TEXT DEFAULT ''`); err != nil {
-			if !isColumnExistsError(err) {
-				return fmt.Errorf("store: alter accounts (pinned_group): %w", err)
+		for _, col := range []struct{ table, name, def string }{
+			{"accounts", "notes", "TEXT DEFAULT ''"},
+			{"accounts", "tags", "TEXT DEFAULT ''"},
+			{"accounts", "pinned_group", "TEXT DEFAULT ''"},
+		} {
+			if !columnExists(s.db, col.table, col.name) {
+				if _, err := s.db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, col.table, col.name, col.def)); err != nil {
+					return fmt.Errorf("store: alter %s (%s): %w", col.table, col.name, err)
+				}
 			}
 		}
 		if err := s.setUserVersion(10); err != nil {
@@ -546,8 +553,8 @@ func (s *Store) migrate() error {
 
 	// ── v11: AI credit renewal day (per-account monthly renewal) ──
 	if s.getUserVersion() < 11 {
-		if _, err := s.db.Exec(`ALTER TABLE accounts ADD COLUMN credit_renewal_day INTEGER DEFAULT 0`); err != nil {
-			if !isColumnExistsError(err) {
+		if !columnExists(s.db, "accounts", "credit_renewal_day") {
+			if _, err := s.db.Exec(`ALTER TABLE accounts ADD COLUMN credit_renewal_day INTEGER DEFAULT 0`); err != nil {
 				return fmt.Errorf("store: alter accounts (credit_renewal_day): %w", err)
 			}
 		}
@@ -897,8 +904,8 @@ func (s *Store) migrate() error {
 	}
 
 	if s.getUserVersion() < 20 {
-		if _, err := s.db.Exec(`ALTER TABLE codex_snapshots ADD COLUMN owner_account_id INTEGER DEFAULT 0`); err != nil {
-			if !isColumnExistsError(err) {
+		if !columnExists(s.db, "codex_snapshots", "owner_account_id") {
+			if _, err := s.db.Exec(`ALTER TABLE codex_snapshots ADD COLUMN owner_account_id INTEGER DEFAULT 0`); err != nil {
 				return fmt.Errorf("store: alter codex_snapshots (owner_account_id): %w", err)
 			}
 		}

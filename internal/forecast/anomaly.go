@@ -133,10 +133,12 @@ func DetectAnomalies(
 	return anomalies
 }
 
-// MeanAndStdDev computes the arithmetic mean and population standard deviation.
+// MeanAndStdDev computes the arithmetic mean and sample standard deviation.
+// Uses Bessel's correction (N-1 denominator) for unbiased variance estimation,
+// which is critical when N is small (MinDays=7).
 func MeanAndStdDev(data []float64) (float64, float64) {
 	n := float64(len(data))
-	if n == 0 {
+	if n <= 1 {
 		return 0, 0
 	}
 	sum := 0.0
@@ -150,6 +152,6 @@ func MeanAndStdDev(data []float64) (float64, float64) {
 		diff := v - mean
 		variance += diff * diff
 	}
-	variance /= n
+	variance /= (n - 1) // Bessel's correction: sample stddev
 	return mean, math.Sqrt(variance)
 }
