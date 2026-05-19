@@ -265,10 +265,10 @@ Frontend: 34 TypeScript modules (strict mode) bundled by esbuild into a single I
 | **[USER_GUIDE.md](docs/USER_GUIDE.md)** | **Complete feature guide — start here** |
 | [VISION.md](docs/VISION.md) | Product vision, market position, roadmap (Phases 1-16), competitive analysis |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, data flow, security model |
-| [API_SPEC.md](docs/API_SPEC.md) | REST API reference (60+ endpoints) |
-| [DATA_MODEL.md](docs/DATA_MODEL.md) | SQLite schema v19 (19 tables) |
+| [API_SPEC.md](docs/API_SPEC.md) | REST API reference (55+ endpoints) |
+| [DATA_MODEL.md](docs/DATA_MODEL.md) | SQLite schema v20 (20 tables) |
 | [SECURITY.md](docs/SECURITY.md) | What data is accessed, network behavior, threat model |
-| [TESTING.md](docs/TESTING.md) | 341 automated tests + manual test cases |
+| [TESTING.md](docs/TESTING.md) | 432 automated tests + manual test cases |
 | [CONTRIBUTING.md](docs/CONTRIBUTING.md) | Development setup, code style, PR guidelines |
 | [CHANGELOG.md](CHANGELOG.md) | Version history (v0.1.0 → v0.29.0) |
 

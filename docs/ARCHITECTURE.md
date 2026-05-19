@@ -1,6 +1,6 @@
 # Architecture: Niyantra
 
-> **Updated:** v0.29.0 · Schema v19 · 19 tables · 60+ REST endpoints · 341 tests
+> **Updated:** v0.29.0 · Schema v20 · 20 tables · 55+ REST endpoints · 432 tests
 
 ## System Overview
 
@@ -28,7 +28,7 @@ Application Layer
   gitcorr/      - git commit ↔ token usage cost correlation
           |
 Storage Layer
-  store/  - SQLite v19 (19 tables, 24 Go files)
+  store/  - SQLite v20 (20 tables, 24 Go files)
   config  - typed key-value settings (74+ config keys)
   Pure Go: modernc.org/sqlite (no CGo)
 ```
@@ -38,7 +38,7 @@ Storage Layer
 ```
 cmd/niyantra/main.go
   +-- client       (detect Antigravity LS, fetch quotas via Connect RPC)
-  +-- store        (SQLite, all persistence — 19 tables, 24 files)
+  +-- store        (SQLite, all persistence — 20 tables, 24 files)
   +-- web          (HTTP server + dashboard — 19 Go files, 34 TS modules)
   |    +-- agent        (polling loop, backoff, graceful shutdown)
   |    +-- tracker      (cycles + sessions)
@@ -116,8 +116,9 @@ Uses modernc.org/sqlite (pure Go, no CGo) for true single-binary cross-compilati
 | v17 | `config`: 4 webhook keys | Webhook notifications (Phase 16, F22) |
 | v18 | `webpush_subscriptions`, 3 config keys | WebPush notifications (Phase 16, F19) |
 | v19 | `plugin_snapshots` table, plugin config keys | Plugin system (Phase 16, F18) |
+| v20 | `codex_snapshots.owner_account_id` column | Codex multi-account ownership (Phase 16) |
 
-### Tables (19 — Current)
+### Tables (20 — Current)
 
 - `accounts` — identity (email, plan, notes, tags, pinned_group, credit_renewal_day)
 - `snapshots` — quota captures with provenance (account, models, ai_credits)
