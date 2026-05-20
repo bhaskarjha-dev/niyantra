@@ -800,12 +800,7 @@ export function renderAccounts(data: any): void {
       '<p>No Cursor data yet</p>' +
       '<p class="empty-hint">Enable Cursor capture in <strong>Settings</strong> or click <strong>Snap Now</strong></p></div>';
   }
-  if (pf === 'gemini' && (!data.geminiSnapshots || data.geminiSnapshots.length === 0)) {
-    html += '<div class="provider-empty-state" data-provider="gemini">' +
-      '<span class="provider-empty-icon">✦</span>' +
-      '<p>No Gemini CLI data yet</p>' +
-      '<p class="empty-hint">Enable Gemini capture in <strong>Settings</strong> or click <strong>Snap Now</strong></p></div>';
-  }
+
   if (pf === 'copilot' && (!data.copilotSnapshots || data.copilotSnapshots.length === 0)) {
     html += '<div class="provider-empty-state" data-provider="copilot">' +
       '<span class="provider-empty-icon">🐙</span>' +
