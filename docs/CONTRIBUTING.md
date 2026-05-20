@@ -76,7 +76,7 @@ internal/
     ports.go                          Port discovery via lsof/ss/netstat
     probe.go                          Connect RPC endpoint validation
     types.go                          API response structs
-    helpers.go                        Model grouping logic (claude_gpt / gemini_pro / gemini_flash)
+    helpers.go                        Model grouping logic (claude_gpt / gemini_unified / unknown)
 
   store/                           ← SQLite persistence (schema v21, 18 persistent tables)
     store.go                          Open, migrate schema (v1→v21), close
@@ -142,7 +142,7 @@ internal/
   mcpserver/                       ← MCP stdio + Streamable HTTP server
     mcpserver.go                      13 tools: quota, models, usage, budget, best_model, spending, switch, codex, forecast, token_usage_stats, git_commit_costs, copilot_status, plugin_status
 
-  web/                             ← Modular HTTP server
+  web/                             ← Modular HTTP server (21 Go files)
     server.go                         Server struct, lifecycle, route table
     middleware.go                     Bearer auth, optional Basic auth, CORS/security headers, body limits
     helpers.go                        JSON response utilities
@@ -155,8 +155,7 @@ internal/
     handlers_forecast.go              cost + TTX forecast endpoints
     handlers_subscriptions.go         Subscription CRUD, overview, presets, CSV
     handlers_cursor.go                Cursor status/snap endpoints
-    handlers_copilot.go               Copilot status/snap endpoints
-    handlers_quota.go                 Status payload + activity heatmap endpoints
+    handlers_plugins.go               Plugin endpoints (gated behind --enable-plugins)
     static/                           Embedded via Go embed.FS
       index.html                       Single-page dashboard shell
       style.css                        Design system (CSS variables, dark/light themes)
@@ -177,7 +176,7 @@ internal/
 ### Frontend Build Pipeline
 
 ```
-TypeScript sources (40 .ts files, strict mode)
+TypeScript sources (39 .ts files, strict mode)
         ↓ esbuild --bundle --format=iife
     static/app.js (generated single IIFE)
         ↓ go:embed
@@ -250,7 +249,7 @@ make build
 make vet
 ```
 
-Current coverage: 286 tests across 33 files in 14 packages (`cmd/niyantra`, `advisor`, `claude`, `client`, `costtrack`, `forecast`, `gitcorr`, `mcpserver`, `notify`, `plugin`, `readiness`, `store`, `tracker`, `web`).
+Current coverage: 285 tests across 33 files in 14 packages (`cmd/niyantra`, `advisor`, `claude`, `client`, `costtrack`, `forecast`, `gitcorr`, `mcpserver`, `notify`, `plugin`, `readiness`, `store`, `tracker`, `web`).
 
 ## Common Issues
 

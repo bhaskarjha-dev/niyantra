@@ -12,7 +12,7 @@ User Interfaces
           |
 Application Layer
   agent/        - polling loop + session management
-  client/       - LS detection + multi-account concurrent quota fetch (Connect RPC)
+  client/       - LS detection + multi-process account capture (Connect RPC, instance-level dedup)
   codex/        - OAuth + Codex API polling + OIDC JWT parsing
   claude/       - deep session parser + statusline bridge + settings patch
   cursor/       - session token auth + HTTP API polling
@@ -192,13 +192,12 @@ Output: AccountReadiness with per-group status, staleness, reset countdowns
 
 ### Model Grouping Logic
 
-Antigravity exposes per-model quotas. Niyantra groups known model families into 3 routing buckets and keeps unmapped models in an explicit unknown bucket:
+Antigravity exposes per-model quotas. Niyantra groups known model families into 2 routing buckets and keeps unmapped models in an explicit unknown bucket:
 
 | Group Key | Display Name | Model Match |
 |-----------|-------------|-------------|
 | claude_gpt | Claude + GPT | contains "claude" or "gpt" |
-| gemini_pro | Gemini Pro | contains "gemini" but not "flash" |
-| gemini_flash | Gemini Flash | contains "gemini" and "flash" |
+| gemini_unified | Gemini Pool | contains "gemini" |
 | unknown | Unknown | no known family match; excluded from recommendations until mapped |
 
 For each group:
@@ -225,7 +224,7 @@ Provides alert delivery for quota warnings via 4 independent channels:
 
 Serves a 4-tab dashboard with embedded static assets and a REST API.
 
-### File Structure (22 Go files)
+### File Structure (21 Go files)
 
 | File | Responsibility |
 |------|----------------|
@@ -250,7 +249,7 @@ Serves a 4-tab dashboard with embedded static assets and a REST API.
 
 REST API endpoints are organized by domain. All `/api/*` endpoints require the generated dashboard bearer token except `/healthz`, which stays public for liveness checks. Full documentation lives in `docs/API_SPEC.md`.
 
-Stack: Go embed.FS + TypeScript (strict mode, 34 modules) bundled via esbuild into a single IIFE. Chart.js bundled locally from embedded assets.
+Stack: Go embed.FS + TypeScript (strict mode, 39 modules) bundled via esbuild into a single IIFE. 29 domain CSS files bundled via esbuild. Chart.js bundled locally from embedded assets.
 
 ## 6. Providers (6)
 

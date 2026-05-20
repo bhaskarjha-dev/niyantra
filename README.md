@@ -270,7 +270,7 @@ Re-run the install command or download the latest from [Releases](https://github
 | Go stdlib | Everything else -- HTTP, JSON, embed, crypto |
 
 No web frameworks. No ORMs. Chart.js bundled locally from embedded assets.
-Frontend: 40 TypeScript modules (strict mode) bundled by esbuild into a single IIFE.
+Frontend: 39 TypeScript modules (strict mode) bundled by esbuild into a single IIFE.
 
 ## Documentation
 
