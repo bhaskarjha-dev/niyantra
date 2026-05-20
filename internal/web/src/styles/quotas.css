@@ -115,7 +115,7 @@
 
 .account-row {
   display: grid;
-  grid-template-columns: 1fr 110px 110px 110px 90px 85px 85px;
+  grid-template-columns: 1fr 110px 110px 90px 85px 85px;
   gap: 12px;
   padding: 16px 20px;
   align-items: center;

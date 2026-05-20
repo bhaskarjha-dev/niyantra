@@ -5,7 +5,7 @@ import {
   GROUP_ORDER, GROUP_LABELS, GROUP_COLORS, GROUP_NAMES,
   GRID_COLUMNS, GRID_LABELS,
   expandedAccounts, collapsedProviders,
-  quotaSortState, latestQuotaData, setLatestQuotaData,
+  quotaSortState, quotaSortStates, latestQuotaData, setLatestQuotaData,
   activeTagFilter, setActiveTagFilter,
   usageDataCache,
 } from '../core/state';
@@ -47,15 +47,15 @@ export function getCodexClaudeStatus(snap: any): string {
 }
 
 export function sortAccountsArray(accounts: any[]): any[] {
-  var col = quotaSortState.column;
-  var dir = quotaSortState.direction;
+  var state = quotaSortStates.antigravity || quotaSortState;
+  var col = state.column;
+  var dir = state.direction;
   return accounts.slice().sort(function(a, b) {
     var va, vb;
     switch (col) {
       case 'account': va = a.email; vb = b.email; break;
       case 'claude_gpt':
-      case 'gemini_pro':
-      case 'gemini_flash':
+      case 'gemini_unified':
       case 'unknown':
         va = getGroupPct(a, col); vb = getGroupPct(b, col); break;
       case 'credits':
@@ -74,8 +74,9 @@ export function sortAccountsArray(accounts: any[]): any[] {
 }
 
 export function sortProviderArray(array: any[], provider: string): any[] {
-  var col = quotaSortState.column;
-  var dir = quotaSortState.direction;
+  var state = quotaSortStates[provider] || quotaSortState;
+  var col = state.column;
+  var dir = state.direction;
   return array.slice().sort(function(a, b) {
     var va, vb;
     if (provider === 'codex') {
@@ -213,9 +214,14 @@ export function updateSortHeaders(): void {
     el.classList.remove('sort-active');
     var span = el.querySelector('.sort-indicator');
     if (span) span.textContent = '';
-    if ((el as HTMLElement).dataset.sort === quotaSortState.column) {
+    
+    var providerSection = el.closest('.provider-section');
+    var provider = providerSection ? (providerSection as HTMLElement).dataset.provider : 'antigravity';
+    var state = quotaSortStates[provider || 'antigravity'] || quotaSortState;
+    
+    if ((el as HTMLElement).dataset.sort === state.column) {
       el.classList.add('sort-active');
-      if (span) span.textContent = quotaSortState.direction === 'asc' ? '▾' : '▴';
+      if (span) span.textContent = state.direction === 'asc' ? '▾' : '▴';
     }
   });
 }
@@ -395,90 +401,8 @@ export function renderAccounts(data: any): void {
       }
     }
 
-    var geminiRendered = false;
     for (var gi = 0; gi < GRID_COLUMNS.length; gi++) {
       var key = GRID_COLUMNS[gi];
-      if (acc.unifiedPool && (key === 'gemini_pro' || key === 'gemini_flash')) {
-        if (geminiRendered) continue;
-        geminiRendered = true;
-
-        var geminiGroup = null;
-        var groups = acc.groups || [];
-        for (var gj = 0; gj < groups.length; gj++) {
-          if (groups[gj].groupKey === 'gemini_pro' || groups[gj].groupKey === 'gemini_flash') {
-            geminiGroup = groups[gj];
-            break;
-          }
-        }
-        var pct = geminiGroup ? Math.round(geminiGroup.remainingPercent) : 100;
-        var cls = 'good';
-        if (pct <= 0) cls = 'exhausted';
-        else if (pct < 20) cls = 'warning';
-        else if (pct < 50) cls = 'ok';
-
-        var tooltipParts = ['Unified compute tokens remaining. Flash usage counts as 1/8th of Pro usage.'];
-        if (geminiGroup && geminiGroup.timeUntilResetSec > 0) {
-          tooltipParts.push('Reset in: ' + formatSeconds(geminiGroup.timeUntilResetSec));
-        }
-
-        if (data.forecasts && data.forecasts[acc.accountId]) {
-          var acctForecasts = data.forecasts[acc.accountId];
-          for (var fi = 0; fi < acctForecasts.length; fi++) {
-            if ((acctForecasts[fi].groupKey === 'gemini_pro' || acctForecasts[fi].groupKey === 'gemini_flash') && acctForecasts[fi].ttxLabel) {
-              var ttxLabel = acctForecasts[fi].ttxLabel;
-              if (ttxLabel && ttxLabel !== '') {
-                tooltipParts.push('TTX: ' + ttxLabel);
-              }
-              break;
-            }
-          }
-        }
-
-        if (pct < 95 && data.estimatedCosts && data.estimatedCosts[acc.accountId]) {
-          var acctCosts = data.estimatedCosts[acc.accountId];
-          if (acctCosts.groups) {
-            for (var ci = 0; ci < acctCosts.groups.length; ci++) {
-              if ((acctCosts.groups[ci].groupKey === 'gemini_pro' || acctCosts.groups[ci].groupKey === 'gemini_flash') && acctCosts.groups[ci].hasData) {
-                var costVal = acctCosts.groups[ci].estimatedCost || 0;
-                if (costVal >= 0.01) {
-                  var costLabel = acctCosts.groups[ci].costLabel || '—';
-                  var hourly = acctCosts.groups[ci].hourlyLabel ? ' (' + acctCosts.groups[ci].hourlyLabel + ')' : '';
-                  tooltipParts.push('Estimated Cost: ' + costLabel + hourly);
-                }
-                break;
-              }
-            }
-          }
-        }
-
-        var cellTitle = tooltipParts.join(' | ');
-
-        var proModels = modelIdsByGroup['gemini_pro'] || [];
-        var flashModels = modelIdsByGroup['gemini_flash'] || [];
-        var allGeminiModelIds = proModels.concat(flashModels).join('|||');
-
-        var proLabels = modelLabelsByGroup['gemini_pro'] || [];
-        var flashLabels = modelLabelsByGroup['gemini_flash'] || [];
-        var allGeminiModelLabels = proLabels.concat(flashLabels).join('|||');
-
-        var groupAdjust = '<span class="group-adjust" data-snap-id="' + acc.latestSnapshotId +
-          '" data-group-key="gemini_unified' +
-          '" data-group-model-ids="' + esc(allGeminiModelIds) +
-          '" data-group-model-labels="' + esc(allGeminiModelLabels) +
-          '" data-current-pct="' + pct + '">' +
-          '<button class="gadj-btn" data-delta="-20" title="−20% unified pool">−20</button>' +
-          '<button class="gadj-btn" data-delta="20" title="+20% unified pool">+20</button>' +
-          '<button class="gadj-btn btn-custom" data-custom="true" title="Enter custom percentage for unified pool">✏️</button>' +
-          '</span>';
-
-        groupCells += '<div class="quota-cell unified-pool-cell" style="grid-column: span 2; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative;" title="' + esc(cellTitle) + '">' +
-          '<span class="quota-pct ' + cls + '">' + pct + '% Pool Left</span>' +
-          '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + pct + '%"></div></div>' +
-          '<span class="pool-multiplier-badge" style="font-size: 8px; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 3px; padding: 1px 4px; margin-top: 3px; font-weight: 600;">⚡ 8x Flash Multiplier</span>' +
-          groupAdjust +
-          '</div>';
-        continue;
-      }
 
       var g = null;
       var groups = acc.groups || [];
@@ -551,8 +475,8 @@ export function renderAccounts(data: any): void {
 
       var cellTitle = tooltipParts.join(' | ') || (GRID_LABELS[gi] || key);
 
-      groupCells += '<div class="quota-cell" title="' + esc(cellTitle) + '">' +
-        '<span class="quota-pct ' + cls + '">' + pct + '%</span>' +
+      groupCells += '<div class="quota-cell' + (key === 'gemini_unified' ? ' unified-pool-cell' : '') + '" title="' + esc(cellTitle) + '" style="display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative;">' +
+        '<span class="quota-pct ' + cls + '">' + pct + '%' + '</span>' +
         renderQualityBadge(g) +
         '<div class="quota-minibar"><div class="quota-minibar-fill ' + barCls + '" style="width:' + pct + '%"></div></div>' +
         groupAdjust +

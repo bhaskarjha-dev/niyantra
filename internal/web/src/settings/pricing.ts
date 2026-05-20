@@ -160,7 +160,13 @@ export function resetPricingDefaults(): void {
     { modelId: 'claude-haiku-4.5', displayName: 'Claude Haiku 4.5', provider: 'anthropic', inputPer1M: 1.00, outputPer1M: 5.00, cachePer1M: 0.10 },
     { modelId: 'gpt-4o', displayName: 'GPT-4o', provider: 'openai', inputPer1M: 2.50, outputPer1M: 10.00, cachePer1M: 1.25 },
     { modelId: 'gemini-3.1-pro', displayName: 'Gemini 3.1 Pro', provider: 'google', inputPer1M: 2.00, outputPer1M: 12.00, cachePer1M: 0.50 },
-    { modelId: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', provider: 'google', inputPer1M: 0.30, outputPer1M: 2.50, cachePer1M: 0.075 }
+    { modelId: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', provider: 'google', inputPer1M: 0.30, outputPer1M: 2.50, cachePer1M: 0.075 },
+    
+    // Contemporary Google Gemini Models
+    { modelId: 'MODEL_PLACEHOLDER_M133', displayName: 'Gemini 3.5 Flash (High)', provider: 'google', inputPer1M: 0.30, outputPer1M: 2.50, cachePer1M: 0.075 },
+    { modelId: 'MODEL_PLACEHOLDER_M20', displayName: 'Gemini 3.5 Flash (Medium)', provider: 'google', inputPer1M: 0.30, outputPer1M: 2.50, cachePer1M: 0.075 },
+    { modelId: 'MODEL_PLACEHOLDER_M16', displayName: 'Gemini 3.1 Pro (High)', provider: 'google', inputPer1M: 2.00, outputPer1M: 12.00, cachePer1M: 0.50 },
+    { modelId: 'MODEL_PLACEHOLDER_M36', displayName: 'Gemini 3.1 Pro (Low)', provider: 'google', inputPer1M: 2.00, outputPer1M: 12.00, cachePer1M: 0.50 }
   ];
 
   pricingDataCache = defaults;

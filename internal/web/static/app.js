@@ -2,11 +2,11 @@
 "use strict";
 (() => {
   // internal/web/src/core/state.ts
-  var GROUP_ORDER = ["claude_gpt", "gemini_pro", "gemini_flash", "unknown"];
-  var GRID_COLUMNS = ["claude_gpt", "gemini_pro", "gemini_flash"];
-  var GRID_LABELS = ["Claude + GPT", "Gemini Pro", "Gemini Flash"];
-  var GROUP_COLORS = { claude_gpt: "#D97757", gemini_pro: "#10B981", gemini_flash: "#3B82F6", unknown: "#64748B" };
-  var GROUP_NAMES = { claude_gpt: "Claude + GPT", gemini_pro: "Gemini Pro", gemini_flash: "Gemini Flash", unknown: "Other" };
+  var GROUP_ORDER = ["claude_gpt", "gemini_unified", "unknown"];
+  var GRID_COLUMNS = ["claude_gpt", "gemini_unified"];
+  var GRID_LABELS = ["Claude + GPT", "Gemini Pool"];
+  var GROUP_COLORS = { claude_gpt: "#D97757", gemini_unified: "#3B82F6", unknown: "#64748B" };
+  var GROUP_NAMES = { claude_gpt: "Claude + GPT", gemini_unified: "Gemini Pool", unknown: "Other" };
   var expandedAccounts = /* @__PURE__ */ new Set();
   var savedCollapsed = typeof localStorage !== "undefined" ? localStorage.getItem("niyantra_collapsed_providers") : null;
   var collapsedProviders = new Set(savedCollapsed ? JSON.parse(savedCollapsed) : []);
@@ -25,6 +25,12 @@
     usageDataCache = data;
   }
   var quotaSortState = { column: "account", direction: "asc" };
+  var quotaSortStates = {
+    antigravity: { column: "account", direction: "asc" },
+    codex: { column: "account", direction: "asc" },
+    cursor: { column: "account", direction: "asc" },
+    copilot: { column: "account", direction: "asc" }
+  };
   var latestQuotaData = null;
   function setLatestQuotaData(data) {
     latestQuotaData = data;
@@ -692,8 +698,9 @@
     return "ready";
   }
   function sortAccountsArray(accounts) {
-    var col = quotaSortState.column;
-    var dir = quotaSortState.direction;
+    var state = quotaSortStates.antigravity || quotaSortState;
+    var col = state.column;
+    var dir = state.direction;
     return accounts.slice().sort(function(a, b) {
       var va, vb;
       switch (col) {
@@ -702,8 +709,7 @@
           vb = b.email;
           break;
         case "claude_gpt":
-        case "gemini_pro":
-        case "gemini_flash":
+        case "gemini_unified":
         case "unknown":
           va = getGroupPct(a, col);
           vb = getGroupPct(b, col);
@@ -731,8 +737,9 @@
     });
   }
   function sortProviderArray(array, provider) {
-    var col = quotaSortState.column;
-    var dir = quotaSortState.direction;
+    var state = quotaSortStates[provider] || quotaSortState;
+    var col = state.column;
+    var dir = state.direction;
     return array.slice().sort(function(a, b) {
       var va, vb;
       if (provider === "codex") {
@@ -860,9 +867,12 @@
       el.classList.remove("sort-active");
       var span = el.querySelector(".sort-indicator");
       if (span) span.textContent = "";
-      if (el.dataset.sort === quotaSortState.column) {
+      var providerSection = el.closest(".provider-section");
+      var provider = providerSection ? providerSection.dataset.provider : "antigravity";
+      var state = quotaSortStates[provider || "antigravity"] || quotaSortState;
+      if (el.dataset.sort === state.column) {
         el.classList.add("sort-active");
-        if (span) span.textContent = quotaSortState.direction === "asc" ? "\u25BE" : "\u25B4";
+        if (span) span.textContent = state.direction === "asc" ? "\u25BE" : "\u25B4";
       }
     });
   }
@@ -995,68 +1005,8 @@
             }
           }
         }
-        var geminiRendered = false;
         for (var gi = 0; gi < GRID_COLUMNS.length; gi++) {
           var key = GRID_COLUMNS[gi];
-          if (acc.unifiedPool && (key === "gemini_pro" || key === "gemini_flash")) {
-            if (geminiRendered) continue;
-            geminiRendered = true;
-            var geminiGroup = null;
-            var groups = acc.groups || [];
-            for (var gj = 0; gj < groups.length; gj++) {
-              if (groups[gj].groupKey === "gemini_pro" || groups[gj].groupKey === "gemini_flash") {
-                geminiGroup = groups[gj];
-                break;
-              }
-            }
-            var pct = geminiGroup ? Math.round(geminiGroup.remainingPercent) : 100;
-            var cls = "good";
-            if (pct <= 0) cls = "exhausted";
-            else if (pct < 20) cls = "warning";
-            else if (pct < 50) cls = "ok";
-            var tooltipParts = ["Unified compute tokens remaining. Flash usage counts as 1/8th of Pro usage."];
-            if (geminiGroup && geminiGroup.timeUntilResetSec > 0) {
-              tooltipParts.push("Reset in: " + formatSeconds(geminiGroup.timeUntilResetSec));
-            }
-            if (data.forecasts && data.forecasts[acc.accountId]) {
-              var acctForecasts = data.forecasts[acc.accountId];
-              for (var fi = 0; fi < acctForecasts.length; fi++) {
-                if ((acctForecasts[fi].groupKey === "gemini_pro" || acctForecasts[fi].groupKey === "gemini_flash") && acctForecasts[fi].ttxLabel) {
-                  var ttxLabel = acctForecasts[fi].ttxLabel;
-                  if (ttxLabel && ttxLabel !== "") {
-                    tooltipParts.push("TTX: " + ttxLabel);
-                  }
-                  break;
-                }
-              }
-            }
-            if (pct < 95 && data.estimatedCosts && data.estimatedCosts[acc.accountId]) {
-              var acctCosts = data.estimatedCosts[acc.accountId];
-              if (acctCosts.groups) {
-                for (var ci = 0; ci < acctCosts.groups.length; ci++) {
-                  if ((acctCosts.groups[ci].groupKey === "gemini_pro" || acctCosts.groups[ci].groupKey === "gemini_flash") && acctCosts.groups[ci].hasData) {
-                    var costVal = acctCosts.groups[ci].estimatedCost || 0;
-                    if (costVal >= 0.01) {
-                      var costLabel = acctCosts.groups[ci].costLabel || "\u2014";
-                      var hourly = acctCosts.groups[ci].hourlyLabel ? " (" + acctCosts.groups[ci].hourlyLabel + ")" : "";
-                      tooltipParts.push("Estimated Cost: " + costLabel + hourly);
-                    }
-                    break;
-                  }
-                }
-              }
-            }
-            var cellTitle = tooltipParts.join(" | ");
-            var proModels = modelIdsByGroup["gemini_pro"] || [];
-            var flashModels = modelIdsByGroup["gemini_flash"] || [];
-            var allGeminiModelIds = proModels.concat(flashModels).join("|||");
-            var proLabels = modelLabelsByGroup["gemini_pro"] || [];
-            var flashLabels = modelLabelsByGroup["gemini_flash"] || [];
-            var allGeminiModelLabels = proLabels.concat(flashLabels).join("|||");
-            var groupAdjust = '<span class="group-adjust" data-snap-id="' + acc.latestSnapshotId + '" data-group-key="gemini_unified" data-group-model-ids="' + esc(allGeminiModelIds) + '" data-group-model-labels="' + esc(allGeminiModelLabels) + '" data-current-pct="' + pct + '"><button class="gadj-btn" data-delta="-20" title="\u221220% unified pool">\u221220</button><button class="gadj-btn" data-delta="20" title="+20% unified pool">+20</button><button class="gadj-btn btn-custom" data-custom="true" title="Enter custom percentage for unified pool">\u270F\uFE0F</button></span>';
-            groupCells += '<div class="quota-cell unified-pool-cell" style="grid-column: span 2; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative;" title="' + esc(cellTitle) + '"><span class="quota-pct ' + cls + '">' + pct + '% Pool Left</span><div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + pct + '%"></div></div><span class="pool-multiplier-badge" style="font-size: 8px; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 3px; padding: 1px 4px; margin-top: 3px; font-weight: 600;">\u26A1 8x Flash Multiplier</span>' + groupAdjust + "</div>";
-            continue;
-          }
           var g = null;
           var groups = acc.groups || [];
           for (var gj = 0; gj < groups.length; gj++) {
@@ -1111,7 +1061,7 @@
             }
           }
           var cellTitle = tooltipParts.join(" | ") || (GRID_LABELS[gi] || key);
-          groupCells += '<div class="quota-cell" title="' + esc(cellTitle) + '"><span class="quota-pct ' + cls + '">' + pct + "%</span>" + renderQualityBadge(g) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + barCls + '" style="width:' + pct + '%"></div></div>' + groupAdjust + "</div>";
+          groupCells += '<div class="quota-cell' + (key === "gemini_unified" ? " unified-pool-cell" : "") + '" title="' + esc(cellTitle) + '" style="display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative;"><span class="quota-pct ' + cls + '">' + pct + "%</span>" + renderQualityBadge(g) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + barCls + '" style="width:' + pct + '%"></div></div>' + groupAdjust + "</div>";
         }
         var dotCls = "dot-ready";
         var badgeText = "Ready";
@@ -1736,12 +1686,21 @@
         var el = e.target.closest(".sortable");
         if (!el) return;
         var col = el.dataset.sort;
-        if (quotaSortState.column === col) {
-          quotaSortState.direction = quotaSortState.direction === "asc" ? "desc" : "asc";
-        } else {
-          quotaSortState.column = col;
-          quotaSortState.direction = "asc";
+        var providerSection = el.closest(".provider-section");
+        var provider = providerSection ? providerSection.dataset.provider : "antigravity";
+        var state = quotaSortStates[provider || "antigravity"];
+        if (!state) {
+          state = { column: "account", direction: "asc" };
+          quotaSortStates[provider || "antigravity"] = state;
         }
+        if (state.column === col) {
+          state.direction = state.direction === "asc" ? "desc" : "asc";
+        } else {
+          state.column = col;
+          state.direction = "asc";
+        }
+        quotaSortState.column = state.column;
+        quotaSortState.direction = state.direction;
         if (latestQuotaData) renderAccounts(latestQuotaData);
       });
     }
@@ -2245,6 +2204,9 @@
     return html;
   }
   var advisorGroupPref = localStorage.getItem("niyantra_advisor_group") || "claude_gpt";
+  if (advisorGroupPref === "gemini_pro" || advisorGroupPref === "gemini_flash") {
+    advisorGroupPref = "gemini_unified";
+  }
   function loadAdvisorCard() {
     var container = document.getElementById("advisor-card-container");
     if (!container) return;
@@ -2293,8 +2255,7 @@
     });
     var groupNames = {
       "claude_gpt": "Claude + GPT",
-      "gemini_pro": "Gemini Pro",
-      "gemini_flash": "Gemini Flash",
+      "gemini_unified": "Gemini Pool",
       "all": "All Models (avg)"
     };
     var best = ranked[0];
@@ -2303,7 +2264,7 @@
     });
     var actionIcon = allHealthy ? "READY" : best.pct > 20 ? "SWITCH" : "WAIT";
     var actionLabel = allHealthy ? "ALL READY" : best.pct > 20 ? "SWITCH" : "WAIT";
-    var html = '<div class="advisor-card"><h3>Antigravity Account Advisor</h3><div class="advisor-group-select"><label>Optimize for:</label><select id="advisor-group-filter" class="filter-select" style="margin-left:8px;font-size:12px"><option value="claude_gpt"' + (groupKey === "claude_gpt" ? " selected" : "") + '>Claude + GPT</option><option value="gemini_pro"' + (groupKey === "gemini_pro" ? " selected" : "") + '>Gemini Pro</option><option value="gemini_flash"' + (groupKey === "gemini_flash" ? " selected" : "") + '>Gemini Flash</option><option value="all"' + (groupKey === "all" ? " selected" : "") + ">All Models (avg)</option></select></div>";
+    var html = '<div class="advisor-card"><h3>Antigravity Account Advisor</h3><div class="advisor-group-select"><label>Optimize for:</label><select id="advisor-group-filter" class="filter-select" style="margin-left:8px;font-size:12px"><option value="claude_gpt"' + (groupKey === "claude_gpt" ? " selected" : "") + '>Claude + GPT</option><option value="gemini_unified"' + (groupKey === "gemini_unified" ? " selected" : "") + '>Gemini Pool</option><option value="all"' + (groupKey === "all" ? " selected" : "") + ">All Models (avg)</option></select></div>";
     var actionCls = allHealthy ? "stay" : best.pct > 20 ? "switch" : "wait";
     html += '<div class="advisor-action ' + actionCls + '">' + actionIcon + " " + actionLabel + '</div><div class="advisor-reason">' + (allHealthy ? "All accounts have healthy quotas - no switch needed" : "Best: " + esc(best.email) + " (" + best.pct + "% " + esc(groupNames[groupKey] || groupKey) + " remaining)") + (best.stale ? " [stale data]" : "") + "</div>";
     html += '<div class="advisor-scores">';
@@ -3913,16 +3874,62 @@
     }
     historyChart.update("none");
   }
+  var chartAccountsList = [];
   function loadHistoryChart() {
     if (typeof Chart === "undefined") return;
-    var accountId = parseInt(document.getElementById("chart-account").value) || 0;
-    var limit = parseInt(document.getElementById("chart-range").value) || 20;
-    var url = "/api/history?limit=" + limit;
+    var provSel = document.getElementById("chart-provider");
+    var accSel = document.getElementById("chart-account");
+    var rangeSel = document.getElementById("chart-range");
+    var provider = provSel ? provSel.value : "all";
+    var accountId = accSel ? parseInt(accSel.value) || 0 : 0;
+    var range = rangeSel ? rangeSel.value : "7d";
+    var customContainer = document.getElementById("chart-custom-range");
+    if (customContainer) {
+      if (range === "custom") {
+        customContainer.style.display = "flex";
+      } else {
+        customContainer.style.display = "none";
+      }
+    }
+    var since = "";
+    var until = "";
+    var now = /* @__PURE__ */ new Date();
+    if (range === "24h") {
+      since = new Date(now.getTime() - 24 * 60 * 60 * 1e3).toISOString();
+    } else if (range === "7d") {
+      since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1e3).toISOString();
+    } else if (range === "30d") {
+      since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1e3).toISOString();
+    } else if (range === "90d") {
+      since = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1e3).toISOString();
+    } else if (range === "custom") {
+      var startInput = document.getElementById("chart-start-date");
+      var endInput = document.getElementById("chart-end-date");
+      if (startInput && !startInput.value) {
+        var dStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1e3);
+        startInput.value = dStart.toISOString().split("T")[0];
+      }
+      if (endInput && !endInput.value) {
+        endInput.value = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+      }
+      if (startInput && startInput.value) {
+        since = (/* @__PURE__ */ new Date(startInput.value + "T00:00:00")).toISOString();
+      }
+      if (endInput && endInput.value) {
+        until = (/* @__PURE__ */ new Date(endInput.value + "T23:59:59")).toISOString();
+      }
+    }
+    var url = "/api/history?limit=1000";
+    if (provider !== "all") url += "&provider=" + provider;
     if (accountId > 0) url += "&account=" + accountId;
+    if (since) url += "&since=" + encodeURIComponent(since);
+    if (until) url += "&until=" + encodeURIComponent(until);
     fetch(url).then(function(res) {
       return res.json();
     }).then(function(data) {
-      renderHistoryChart(data.snapshots || []);
+      var snapshots = data.snapshots || [];
+      updateKPINumbers(snapshots);
+      renderHistoryChart(snapshots);
     }).catch(function(err) {
       console.error("Failed to load history:", err);
     });
@@ -3931,7 +3938,7 @@
     var container = document.querySelector(".chart-container");
     if (!container || typeof Chart === "undefined") return;
     if (snapshots.length === 0) {
-      container.innerHTML = '<div class="chart-empty">No snapshot history yet. Click Snap Now to start tracking.</div>';
+      container.innerHTML = '<div class="chart-empty"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" opacity="0.4"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 17v-5M15 17V7M12 17v-3"/></svg>No snapshot history found matching current filters.</div>';
       return;
     }
     container.innerHTML = '<canvas id="history-chart"></canvas>';
@@ -3943,8 +3950,7 @@
     var groupData = {};
     var groupNames = {
       claude_gpt: "Claude + GPT",
-      gemini_pro: "Gemini Pro",
-      gemini_flash: "Gemini Flash",
+      gemini_unified: "Gemini Pool",
       cursor: "Cursor Quota",
       codex_5h: "Codex 5-Hour",
       codex_7d: "Codex 7-Day",
@@ -3953,8 +3959,7 @@
     };
     var groupColors = {
       claude_gpt: "#D97757",
-      gemini_pro: "#10B981",
-      gemini_flash: "#3B82F6",
+      gemini_unified: "#3B82F6",
       cursor: "#00E6FF",
       codex_5h: "#9B51E0",
       codex_7d: "#BB6BD9",
@@ -4000,13 +4005,16 @@
         label: groupNames[key],
         data: groupData[key],
         borderColor: groupColors[key] || "#94a3b8",
-        backgroundColor: (groupColors[key] || "#94a3b8") + "20",
+        backgroundColor: (groupColors[key] || "#94a3b8") + "15",
         yAxisID: "y",
         fill: true,
-        tension: 0.3,
-        pointRadius: 3,
+        tension: 0.35,
+        pointRadius: 0,
         pointHoverRadius: 6,
-        borderWidth: 2
+        pointHoverBorderWidth: 2,
+        pointHoverBackgroundColor: groupColors[key] || "#94a3b8",
+        pointHoverBorderColor: "#ffffff",
+        borderWidth: 2.5
       });
     }
     if (hasAICredits) {
@@ -4017,12 +4025,14 @@
         // Amber
         backgroundColor: "transparent",
         yAxisID: "yCredits",
-        borderDash: [5, 5],
-        tension: 0.3,
-        pointRadius: 4,
-        pointBackgroundColor: "#fbbf24",
+        borderDash: [6, 4],
+        tension: 0.35,
+        pointRadius: 0,
         pointHoverRadius: 6,
-        borderWidth: 3
+        pointHoverBorderWidth: 2,
+        pointHoverBackgroundColor: "#fbbf24",
+        pointHoverBorderColor: "#ffffff",
+        borderWidth: 2.5
       });
     }
     var isDark = document.documentElement.getAttribute("data-theme") !== "light";
@@ -4041,17 +4051,31 @@
         plugins: {
           legend: {
             position: "bottom",
-            labels: { color: textColor, font: { family: "'Inter', sans-serif", size: 11 }, boxWidth: 12, padding: 16 }
+            labels: {
+              color: textColor,
+              font: { family: "'Inter', sans-serif", size: 11, weight: "500" },
+              boxWidth: 8,
+              boxHeight: 8,
+              usePointStyle: true,
+              pointStyle: "circle",
+              padding: 20
+            }
           },
           tooltip: {
-            backgroundColor: isDark ? "#1e293b" : "#fff",
-            titleColor: isDark ? "#f1f5f9" : "#0f172a",
-            bodyColor: isDark ? "#94a3b8" : "#475569",
-            borderColor: isDark ? "#334155" : "#e2e8f0",
+            backgroundColor: isDark ? "rgba(15, 23, 42, 0.95)" : "rgba(255, 255, 255, 0.95)",
+            titleColor: isDark ? "#f8fafc" : "#0f172a",
+            bodyColor: isDark ? "#cbd5e1" : "#475569",
+            borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.08)",
             borderWidth: 1,
-            padding: 10,
-            titleFont: { family: "'Inter', sans-serif", weight: "600" },
-            bodyFont: { family: "'Inter', sans-serif" },
+            padding: 12,
+            cornerRadius: 8,
+            titleFont: { family: "'Inter', sans-serif", weight: "700", size: 12 },
+            bodyFont: { family: "'Inter', sans-serif", size: 11 },
+            multiKeyBackground: "transparent",
+            usePointStyle: true,
+            boxWidth: 6,
+            boxHeight: 6,
+            boxPadding: 6,
             callbacks: {
               label: function(ctx2) {
                 if (ctx2.dataset.yAxisID === "yCredits") return ctx2.dataset.label + ": " + ctx2.parsed.y.toLocaleString();
@@ -4067,8 +4091,8 @@
             position: "left",
             min: 0,
             max: 100,
-            grid: { color: gridColor },
-            ticks: { color: textColor, font: { family: "'Inter', sans-serif", size: 11 }, callback: function(v) {
+            grid: { color: gridColor, drawTicks: false },
+            ticks: { color: textColor, font: { family: "'Inter', sans-serif", size: 10 }, padding: 8, callback: function(v) {
               return v + "%";
             } },
             border: { display: false }
@@ -4078,12 +4102,12 @@
             display: hasAICredits,
             position: "right",
             grid: { display: false },
-            ticks: { color: isDark ? "#fbbf24" : "#d97706", font: { family: "'Inter', sans-serif", size: 11 } },
+            ticks: { color: isDark ? "#fbbf24" : "#d97706", font: { family: "'Inter', sans-serif", size: 10 }, padding: 8 },
             border: { display: false }
           },
           x: {
             grid: { display: false },
-            ticks: { color: textColor, font: { family: "'Inter', sans-serif", size: 10 }, maxRotation: 45, maxTicksLimit: 12 },
+            ticks: { color: textColor, font: { family: "'Inter', sans-serif", size: 9 }, maxRotation: 0, maxTicksLimit: 8, padding: 8 },
             border: { display: false }
           }
         }
@@ -4098,14 +4122,108 @@
     }
   }
   function populateChartAccountSelect(data) {
-    var sel = document.getElementById("chart-account");
-    if (!sel || !data.accounts) return;
-    while (sel.options.length > 1) sel.remove(1);
-    for (var i = 0; i < data.accounts.length; i++) {
+    var accts = data.allAccounts || data.accounts;
+    if (!accts) return;
+    chartAccountsList = accts;
+    filterChartAccounts();
+  }
+  function filterChartAccounts() {
+    var provSel = document.getElementById("chart-provider");
+    var accSel = document.getElementById("chart-account");
+    if (!accSel) return;
+    var selectedProvider = provSel ? provSel.value : "all";
+    var currentlySelectedValue = accSel.value;
+    while (accSel.options.length > 1) accSel.remove(1);
+    for (var i = 0; i < chartAccountsList.length; i++) {
+      var acc = chartAccountsList[i];
+      if (selectedProvider !== "all" && acc.provider !== selectedProvider) {
+        continue;
+      }
       var opt = document.createElement("option");
-      opt.value = data.accounts[i].accountId;
-      opt.textContent = data.accounts[i].email;
-      sel.appendChild(opt);
+      var id = acc.id !== void 0 ? acc.id : acc.accountId;
+      opt.value = id;
+      opt.textContent = acc.email;
+      accSel.appendChild(opt);
+    }
+    var optionExists = false;
+    for (var j = 0; j < accSel.options.length; j++) {
+      if (accSel.options[j].value === currentlySelectedValue) {
+        accSel.selectedIndex = j;
+        optionExists = true;
+        break;
+      }
+    }
+    if (!optionExists) {
+      accSel.value = "0";
+    }
+  }
+  function updateKPINumbers(snapshots) {
+    var totalEl = document.getElementById("kpi-total-snapshots");
+    var avgEl = document.getElementById("kpi-avg-remaining");
+    var trendEl = document.getElementById("kpi-trend");
+    if (!totalEl || !avgEl || !trendEl) return;
+    if (snapshots.length === 0) {
+      totalEl.textContent = "0";
+      avgEl.textContent = "-%";
+      trendEl.textContent = "No Data";
+      trendEl.className = "kpi-value";
+      return;
+    }
+    totalEl.textContent = snapshots.length.toString();
+    var sum = 0;
+    var count = 0;
+    for (var i = 0; i < snapshots.length; i++) {
+      var groups = snapshots[i].groups || [];
+      for (var j = 0; j < groups.length; j++) {
+        sum += groups[j].remainingPercent;
+        count++;
+      }
+    }
+    var avgRemaining = count > 0 ? Math.round(sum / count) : 0;
+    avgEl.textContent = avgRemaining + "%";
+    if (snapshots.length < 2) {
+      trendEl.textContent = "Stable";
+      trendEl.className = "kpi-value trend-stable";
+      return;
+    }
+    var chronological = snapshots.slice().reverse();
+    var midpoint = Math.floor(chronological.length / 2);
+    var firstHalfSum = 0, firstHalfCount = 0;
+    var secondHalfSum = 0, secondHalfCount = 0;
+    for (var i = 0; i < chronological.length; i++) {
+      var groups = chronological[i].groups || [];
+      for (var j = 0; j < groups.length; j++) {
+        if (i < midpoint) {
+          firstHalfSum += groups[j].remainingPercent;
+          firstHalfCount++;
+        } else {
+          secondHalfSum += groups[j].remainingPercent;
+          secondHalfCount++;
+        }
+      }
+    }
+    var oldestAvg = firstHalfCount > 0 ? firstHalfSum / firstHalfCount : avgRemaining;
+    var newestAvg = secondHalfCount > 0 ? secondHalfSum / secondHalfCount : avgRemaining;
+    var diff = newestAvg - oldestAvg;
+    var trendCard = trendEl.closest(".kpi-card");
+    if (diff > 1.5) {
+      trendEl.innerHTML = 'Improving <span class="trend-icon">\u25B2</span>';
+      trendEl.className = "kpi-value trend-up";
+      if (trendCard) {
+        trendCard.className = "kpi-card kpi-trend-improving";
+      }
+    } else if (diff < -1.5) {
+      trendEl.innerHTML = 'Declining <span class="trend-icon">\u25BC</span>';
+      trendEl.className = "kpi-value trend-down";
+      if (trendCard) {
+        trendCard.className = "kpi-card kpi-trend-declining";
+      }
+    } else {
+      trendEl.innerHTML = 'Stable <span class="trend-icon">\u25CF</span>';
+      trendEl.className = "kpi-value trend-stable";
+      if (trendCard) {
+        trendCard.className = "kpi-card kpi-trend-stable";
+      }
     }
   }
 
@@ -4423,7 +4541,12 @@
       { modelId: "claude-haiku-4.5", displayName: "Claude Haiku 4.5", provider: "anthropic", inputPer1M: 1, outputPer1M: 5, cachePer1M: 0.1 },
       { modelId: "gpt-4o", displayName: "GPT-4o", provider: "openai", inputPer1M: 2.5, outputPer1M: 10, cachePer1M: 1.25 },
       { modelId: "gemini-3.1-pro", displayName: "Gemini 3.1 Pro", provider: "google", inputPer1M: 2, outputPer1M: 12, cachePer1M: 0.5 },
-      { modelId: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash", provider: "google", inputPer1M: 0.3, outputPer1M: 2.5, cachePer1M: 0.075 }
+      { modelId: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash", provider: "google", inputPer1M: 0.3, outputPer1M: 2.5, cachePer1M: 0.075 },
+      // Contemporary Google Gemini Models
+      { modelId: "MODEL_PLACEHOLDER_M133", displayName: "Gemini 3.5 Flash (High)", provider: "google", inputPer1M: 0.3, outputPer1M: 2.5, cachePer1M: 0.075 },
+      { modelId: "MODEL_PLACEHOLDER_M20", displayName: "Gemini 3.5 Flash (Medium)", provider: "google", inputPer1M: 0.3, outputPer1M: 2.5, cachePer1M: 0.075 },
+      { modelId: "MODEL_PLACEHOLDER_M16", displayName: "Gemini 3.1 Pro (High)", provider: "google", inputPer1M: 2, outputPer1M: 12, cachePer1M: 0.5 },
+      { modelId: "MODEL_PLACEHOLDER_M36", displayName: "Gemini 3.1 Pro (Low)", provider: "google", inputPer1M: 2, outputPer1M: 12, cachePer1M: 0.5 }
     ];
     pricingDataCache = defaults;
     renderPricingTable(pricingDataCache);
@@ -5443,8 +5566,29 @@
       });
     }
     initSnapDropdown();
-    document.getElementById("chart-account").addEventListener("change", loadHistoryChart);
-    document.getElementById("chart-range").addEventListener("change", loadHistoryChart);
+    var chartProvider = document.getElementById("chart-provider");
+    if (chartProvider) {
+      chartProvider.addEventListener("change", function() {
+        filterChartAccounts();
+        loadHistoryChart();
+      });
+    }
+    var chartAccount = document.getElementById("chart-account");
+    if (chartAccount) {
+      chartAccount.addEventListener("change", loadHistoryChart);
+    }
+    var chartRange = document.getElementById("chart-range");
+    if (chartRange) {
+      chartRange.addEventListener("change", loadHistoryChart);
+    }
+    var chartStart = document.getElementById("chart-start-date");
+    if (chartStart) {
+      chartStart.addEventListener("change", loadHistoryChart);
+    }
+    var chartEnd = document.getElementById("chart-end-date");
+    if (chartEnd) {
+      chartEnd.addEventListener("change", loadHistoryChart);
+    }
     Promise.all([fetchStatus(), fetchUsage()]).then(function(results) {
       var data = results[0];
       renderAccounts(data);

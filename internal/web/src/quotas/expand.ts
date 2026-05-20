@@ -3,7 +3,7 @@
 
 import {
   GROUP_NAMES, expandedAccounts,
-  quotaSortState, latestQuotaData,
+  quotaSortState, quotaSortStates, latestQuotaData,
 } from '../core/state';
 import { esc, showToast } from '../core/utils';
 import { fetchStatus } from '../core/api';
@@ -240,19 +240,33 @@ export function initQuotas(): void {
     });
   }
 
-  // Sort headers are now dynamic â€” use delegation on account-grid
+  // Sort headers are now dynamic — use delegation on account-grid
   var gridEl = document.getElementById('account-grid');
   if (gridEl) {
     gridEl.addEventListener('click', function(e) {
       var el = (e.target as HTMLElement).closest('.sortable');
       if (!el) return;
       var col = (el as HTMLElement).dataset.sort!;
-      if (quotaSortState.column === col) {
-        quotaSortState.direction = quotaSortState.direction === 'asc' ? 'desc' : 'asc';
-      } else {
-        quotaSortState.column = col;
-        quotaSortState.direction = 'asc';
+      
+      var providerSection = el.closest('.provider-section');
+      var provider = providerSection ? (providerSection as HTMLElement).dataset.provider : 'antigravity';
+      var state = quotaSortStates[provider || 'antigravity'];
+      if (!state) {
+        state = { column: 'account', direction: 'asc' };
+        quotaSortStates[provider || 'antigravity'] = state;
       }
+      
+      if (state.column === col) {
+        state.direction = state.direction === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.column = col;
+        state.direction = 'asc';
+      }
+      
+      // Fallback/compatibility sync
+      quotaSortState.column = state.column;
+      quotaSortState.direction = state.direction;
+      
       if (latestQuotaData) renderAccounts(latestQuotaData);
     });
   }

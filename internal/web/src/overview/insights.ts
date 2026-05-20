@@ -97,6 +97,9 @@ export function renderServerInsights(insights: any[]): string {
 }
 
 export var advisorGroupPref = localStorage.getItem('niyantra_advisor_group') || 'claude_gpt';
+if (advisorGroupPref === 'gemini_pro' || advisorGroupPref === 'gemini_flash') {
+  advisorGroupPref = 'gemini_unified';
+}
 
 export function loadAdvisorCard(): void {
   var container = document.getElementById('advisor-card-container');
@@ -150,8 +153,7 @@ export function renderAdvisorWithGroup(container: HTMLElement, groupKey: string)
 
   var groupNames = {
     'claude_gpt': 'Claude + GPT',
-    'gemini_pro': 'Gemini Pro',
-    'gemini_flash': 'Gemini Flash',
+    'gemini_unified': 'Gemini Pool',
     'all': 'All Models (avg)'
   };
 
@@ -166,8 +168,7 @@ export function renderAdvisorWithGroup(container: HTMLElement, groupKey: string)
     '<label>Optimize for:</label>' +
     '<select id="advisor-group-filter" class="filter-select" style="margin-left:8px;font-size:12px">' +
     '<option value="claude_gpt"' + (groupKey === 'claude_gpt' ? ' selected' : '') + '>Claude + GPT</option>' +
-    '<option value="gemini_pro"' + (groupKey === 'gemini_pro' ? ' selected' : '') + '>Gemini Pro</option>' +
-    '<option value="gemini_flash"' + (groupKey === 'gemini_flash' ? ' selected' : '') + '>Gemini Flash</option>' +
+    '<option value="gemini_unified"' + (groupKey === 'gemini_unified' ? ' selected' : '') + '>Gemini Pool</option>' +
     '<option value="all"' + (groupKey === 'all' ? ' selected' : '') + '>All Models (avg)</option>' +
     '</select></div>';
 

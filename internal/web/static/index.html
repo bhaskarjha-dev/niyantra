@@ -96,18 +96,53 @@
                 <!-- Quota History Chart -->
                 <div class="chart-section" id="chart-section">
                     <div class="chart-header">
-                        <h3>Quota History</h3>
+                        <div class="chart-header-title">
+                            <h3>Quota History</h3>
+                            <span class="chart-subtitle">Real-time usage tracking & analytics</span>
+                        </div>
                         <div class="chart-controls">
+                            <select id="chart-provider" class="filter-select">
+                                <option value="all">All Providers</option>
+                                <option value="antigravity">Antigravity</option>
+                                <option value="cursor">Cursor</option>
+                                <option value="codex">Codex / ChatGPT</option>
+                                <option value="copilot">GitHub Copilot</option>
+                            </select>
                             <select id="chart-account" class="filter-select">
                                 <option value="0">All Accounts</option>
                             </select>
                             <select id="chart-range" class="filter-select">
-                                <option value="20">Last 20</option>
-                                <option value="50">Last 50</option>
-                                <option value="100">Last 100</option>
+                                <option value="7d">Last 7 Days</option>
+                                <option value="24h">Today</option>
+                                <option value="30d">Last 30 Days</option>
+                                <option value="90d">Last 90 Days</option>
+                                <option value="all">All Time</option>
+                                <option value="custom">Custom Range...</option>
                             </select>
+                            <div id="chart-custom-range" class="custom-range-container" style="display: none;">
+                                <input type="date" id="chart-start-date" class="date-input" title="Start Date">
+                                <span class="date-separator">to</span>
+                                <input type="date" id="chart-end-date" class="date-input" title="End Date">
+                            </div>
                         </div>
                     </div>
+                    
+                    <!-- Premium KPI Metrics Bar -->
+                    <div class="chart-kpi-bar" id="chart-kpi-bar">
+                        <div class="kpi-card">
+                            <span class="kpi-label">Snapshots Captured</span>
+                            <span class="kpi-value" id="kpi-total-snapshots">-</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">Avg Remaining Quota</span>
+                            <span class="kpi-value" id="kpi-avg-remaining">-</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">Overall Trend</span>
+                            <span class="kpi-value" id="kpi-trend">-</span>
+                        </div>
+                    </div>
+
                     <div class="chart-container">
                         <canvas id="history-chart"></canvas>
                     </div>

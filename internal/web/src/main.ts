@@ -45,7 +45,7 @@ import { getBudget, setBudget, getCurrency, updateConfig, loadConfig, initBudget
 import { loadOverview } from './overview/overview';
 
 import { initSnapDropdown, handleSnap } from './advanced/snap';
-import { updateChartTheme, loadHistoryChart, populateChartAccountSelect } from './charts/history';
+import { updateChartTheme, loadHistoryChart, populateChartAccountSelect, filterChartAccounts } from './charts/history';
 import { initSettings } from './settings/settings';
 import { loadMode } from './settings/mode';
 import { loadDataSources } from './settings/data';
@@ -147,8 +147,29 @@ document.addEventListener('DOMContentLoaded', function() {
   initSnapDropdown();
 
   // Chart controls
-  document.getElementById('chart-account')!.addEventListener('change', loadHistoryChart);
-  document.getElementById('chart-range')!.addEventListener('change', loadHistoryChart);
+  var chartProvider = document.getElementById('chart-provider');
+  if (chartProvider) {
+    chartProvider.addEventListener('change', function() {
+      filterChartAccounts();
+      loadHistoryChart();
+    });
+  }
+  var chartAccount = document.getElementById('chart-account');
+  if (chartAccount) {
+    chartAccount.addEventListener('change', loadHistoryChart);
+  }
+  var chartRange = document.getElementById('chart-range');
+  if (chartRange) {
+    chartRange.addEventListener('change', loadHistoryChart);
+  }
+  var chartStart = document.getElementById('chart-start-date');
+  if (chartStart) {
+    chartStart.addEventListener('change', loadHistoryChart);
+  }
+  var chartEnd = document.getElementById('chart-end-date');
+  if (chartEnd) {
+    chartEnd.addEventListener('change', loadHistoryChart);
+  }
 
   // Load quotas and usage intelligence
   Promise.all([fetchStatus(), fetchUsage()]).then(function(results) {
