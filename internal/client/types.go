@@ -283,9 +283,17 @@ func GroupForModel(modelID, label string) string {
 	}
 }
 
-// ApplyResetInference annotates stale reset timestamps without inventing fresh
-// availability. Provider snapshots are point-in-time observations; an elapsed
-// reset timestamp only means "needs a fresh provider read", not "100% remaining".
+// ApplyResetInference produces optimistic post-reset estimates when the reset
+// time has elapsed. Google's sprint quota resets to 100% at the reset boundary,
+// so the most accurate estimate is remainingFraction = 1.0. Confidence degrades
+// over time without a fresh snapshot to confirm the estimate.
+//
+// Strategy:
+//   - Reset < 30 min ago  → 100%, confidence "high"   (sprint just reset)
+//   - Reset < 6 hours ago → 100%, confidence "medium"  (within one sprint window)
+//   - Reset < 24 hours ago → 100%, confidence "low"    (stale, may have been consumed)
+//   - Reset > 24 hours ago → keep original values, confidence "very_low"
+//     (too stale to estimate; user likely consumed quota since then)
 func ApplyResetInference(m ModelQuota, now time.Time) ModelQuota {
 	if m.ResetTime == nil {
 		return m
@@ -296,12 +304,57 @@ func ApplyResetInference(m ModelQuota, now time.Time) ModelQuota {
 		m.TimeUntilReset = 0
 	}
 
-	if !m.ResetTime.After(now) {
-		m.IsEstimated = true
-		m.Basis = "reset_time_elapsed_unverified"
+	// Reset time hasn't elapsed yet — values are still current, no estimation needed.
+	if m.ResetTime.After(now) {
+		return m
+	}
+
+	// ── Reset time HAS elapsed: produce post-reset estimate ──
+
+	timeSinceReset := now.Sub(*m.ResetTime)
+	m.IsEstimated = true
+
+	switch {
+	case timeSinceReset < 30*time.Minute:
+		// Sprint just reset. Google returns remainingFraction=1.0 immediately.
+		// This is the highest-confidence window for estimation.
+		m.RemainingFraction = 1.0
+		m.RemainingPercent = 100
+		m.IsExhausted = false
+		m.UnavailableReason = ""
+		m.Basis = "sprint_reset_recent"
+		m.Confidence = "high"
+
+	case timeSinceReset < 6*time.Hour:
+		// Within one sprint window. Quota was likely restored to 100% at reset,
+		// but may have been partially consumed since then. Best estimate is still
+		// 100% because we have no evidence of consumption.
+		m.RemainingFraction = 1.0
+		m.RemainingPercent = 100
+		m.IsExhausted = false
+		m.UnavailableReason = ""
+		m.Basis = "sprint_reset_assumed"
+		m.Confidence = "medium"
+
+	case timeSinceReset < 24*time.Hour:
+		// Multiple sprint windows have passed. The quota was reset but the user
+		// may have consumed significant amounts. Still optimistic (100%) since we
+		// have no data showing consumption, but flag as low confidence.
+		m.RemainingFraction = 1.0
+		m.RemainingPercent = 100
+		m.IsExhausted = false
+		m.UnavailableReason = ""
+		m.Basis = "sprint_reset_stale"
 		m.Confidence = "low"
+
+	default:
+		// Over 24 hours without a fresh snapshot. Too stale to produce a useful
+		// estimate. Keep original values but mark as very low confidence.
+		// The advisor will penalize this via its existing staleness logic.
+		m.Basis = "snapshot_too_stale"
+		m.Confidence = "very_low"
 		if m.IsExhausted || m.RemainingFraction <= 0 {
-			m.UnavailableReason = "Provider reset time has elapsed, but no post-reset snapshot has confirmed renewed quota."
+			m.UnavailableReason = "No snapshot in 24+ hours. Quota was likely reset but current state is unknown."
 		}
 	}
 

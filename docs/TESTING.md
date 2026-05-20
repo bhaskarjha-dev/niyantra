@@ -130,7 +130,7 @@ Automated tests must cover:
 
 Automated tests must cover:
 
-- Reset-time elapsed does not turn exhausted quotas into observed 100% availability.
+- Reset-time elapsed now produces optimistic 100% estimates (with graduated confidence) matching provider behavior, rather than keeping stale 0% data.
 - Estimated or unknown reset state is represented with `isEstimated`, `basis`, `confidence`, and `unavailableReason`.
 - Missing pricing produces unavailable cost output, not false zero-dollar spend.
 - Cache/input/output token prices are applied to the correct token classes.
@@ -273,7 +273,7 @@ For every configured provider, confirm the activity log records the capture sour
 
 - For each card, table, chart, badge, and report number, identify whether the UI says observed, estimated, stale, unavailable, or provider-error.
 - Confirm missing model pricing produces unavailable cost output, not `$0.00`.
-- Confirm quota reset elapsed state does not become observed 100% availability unless provider data confirmed it.
+- Confirm quota reset elapsed state produces a 100% estimate but is visibly labeled as "Reset Est." with appropriate confidence, not passed off as observed truth.
 - Confirm stale snapshots still show their original `observedAt`/captured timestamp.
 - Confirm Git commit costs show low-confidence heuristic attribution and are not described as accounting-grade spend.
 - Confirm provider health cards do not collapse unrelated provider metrics into one false normalized score.

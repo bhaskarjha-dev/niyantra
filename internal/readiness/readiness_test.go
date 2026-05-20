@@ -203,8 +203,9 @@ func TestFormatStaleness(t *testing.T) {
 	}
 }
 
-// TestStaleSnapshotMarksElapsedResetUnverified verifies that an elapsed reset
-// timestamp does not invent renewed quota without a fresh provider snapshot.
+// TestVeryStaleSnapshotKeepsOriginalValues verifies that a very stale snapshot
+// (>24h since reset) keeps original values with very_low confidence. The data is
+// too stale to produce a useful 100% estimate — the user may have consumed quota.
 func TestStaleSnapshotInfersReset(t *testing.T) {
 	pastReset := time.Now().Add(-10 * 24 * time.Hour).Add(5 * time.Hour) // 10 days ago + 5h
 	snap := &client.Snapshot{
@@ -237,14 +238,18 @@ func TestStaleSnapshotInfersReset(t *testing.T) {
 	if len(ar.Models) != 1 {
 		t.Fatalf("expected 1 model, got %d", len(ar.Models))
 	}
+	// >24h since reset: keep original values (0%), mark as very_low confidence
 	if ar.Models[0].RemainingPercent != 0 {
-		t.Errorf("stale model remaining = %f, want 0 until a fresh provider snapshot confirms reset", ar.Models[0].RemainingPercent)
+		t.Errorf("very stale model remaining = %f, want 0 (>24h, keep original)", ar.Models[0].RemainingPercent)
 	}
 	if !ar.Models[0].IsExhausted {
-		t.Error("stale model should remain exhausted until renewed quota is observed")
+		t.Error("very stale model should remain exhausted (>24h, keep original)")
 	}
-	if !ar.Models[0].IsEstimated || ar.Models[0].Basis != "reset_time_elapsed_unverified" {
-		t.Fatalf("elapsed reset should be marked estimated/unverified, got %+v", ar.Models[0])
+	if !ar.Models[0].IsEstimated || ar.Models[0].Basis != "snapshot_too_stale" {
+		t.Fatalf("very stale model should have basis=snapshot_too_stale, got %+v", ar.Models[0])
+	}
+	if ar.Models[0].Confidence != "very_low" {
+		t.Fatalf("very stale model confidence = %q, want very_low", ar.Models[0].Confidence)
 	}
 }
 
@@ -289,6 +294,9 @@ func TestFreshSnapshotUnchanged(t *testing.T) {
 	}
 }
 
+// TestResetPassedInfersFullQuota verifies that a recently-reset model (1 hour ago)
+// is estimated at 100% with medium confidence. This matches Google's sprint reset
+// behavior where quota restores to full at the reset boundary.
 func TestResetPassedDoesNotInferRefillBeforeStalenessThreshold(t *testing.T) {
 	now := time.Now()
 	pastReset := now.Add(-1 * time.Hour)
@@ -313,14 +321,62 @@ func TestResetPassedDoesNotInferRefillBeforeStalenessThreshold(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 account, got %d", len(result))
 	}
-	if got := result[0].Models[0].RemainingPercent; got != 0 {
-		t.Fatalf("remaining = %.0f, want 0 until reset is observed", got)
+	// Sprint reset 1 hour ago: estimate 100% availability (medium confidence)
+	if got := result[0].Models[0].RemainingPercent; got != 100 {
+		t.Fatalf("remaining = %.0f, want 100 (sprint reset 1h ago should estimate full quota)", got)
 	}
-	if !result[0].Models[0].IsExhausted {
-		t.Fatal("model should stay exhausted until a fresh provider snapshot confirms reset")
+	if result[0].Models[0].IsExhausted {
+		t.Fatal("model should NOT be exhausted after sprint reset estimation")
 	}
 	if !result[0].Models[0].IsEstimated {
-		t.Fatal("model should flag elapsed reset as an unverified estimate")
+		t.Fatal("model should be flagged as estimated")
+	}
+	if result[0].Models[0].Basis != "sprint_reset_assumed" {
+		t.Fatalf("basis = %q, want sprint_reset_assumed", result[0].Models[0].Basis)
+	}
+	if result[0].Models[0].Confidence != "medium" {
+		t.Fatalf("confidence = %q, want medium", result[0].Models[0].Confidence)
+	}
+}
+
+// TestRecentResetHighConfidence verifies that a very recent reset (<30 min)
+// produces a high-confidence 100% estimate.
+func TestRecentResetHighConfidence(t *testing.T) {
+	now := time.Now()
+	pastReset := now.Add(-10 * time.Minute) // reset 10 minutes ago
+	snap := &client.Snapshot{
+		AccountID:  1,
+		Email:      "just-reset@example.com",
+		PlanName:   "Pro",
+		CapturedAt: now.Add(-1 * time.Hour),
+		Models: []client.ModelQuota{
+			{
+				ModelID:           "claude-sonnet",
+				Label:             "Claude Sonnet",
+				RemainingFraction: 0,
+				RemainingPercent:  0,
+				IsExhausted:       true,
+				ResetTime:         &pastReset,
+			},
+		},
+	}
+
+	result := Calculate([]*client.Snapshot{snap}, 0.0)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 account, got %d", len(result))
+	}
+	model := result[0].Models[0]
+	if model.RemainingPercent != 100 {
+		t.Fatalf("remaining = %.0f, want 100 (sprint reset 10min ago)", model.RemainingPercent)
+	}
+	if model.IsExhausted {
+		t.Fatal("model should NOT be exhausted after recent reset")
+	}
+	if model.Basis != "sprint_reset_recent" {
+		t.Fatalf("basis = %q, want sprint_reset_recent", model.Basis)
+	}
+	if model.Confidence != "high" {
+		t.Fatalf("confidence = %q, want high (reset was <30 min ago)", model.Confidence)
 	}
 }
 

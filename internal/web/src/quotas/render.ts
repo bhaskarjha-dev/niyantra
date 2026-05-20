@@ -230,10 +230,16 @@ function renderQualityBadge(item: any): string {
   if (!item) return '';
   var label = '';
   if (item.unavailableReason) label = 'Unavailable';
-  else if (item.isEstimated) label = 'Estimate';
+  else if (item.isEstimated) {
+    // Show descriptive labels based on estimation basis
+    if (item.basis && item.basis.indexOf('sprint_reset') === 0) label = 'Reset Est.';
+    else if (item.basis === 'snapshot_too_stale') label = 'Stale';
+    else if (item.confidence === 'very_low') label = 'Very Stale';
+    else label = 'Estimate';
+  }
   else if (item.confidence && item.confidence !== 'high') label = item.confidence + ' confidence';
   if (!label) return '';
-  var titleParts = [];
+  var titleParts: string[] = [];
   if (item.basis) titleParts.push('Basis: ' + item.basis);
   if (item.confidence) titleParts.push('Confidence: ' + item.confidence);
   if (item.unavailableReason) titleParts.push('Unavailable: ' + item.unavailableReason);

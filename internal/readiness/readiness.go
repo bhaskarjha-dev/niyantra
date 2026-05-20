@@ -254,7 +254,7 @@ func Calculate(snapshots []*client.Snapshot, threshold float64) []AccountReadine
 				IsEstimated:      groupEstimated,
 			}
 			if groupEstimated {
-				gr.Basis = "contains_reset_time_elapsed_unverified"
+				gr.Basis = "contains_post_reset_estimate"
 				gr.Confidence = "low"
 			}
 
