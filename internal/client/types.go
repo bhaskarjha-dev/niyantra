@@ -10,29 +10,26 @@ import (
 
 // Quota group constants.
 const (
-	GroupClaudeGPT   = "claude_gpt"
-	GroupGeminiPro   = "gemini_pro"
-	GroupGeminiFlash = "gemini_flash"
-	GroupUnknown     = "unknown"
+	GroupClaudeGPT     = "claude_gpt"
+	GroupGeminiUnified = "gemini_unified"
+	GroupUnknown       = "unknown"
 )
 
 // GroupOrder defines the canonical display order.
-var GroupOrder = []string{GroupClaudeGPT, GroupGeminiPro, GroupGeminiFlash, GroupUnknown}
+var GroupOrder = []string{GroupClaudeGPT, GroupGeminiUnified, GroupUnknown}
 
 // GroupDisplayNames maps group keys to human-readable names.
 var GroupDisplayNames = map[string]string{
-	GroupClaudeGPT:   "Claude + GPT",
-	GroupGeminiPro:   "Gemini Pro",
-	GroupGeminiFlash: "Gemini Flash",
-	GroupUnknown:     "Unknown",
+	GroupClaudeGPT:     "Claude + GPT",
+	GroupGeminiUnified: "Gemini Pool",
+	GroupUnknown:       "Unknown",
 }
 
 // GroupColors maps group keys to display colors.
 var GroupColors = map[string]string{
-	GroupClaudeGPT:   "#D97757",
-	GroupGeminiPro:   "#10B981",
-	GroupGeminiFlash: "#3B82F6",
-	GroupUnknown:     "#64748B",
+	GroupClaudeGPT:     "#D97757",
+	GroupGeminiUnified: "#3B82F6",
+	GroupUnknown:       "#64748B",
 }
 
 // --- API response types (from Antigravity Connect RPC) ---
@@ -270,10 +267,12 @@ func GroupForModel(modelID, label string) string {
 	}
 
 	switch {
-	case strings.Contains(text, "gemini") && strings.Contains(text, "flash"):
-		return GroupGeminiFlash
-	case strings.Contains(text, "gemini"):
-		return GroupGeminiPro
+	case strings.Contains(text, "gemini") ||
+		strings.Contains(text, "model_placeholder_m133") ||
+		strings.Contains(text, "model_placeholder_m20") ||
+		strings.Contains(text, "model_placeholder_m16") ||
+		strings.Contains(text, "model_placeholder_m36"):
+		return GroupGeminiUnified
 	case strings.Contains(text, "claude") ||
 		strings.Contains(text, "anthropic") ||
 		strings.Contains(text, "gpt") ||

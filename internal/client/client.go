@@ -48,9 +48,7 @@ type Client struct {
 	logger    *slog.Logger
 }
 
-// connTTL is the maximum age of a cached connection before re-verification.
-// Prevents stale connections after language server restarts.
-const connTTL = 10 * time.Minute
+const connTTL = 30 * time.Second
 
 // New returns a Client ready to detect the language server.
 func New(logger *slog.Logger) *Client {
@@ -88,6 +86,8 @@ func (c *Client) Detect(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	procs = deduplicateProcesses(procs)
 
 	c.logger.Debug("language server processes located", "count", len(procs))
 
