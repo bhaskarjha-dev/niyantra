@@ -61,7 +61,7 @@ Based on a 28-tool competitive analysis across 8 market categories:
 2. **MCP Server** (13 tools, stdio + Streamable HTTP) — completely uncontested, zero competitors
 3. **Combined quota + subscription + budget** in one tool — nobody else bridges this
 4. **Quad-channel notifications** (OS + SMTP + Webhook + WebPush) — more channels than any competitor
-5. **7 providers** (Antigravity, Codex, Claude deep, Cursor, Gemini CLI, Copilot, Manual) — broadest coverage in the local-first category
+5. **6 providers** (Antigravity, Codex, Claude deep, Cursor, Copilot, Manual) — broadest coverage in the local-first category
 
 **Niyantra's thesis:** Knowing your quota is only half the problem. You also need to know what you're spending, when renewals hit, which account to switch to, and your AI agents need this context too.
 
@@ -73,13 +73,12 @@ Niyantra gathers data from multiple sources, each with its own capture method:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                   DATA SOURCES (7 Providers)             │
+│                   DATA SOURCES (6 Providers)             │
 │                                                         │
 │   Antigravity LS ──── Connect RPC to local LS ──────┐   │
 │   Claude Code    ──── JSONL log parsing + bridge ────┤   │
 │   Codex/ChatGPT  ──── OAuth API polling ─────────────┤   │
 │   Cursor         ──── session token → HTTP API ──────┤   │
-│   Gemini CLI     ──── OAuth → GCP APIs ──────────────┤   │
 │   GitHub Copilot ──── PAT → billing API ─────────────┤   │
 │   Manual Entry   ──── subscription form ─────────────┤   │
 │                                                      │   │
@@ -181,11 +180,10 @@ Manual snaps are **always** allowed regardless of mode. The auto-capture toggle 
 ## Data Sources
 
 ### Current (Implemented — 7 Providers)
-- **Antigravity v2.0 Suite** — multi-account concurrent capturing across **Antigravity 2.0 (Main)** and **Antigravity IDE** via local Connect RPC APIs. Features a tiered priority heuristic ranking to isolate real language servers from CLI processes. Implements a direct Google Partner Assist (PA) API fallback for **Antigravity / Gemini CLI Solo Mode** (resolving `~/.gemini/oauth_creds.json` and querying GCP endpoints directly with token auto-refresh). Handles protobuf `*float64` semantics for `remainingFraction`. Users can fine-tune stale LS cache values post-snap via Quick Adjust (±5%/±10%). Features an **intelligent multi-account snap toast** displaying an elegantly formatted comma-separated email list (with truncation to `and X more` for clean UI rendering). Incorporates **tab-switch and focus-switch auto-resilience** by firing `niyantra:status-refreshed` events to maintain synchronized, complete state across all 7 providers without card vanish or cache degradation.
+- **Antigravity v2.0 Suite** — multi-account concurrent capturing across **Antigravity 2.0 (Main)** and **Antigravity IDE** via local Connect RPC APIs. Features a tiered priority heuristic ranking to isolate real language servers from CLI processes. Handles protobuf `*float64` semantics for `remainingFraction`. Users can fine-tune stale LS cache values post-snap via Quick Adjust (±5%/±10%). Features an **intelligent multi-account snap toast** displaying an elegantly formatted comma-separated email list (with truncation to `and X more` for clean UI rendering). Incorporates **tab-switch and focus-switch auto-resilience** by firing `niyantra:status-refreshed` events to maintain synchronized, complete state across all 6 providers without card vanish or cache degradation.
 - **Claude Code** — real-time rate limit data via statusline file bridge + deep JSONL session parsing for per-turn token analytics (input/output/cache) with model-aware cost estimation. New `internal/claude/` package (refactored from claudebridge).
 - **Codex / ChatGPT** — OAuth API polling with proactive token refresh, multi-quota tracking (5h window, 7d window, code review). Credentials from `~/.codex/auth.json`, account identity via JWT `id_token` parsing with OIDC name + picture extraction.
 - **Cursor** — Session token detection from filesystem, HTTP API polling to `cursor.com/api/usage` for request counts + USD credit balance. Supports legacy request-based and new credit-based billing models.
-- **Gemini CLI** — OAuth credential discovery from `~/.config/gemini/`, 2-step API (loadCodeAssist + retrieveUserQuota) for rate limit tracking.
 - **GitHub Copilot** — GitHub Personal Access Token → billing API for usage tracking. PAT masked in API responses.
 - **Manual Subscriptions** — 26 platform presets with expert-curated notes
 
@@ -231,10 +229,10 @@ Daily:
 
 Four-tab dashboard at the tokenized URL printed by `niyantra serve`:
 
-- **Quotas** — provider-sectioned layout (Antigravity / Codex / Claude / Cursor / Gemini / Copilot), per-model progress bars with reset timers, provider filter dropdown, status filter (Ready / Low / Empty), tag filter, text search, split-button snap (Snap Now / Snap All Sources), twin-axis history chart, activity heatmap, AI Credits tracking, Quick Adjust
+- **Quotas** — provider-sectioned layout (Antigravity / Codex / Claude / Cursor / Copilot), per-model progress bars with reset timers, provider filter dropdown, status filter (Ready / Low / Empty), tag filter, text search, split-button snap (Snap Now / Snap All Sources), twin-axis history chart, activity heatmap, AI Credits tracking, Quick Adjust
 - **Subscriptions** — hybrid card + provider layout with spend summary bar, search, 26 platform presets, CSV export, platform filter, status filter
 - **Overview** — recurring budget headroom, advisor rankings/current-account guidance, provider health cards, estimated cost tracking, heuristic Git attribution, sessions timeline, renewal calendar, spending breakdown, observed token analytics, JSON/CSV export
-- **Settings** — capture config (7 providers), budget, model pricing, notifications (4 channels), data sources, import/export, activity log, keyboard shortcuts, command palette (`Ctrl+K`)
+- **Settings** — capture config (6 providers), budget, model pricing, notifications (4 channels), data sources, import/export, activity log, keyboard shortcuts, command palette (`Ctrl+K`)
 
 ## Roadmap
 
@@ -268,7 +266,6 @@ MCP server over stdio (13 tools) for AI agent integration. Uses official Go SDK 
   - `codex/`: OAuth + Codex API polling + OIDC JWT parsing
   - `claude/`: deep session parser + statusline bridge
   - `cursor/`: session token auth + HTTP API polling
-  - `gemini/`: OAuth + GCP billing/quota APIs
   - `copilot/`: GitHub PAT + Copilot billing endpoints
   - `advisor/`: switch recommendation engine
   - `tracker/`: cycle detection + intelligence + sessions
@@ -348,7 +345,6 @@ MCP server over stdio (13 tools) for AI agent integration. Uses official Go SDK 
 - **Activity heatmap** — GitHub-style 365-day contribution grid from existing snapshot data
 - **Claude Code: deep tracking** — full JSONL session parser for per-turn token analytics (input/output/cache) with model-aware cost estimation. New `internal/claude/` package (refactored from `claudebridge/`).
 - **Provider: Cursor** — session token → HTTP API (`cursor.com/api/usage`) for quota/usage data. Supports legacy request-based and new USD credit billing models.
-- **Provider: Gemini CLI** — OAuth + GCP APIs for rate limit tracking
 - **Docker deployment** — `Dockerfile` + `docker-compose.yml` for self-hosted deployment
 
 ### ✅ Phase 15: Deep Analytics Sprint
@@ -428,8 +424,8 @@ Niyantra is successful when:
 4. **1 API call** per manual snap — no more, ever
 5. **< 20 MB** binary size (includes embedded SQLite engine + web assets + Chart.js)
 6. **Zero surprise captures** — auto mode only when explicitly enabled
-7. **Multi-source** — 7 AI coding tools tracked in a unified view ✅
-8. **7 providers** shipped: Antigravity + Codex + Claude deep + Cursor + Gemini CLI + Copilot + Manual ✅
+7. **Multi-source** — 6 AI coding tools tracked in a unified view ✅
+8. **6 providers** shipped: Antigravity + Codex + Claude deep + Cursor + Copilot + Manual ✅
 9. **37+ features** shipped across Phases 1-16, closing all competitive gaps vs onWatch ✅
 10. **286 tests** across 14 packages in the current tree ✅
 11. **4 notification channels**: OS + SMTP + Webhook + WebPush ✅

@@ -15,7 +15,6 @@ A complete guide to using every Niyantra feature.
 - [Codex/ChatGPT Integration](#codexchatgpt-integration)
 - [Claude Code](#claude-code)
 - [Cursor Integration](#cursor-integration)
-- [Gemini CLI Integration](#gemini-cli-integration)
 - [GitHub Copilot Integration](#github-copilot-integration)
 - [Notifications (Quad-Channel)](#notifications)
 - [Command Palette](#command-palette)
@@ -40,7 +39,7 @@ niyantra serve    # Prints the tokenized dashboard URL
 
 Niyantra supports all three tools in the **Antigravity v2.0 suite** (Antigravity 2.0 Main, Antigravity IDE, and Antigravity CLI).
 
-1. Make sure either **Antigravity 2.0 Main** or **Antigravity IDE** is running (with a project open in the IDE case). If neither is active, Niyantra will automatically fall back to **CLI Solo Mode** by reading the cached OAuth token from `~/.gemini/oauth_creds.json`.
+1. Make sure either **Antigravity 2.0 Main** or **Antigravity IDE** is running (with a project open in the IDE case).
 2. Run your first snapshot:
 
 ```bash
@@ -124,14 +123,13 @@ The default view showing all tracked accounts organized by **provider sections**
 - **Codex / ChatGPT** — multi-window quota data from OpenAI OAuth API
 - **Claude Code** — rate limit data from the statusline bridge + deep JSONL token analytics
 - **Cursor** — request counts and USD credit balance
-- **Gemini / Antigravity CLI** — rate limit tracking via GCP APIs using the local `~/.gemini/oauth_creds.json` credential file (acts as our solo fallback mode).
 - **Copilot** — GitHub billing data
 
 Each section has its own header with provider color coding and can be collapsed/expanded.
 
 **Toolbar**:
 - **Search**: Fuzzy search by email or plan name
-- **Provider filter**: Dropdown to show All / Antigravity / Codex / Claude / Cursor / Gemini / Copilot accounts
+- **Provider filter**: Dropdown to show All / Antigravity / Codex / Claude / Cursor / Copilot accounts
 - **Status filter**: Filter by readiness state — Ready (green), Low (yellow), Empty (red)
 - **Tag filter**: Filter by account tags (work, personal, etc.)
 - **Split-button snap**: Snap Now / Snap All Sources
@@ -195,7 +193,7 @@ The intelligence hub combining data from all sources.
 - Avoids inventing a current account from list order
 
 **Provider Status Signals:**
-- Per-provider status summary (Antigravity, Codex, Claude, Cursor, Gemini, Copilot)
+- Per-provider status summary (Antigravity, Codex, Claude, Cursor, Copilot)
 - Shows provider-specific counters and labels without pretending they are a normalized cross-provider score
 
 **Codex Status** (if configured):
@@ -237,7 +235,6 @@ The intelligence hub combining data from all sources.
 - Claude Code Bridge toggle + deep tracking status
 - Codex/ChatGPT toggle + credential detection
 - Cursor capture toggle
-- Gemini CLI capture toggle
 - Copilot toggle + PAT input (masked in API)
 
 **Budget & Display:**
@@ -336,7 +333,7 @@ When enabled, Niyantra polls all configured data sources at your configured inte
 
 - **Zero-daemon by default**: Auto-capture only runs when explicitly enabled AND `niyantra serve` is running
 - **No background service**: Stops when you close the dashboard
-- **Bounded provider work**: Antigravity uses one localhost call per capture; enabled Codex, Cursor, Gemini, and Copilot polling make separate opt-in HTTPS calls
+- **Bounded provider work**: Antigravity uses one localhost call per capture; enabled Codex, Cursor, and Copilot polling make separate opt-in HTTPS calls
 - **Exponential backoff**: If detection fails, wait time increases to avoid hammering the process list
 
 ---
@@ -471,16 +468,6 @@ Niyantra tracks Cursor usage via the `cursor.com/api/usage` endpoint.
 1. Detects session token from `~/.cursor-server/` filesystem
 2. Enable in **Settings** tab > Cursor section
 3. Tracks both legacy request-based and new USD credit-based billing models
-
----
-
-## Gemini / Antigravity CLI Integration
-
-Niyantra tracks the **Antigravity CLI** (and legacy Gemini CLI) usage via direct Google Cloud Code PA API polling. This is particularly useful in **CLI Solo Mode** (where no persistent Antigravity Main/IDE server processes are running locally).
-
-1. Detects OAuth credentials from `~/.gemini/oauth_creds.json`
-2. Enable in **Settings** tab > Gemini CLI section
-3. Uses Google's Developer Assistance API endpoints (loadCodeAssist + retrieveUserQuota) to query user limits directly with automatic credentials refresh.
 
 ---
 
@@ -627,7 +614,7 @@ To permanently delete a tracked account and all its data:
 3. Click **Remove Account**
 4. Confirm in the dialog
 
-This deletes the account and rows explicitly owned by that local account ID, including Antigravity snapshots, reset cycles, account-linked subscriptions, and account-linked Codex/Cursor/Gemini/Copilot snapshots. Optional v21 relationships use nullable foreign keys, so unowned provider-native history is preserved rather than forced through fake `0` IDs. The next time you `snap` with this email, it will be re-created as a fresh account.
+This deletes the account and rows explicitly owned by that local account ID, including Antigravity snapshots, reset cycles, account-linked subscriptions, and account-linked Codex/Cursor/Copilot snapshots. Optional v21 relationships use nullable foreign keys, so unowned provider-native history is preserved rather than forced through fake `0` IDs. The next time you `snap` with this email, it will be re-created as a fresh account.
 
 ---
 
@@ -677,7 +664,6 @@ All configuration is stored in the SQLite database (not config files). Change se
 | `claude_bridge` | false | Enable Claude Code statusline bridge |
 | `codex_capture` | false | Enable Codex/ChatGPT polling |
 | `cursor_capture` | false | Enable Cursor polling |
-| `gemini_capture` | false | Enable Gemini CLI polling |
 | `copilot_capture` | false | Enable Copilot polling |
 | `copilot_pat` | "" | GitHub Personal Access Token (masked in API) |
 | `session_idle_timeout` | 300 | Seconds of inactivity before ending a session |

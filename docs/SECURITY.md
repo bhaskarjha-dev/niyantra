@@ -13,7 +13,6 @@
 | Claude settings (`~/.claude/settings.json`) | File read + optional patch | Statusline bridge for rate limits |
 | Claude session logs (`~/.claude/projects/`) | File read | JSONL session parsing for token analytics |
 | Cursor session token | File read from `~/.cursor-server/` | HTTP API authentication |
-| Gemini CLI credentials | File read from `~/.config/gemini/` | OAuth for GCP API polling |
 | GitHub Copilot PAT | User-provided in Settings UI | GitHub billing API authentication |
 | Dashboard API token | Generated config secret | Authenticate every `/api/*` and HTTP `/mcp` request |
 | Plugin scripts | Subprocess execution from `~/.niyantra/plugins/` | Execute operator-trusted local scripts only through the opt-in polling path; HTTP/manual execution is disabled |
@@ -36,7 +35,6 @@
 ### External (Opt-In Provider Polling)
 - **Codex**: HTTPS to `auth0.openai.com` (OAuth token refresh) + OpenAI API
 - **Cursor**: HTTPS to `cursor.com/api/usage`
-- **Gemini CLI**: HTTPS to GCP APIs (loadCodeAssist + retrieveUserQuota)
 - **GitHub Copilot**: HTTPS to `api.github.com` (billing endpoints)
 
 ### External (Opt-In Notification Channels)
@@ -63,7 +61,6 @@ Config keys containing secrets are masked before API transmission. When returned
 |-----|--------|
 | `copilot_pat` | GitHub Personal Access Token |
 | `cursor_session_token` | Cursor session authentication cookie |
-| `gemini_client_secret` | Gemini CLI OAuth client secret |
 | `smtp_pass` | SMTP authentication password |
 | `smtp_user` | SMTP authentication username |
 | `webhook_secret` | Webhook authentication secret (Telegram bot token, etc.) |
@@ -103,7 +100,7 @@ Per-IP in-memory token bucket rate limiter protects all mutation endpoints from 
 
 | Tier | Endpoints | Limit | Window |
 |------|-----------|-------|--------|
-| `snap` | Provider snapshot routes such as `POST /api/snap`, `POST /api/codex/snap`, `POST /api/cursor/snap`, `POST /api/gemini/snap`, `POST /api/copilot/snap` | 10 requests | 1 minute |
+| `snap` | Provider snapshot routes such as `POST /api/snap`, `POST /api/codex/snap`, `POST /api/cursor/snap`, `POST /api/copilot/snap` | 10 requests | 1 minute |
 | `mutate` | Dashboard writes such as config, subscriptions, backup create, notification tests, web push, alerts, pricing, account metadata/deletes, snapshot adjustment/deletes, and plugin config/run compatibility route | 30 requests | 1 minute |
 | `import` | `POST /api/import/json` | 2 requests | 1 minute |
 

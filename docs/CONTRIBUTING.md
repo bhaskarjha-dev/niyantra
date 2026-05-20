@@ -89,7 +89,6 @@ internal/
     sessions.go                       Usage session tracking
     usage_logs.go                     Manual usage log CRUD
     cursor.go                         Cursor snapshot persistence
-    gemini.go                         Gemini snapshot persistence
     copilot.go                        Copilot snapshot persistence
     webpush.go                        WebPush subscription CRUD
     heatmap.go                        Activity heatmap data queries
@@ -117,9 +116,6 @@ internal/
 
   cursor/                           ← Cursor provider
     cursor.go                         Session token auth + HTTP API polling
-
-  gemini/                           ← Gemini CLI provider
-    gemini.go                         OAuth discovery + GCP API (loadCodeAssist + retrieveUserQuota)
 
   copilot/                          ← GitHub Copilot provider
     copilot.go                        PAT auth + GitHub billing API
@@ -159,7 +155,6 @@ internal/
     handlers_forecast.go              cost + TTX forecast endpoints
     handlers_subscriptions.go         Subscription CRUD, overview, presets, CSV
     handlers_cursor.go                Cursor status/snap endpoints
-    handlers_gemini.go                Gemini status/snap endpoints
     handlers_copilot.go               Copilot status/snap endpoints
     handlers_quota.go                 Status payload + activity heatmap endpoints
     static/                           Embedded via Go embed.FS

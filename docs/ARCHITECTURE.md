@@ -12,11 +12,10 @@ User Interfaces
           |
 Application Layer
   agent/        - polling loop + session management
-  client/       - LS detection + multi-account concurrent quota fetch (Connect RPC) + direct API fallback
+  client/       - LS detection + multi-account concurrent quota fetch (Connect RPC)
   codex/        - OAuth + Codex API polling + OIDC JWT parsing
   claude/       - deep session parser + statusline bridge + settings patch
   cursor/       - session token auth + HTTP API polling
-  gemini/       - OAuth + GCP billing/quota APIs
   copilot/      - GitHub PAT + Copilot billing endpoints
   advisor/      - ranking + current-account recommendation engine
   tracker/      - cycle detection + intelligence + sessions
@@ -37,7 +36,7 @@ Storage Layer
 
 ```
 cmd/niyantra/main.go
-  +-- client       (detect Antigravity LS servers, fetch quotas via Connect RPC, direct Google PA API fallback)
+  +-- client       (detect Antigravity LS servers, fetch quotas via Connect RPC)
   +-- store        (SQLite, all persistence, schema v21)
   +-- web          (HTTP server + dashboard — 22 Go files, 40 TS modules)
   |    +-- agent        (polling loop, backoff, graceful shutdown)
@@ -46,7 +45,6 @@ cmd/niyantra/main.go
   |    +-- codex        (ChatGPT integration)
   |    +-- claude       (deep JSONL parser + statusline bridge)
   |    +-- cursor       (Cursor Pro quota polling)
-  |    +-- gemini       (Gemini CLI OAuth + GCP APIs)
   |    +-- copilot      (GitHub Copilot billing)
   |    +-- notify       (OS + SMTP + Webhook + WebPush - 4 channels + digest)
   |    +-- costtrack    (blended pricing engine)
@@ -61,13 +59,12 @@ cmd/niyantra/main.go
 
 ## 1. internal/client/ — Antigravity Language Server Client (Antigravity v2.0)
 
-Detects running Antigravity language servers concurrently, queries active accounts in parallel, deduplicates by account email, and provides a direct Google Partner Assist (PA) API fallback in 'CLI Solo Mode'.
+Detects running Antigravity language servers concurrently, queries active accounts in parallel, and deduplicates by account email.
 
 ### Key Antigravity v2.0 Architecture Upgrades:
 - **Multi-Account Concurrent Capturing**: Interrogates all active local language server endpoints concurrently using Go routines with a semaphore-controlled limit to prevent socket exhaustion.
 - **Connect RPC Client Logic**: Handles standard local protobuf Connect RPC APIs over HTTP to securely retrieve tokenized session statuses.
 - **Tiered Process Priority Heuristic**: Filters and ranks discovered local processes to distinguish true Language Server instances (RPC Servers, Rank >= 10) from lightweight terminal CLI or auxiliary processes (Rank < 10) by inspecting startup arguments, port allocations, and process paths.
-- **Direct GCP PA API Solo Mode Fallback**: In CLI Solo Mode (no active local LS discovered), it parses oauth credentials dynamically from `~/.gemini/oauth_creds.json`, executes an automatic background token refresh flow via Google OAuth endpoints, and directly queries the Google Cloud Code Partner Assist APIs (`loadCodeAssist` and `retrieveUserQuota`).
 - **Protobuf Semantics & Safe Aggregates**: Correctly handles protobuf pointer semantics (`*float64` `remainingFraction`) to distinguish between actual 0% (exhausted) and null/missing quotas.
 
 Detection strategy (platform-specific):
@@ -207,7 +204,6 @@ Serves a 4-tab dashboard with embedded static assets and a REST API.
 | `handlers_forecast.go` | cost and TTX forecast endpoints |
 | `handlers_subscriptions.go` | subscription CRUD, overview, presets, CSV |
 | `handlers_cursor.go` | Cursor status/snap endpoints |
-| `handlers_gemini.go` | Gemini status/snap endpoints |
 | `handlers_copilot.go` | Copilot status/snap endpoints |
 | `handlers_plugins.go` | Plugin discovery, status, config, and disabled HTTP run compatibility stub |
 | `handlers_quota.go` | Status + heatmap API data |
@@ -219,15 +215,14 @@ REST API endpoints are organized by domain. All `/api/*` endpoints require the g
 
 Stack: Go embed.FS + TypeScript (strict mode, 34 modules) bundled via esbuild into a single IIFE. Chart.js bundled locally from embedded assets.
 
-## 6. Providers (7)
+## 6. Providers (6)
 
 | Provider | Package | Auth | Method |
 |----------|---------|------|--------|
-| Antigravity | `client/` | CSRF token / Direct OAuth | Connect RPC to active local LS servers + Direct API fallback |
+| Antigravity | `client/` | CSRF token / Direct OAuth | Connect RPC to active local LS servers |
 | Codex/ChatGPT | `codex/` | OAuth from `~/.codex/auth.json` | HTTPS to OpenAI API |
 | Claude Code | `claude/` | None (local files) | JSONL session parsing + statusline bridge |
 | Cursor | `cursor/` | Session token from `~/.cursor-server/` | HTTPS to cursor.com API |
-| Gemini CLI | `gemini/` | OAuth from `~/.gemini/` | HTTPS to GCP APIs (Fallback) |
 | GitHub Copilot | `copilot/` | GitHub PAT | HTTPS to GitHub billing API |
 | Manual | `store/` | N/A | User input via subscription form |
 | Plugins | `plugin/` | Plugin-specific (API keys in config) | Trusted local polling subprocess with JSON protocol; HTTP manual execution returns `410 Gone` |

@@ -245,7 +245,6 @@ Run each provider check with the provider disabled, misconfigured, and configure
 | Codex/ChatGPT | Status shows capture disabled | Missing/expired auth file gives visible error | 5h/7d/review windows render with timestamp and account identity |
 | Claude Code | Bridge/deep tracking disabled states are clear | Missing settings/log path gives visible provider error | Statusline and token analytics render observed data only |
 | Cursor | Capture disabled state is clear | Missing session token gives visible setup error | Request/credit usage renders with observed timestamp |
-| Gemini CLI | Capture disabled state is clear | Missing OAuth credentials gives visible setup error | Quota response renders project/tier data honestly |
 | GitHub Copilot | Capture disabled state is clear | Missing PAT gives visible setup error | Premium/chat usage renders with observed timestamp |
 | Plugins | Disabled API returns disabled-state errors | Invalid manifest/symlink/oversize is rejected | Enabled polling stores snapshots; HTTP run still returns `410 Gone` |
 
