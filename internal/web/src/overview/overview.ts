@@ -162,17 +162,6 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
       '</div>';
   }
 
-  if (latestQuotaData && latestQuotaData.geminiSnapshot) {
-    var gemini = latestQuotaData.geminiSnapshot as any;
-    var geminiStatus = usageHealthClass(gemini.overallPct || 0);
-    providerHTML += '<div class="provider-health-row">' +
-      '<span class="ph-name">✨ Gemini CLI</span>' +
-      '<span class="ph-count">' + esc(gemini.email || gemini.projectId || 'Gemini') + '</span>' +
-      '<span class="ph-bar"><span class="ph-fill ' + geminiStatus + '" style="width:' + Math.max(0, 100 - (gemini.overallPct || 0)) + '%"></span></span>' +
-      '<span class="ph-stat ' + geminiStatus + '">' + esc(gemini.tier || 'unknown') + '</span>' +
-      '</div>';
-  }
-
   if (latestQuotaData && latestQuotaData.copilotSnapshot) {
     var copilot = latestQuotaData.copilotSnapshot as any;
     var copilotUsed = copilot.hasPremium ? (copilot.premiumPct || 0) : (copilot.chatPct || 0);

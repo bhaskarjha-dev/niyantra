@@ -308,10 +308,6 @@ func (s *Server) handleExportJSON(w http.ResponseWriter, r *http.Request) {
 	cursorSnaps, _ := s.store.RecentCursorSnapshots(500)
 	export["cursorSnapshots"] = cursorSnaps
 
-	// Gemini CLI snapshots (last 500)
-	geminiSnaps, _ := s.store.RecentGeminiSnapshots(500)
-	export["geminiSnapshots"] = geminiSnaps
-
 	// Copilot snapshots (last 500)
 	copilotSnaps, _ := s.store.RecentCopilotSnapshots(500)
 	export["copilotSnapshots"] = copilotSnaps

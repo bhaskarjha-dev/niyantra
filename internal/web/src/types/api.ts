@@ -19,7 +19,6 @@ export interface StatusResponse {
   codexSnapshot?: CodexSnapshot;
   claudeSnapshot?: ClaudeSnapshot;
   cursorSnapshot?: CursorSnapshot;
-  geminiSnapshot?: GeminiSnapshot;
   copilotSnapshot?: CopilotSnapshot;
   pluginSnapshots?: PluginSnapshot[];
   forecasts?: AccountForecast[];
@@ -194,16 +193,6 @@ export interface CursorSnapshot {
   apiPct: number;
   cycleStart: string;
   cycleEnd: string;
-  capturedAt: string;
-}
-
-export interface GeminiSnapshot {
-  id: number;
-  accountId: number;
-  email?: string;
-  tier: string;
-  overallPct: number;
-  projectId: string;
   capturedAt: string;
 }
 

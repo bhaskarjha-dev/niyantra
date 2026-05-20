@@ -950,7 +950,6 @@ func (s *Store) migrate() error {
 	if _, err := s.db.Exec(`
 		UPDATE codex_snapshots SET owner_account_id = NULL WHERE owner_account_id = 0;
 		UPDATE cursor_snapshots SET account_id = NULL WHERE account_id = 0;
-		UPDATE gemini_snapshots SET account_id = NULL WHERE account_id = 0;
 		UPDATE copilot_snapshots SET account_id = NULL WHERE account_id = 0;
 	`); err != nil {
 		return fmt.Errorf("store: normalize nullable foreign keys: %w", err)

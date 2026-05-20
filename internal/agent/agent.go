@@ -40,8 +40,6 @@ type PollingAgent struct {
 	// Cursor state
 	cursorAuthFails int
 
-	// Gemini state
-	geminiAuthFails int
 
 	// Copilot state
 	copilotAuthFails int
@@ -178,8 +176,6 @@ func (a *PollingAgent) poll(ctx context.Context) {
 	// Cursor polling: if cursor_capture is enabled
 	run("cursor", func() { a.pollCursor(ctx) })
 
-	// Gemini CLI polling: if gemini_capture is enabled
-	run("gemini", func() { a.pollGemini(ctx) })
 
 	// GitHub Copilot polling: if copilot_capture is enabled
 	run("copilot", func() { a.pollCopilot(ctx) })
@@ -189,7 +185,7 @@ func (a *PollingAgent) poll(ctx context.Context) {
 
 	wg.Wait()
 	elapsed := time.Since(start)
-	a.logger.Info("Poll cycle complete", "elapsed", elapsed.Truncate(time.Millisecond), "providers", 7)
+	a.logger.Info("Poll cycle complete", "elapsed", elapsed.Truncate(time.Millisecond), "providers", 6)
 
 	// Data retention cleanup: delete snapshots older than retention_days
 	// (runs after all providers, not in parallel — it's a single DB operation)

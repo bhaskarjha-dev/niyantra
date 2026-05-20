@@ -450,8 +450,6 @@ func (s *Store) latestTrackedActivity(accountID int64) (time.Time, bool) {
 		err = s.db.QueryRow(`SELECT MAX(captured_at) FROM codex_snapshots WHERE owner_account_id = ?`, accountID).Scan(&raw)
 	case "cursor":
 		err = s.db.QueryRow(`SELECT MAX(captured_at) FROM cursor_snapshots WHERE account_id = ?`, accountID).Scan(&raw)
-	case "gemini":
-		err = s.db.QueryRow(`SELECT MAX(captured_at) FROM gemini_snapshots WHERE account_id = ?`, accountID).Scan(&raw)
 	case "copilot":
 		err = s.db.QueryRow(`SELECT MAX(captured_at) FROM copilot_snapshots WHERE account_id = ?`, accountID).Scan(&raw)
 	default:

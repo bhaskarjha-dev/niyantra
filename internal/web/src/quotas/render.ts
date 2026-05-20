@@ -140,31 +140,7 @@ export function sortProviderArray(array: any[], provider: string): any[] {
         default:
           return 0;
       }
-    } else if (provider === 'gemini') {
-      switch (col) {
-        case 'account':
-          va = a.email || '';
-          vb = b.email || '';
-          break;
-        case 'tier':
-          va = a.tier || '';
-          vb = b.tier || '';
-          break;
-        case 'usage':
-          va = a.overallPct || 0;
-          vb = b.overallPct || 0;
-          break;
-        case 'lastsnap':
-          va = a.capturedAt ? new Date(a.capturedAt).getTime() : 0;
-          vb = b.capturedAt ? new Date(b.capturedAt).getTime() : 0;
-          break;
-        case 'status':
-          va = getGeminiStatus(a);
-          vb = getGeminiStatus(b);
-          break;
-        default:
-          return 0;
-      }
+
     } else if (provider === 'copilot') {
       switch (col) {
         case 'account':
@@ -354,12 +330,11 @@ export function renderAccounts(data: any): void {
   if (data.codexSnapshots && data.codexSnapshots.length > 0) parts.push(data.codexSnapshots.length + ' Codex');
   if (data.claudeSnapshot) parts.push('1 Claude');
   if (data.cursorSnapshots && data.cursorSnapshots.length > 0) parts.push(data.cursorSnapshots.length + ' Cursor');
-  if (data.geminiSnapshots && data.geminiSnapshots.length > 0) parts.push(data.geminiSnapshots.length + ' Gemini');
   if (data.copilotSnapshots && data.copilotSnapshots.length > 0) parts.push(data.copilotSnapshots.length + ' Copilot');
   if (countBadge) countBadge.textContent = parts.join(' · ') || '0 accounts';
   if (snapCount) snapCount.textContent = data.snapshotCount ? (data.snapshotCount + ' snapshots') : '';
 
-  if (acctCount === 0 && (!data.codexSnapshots || data.codexSnapshots.length === 0) && !data.claudeSnapshot && (!data.cursorSnapshots || data.cursorSnapshots.length === 0) && (!data.geminiSnapshots || data.geminiSnapshots.length === 0) && (!data.copilotSnapshots || data.copilotSnapshots.length === 0)) {
+  if (acctCount === 0 && (!data.codexSnapshots || data.codexSnapshots.length === 0) && !data.claudeSnapshot && (!data.cursorSnapshots || data.cursorSnapshots.length === 0) && (!data.copilotSnapshots || data.copilotSnapshots.length === 0)) {
     grid.innerHTML = '<div class="empty-state">' +
       '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>' +
       '<p>No accounts tracked yet</p>' +
@@ -795,9 +770,7 @@ export function renderAccounts(data: any): void {
   if (data.cursorSnapshots && data.cursorSnapshots.length > 0 && (pf === 'all' || pf === 'cursor')) {
     html += renderCursorProviderSection(data.cursorSnapshots, statusVal);
   }
-  if (data.geminiSnapshots && data.geminiSnapshots.length > 0 && (pf === 'all' || pf === 'gemini')) {
-    html += renderGeminiProviderSection(data.geminiSnapshots, statusVal);
-  }
+
   if (data.copilotSnapshots && data.copilotSnapshots.length > 0 && (pf === 'all' || pf === 'copilot')) {
     html += renderCopilotProviderSection(data.copilotSnapshots, statusVal);
   }
@@ -1162,164 +1135,7 @@ export function renderCursorProviderSection(cursorSnaps: any[], statusFilter: st
   return html;
 }
 
-export function getGeminiStatus(snap: any): string {
-  var overallPct = snap.overallPct || 0;
-  var rem = Math.max(0, 100 - overallPct);
-  if (rem === 0) return 'empty';
-  if (overallPct >= 80) return 'low';
-  return 'ready';
-}
 
-export function renderGeminiProviderSection(geminiSnaps: any[], statusFilter: string): string {
-  var gmCollapseClass = collapsedProviders.has('section-gemini') ? ' collapsed' : '';
-  var gmChevron = collapsedProviders.has('section-gemini') ? '▸' : '▾';
-
-  var hasConsumerTier = false;
-  for (var i = 0; i < geminiSnaps.length; i++) {
-    var t = (geminiSnaps[i].tier || '').toLowerCase();
-    if (t === 'free' || t === 'pro' || t === 'ultra') {
-      hasConsumerTier = true;
-      break;
-    }
-  }
-
-  var migrationHTML = '';
-  if (hasConsumerTier) {
-    migrationHTML = '<div class="migration-box">' +
-      '<div class="migration-title">🚀 Upgrade to the Go-native Antigravity CLI</div>' +
-      '<div class="migration-desc">' +
-        'Google is sunsetting the legacy npm-based <code>gemini-cli</code> for consumer tiers on <strong>June 18</strong>. ' +
-        'Professional developers and teams are migrating to the high-velocity Go-native <strong>Antigravity CLI</strong>, ' +
-        'which coordinates with Antigravity Main and IDE harnesses. Run these commands to upgrade:' +
-      '</div>' +
-      '<div class="migration-code-block">' +
-        '# 1. Uninstall legacy npm CLI\n' +
-        'npm uninstall -g @google/gemini-cli\n\n' +
-        '# 2. Install the new Go-native Antigravity CLI\n' +
-        '# Windows (PowerShell):\n' +
-        'iwr -useb https://antigravity.google/install.ps1 | iex\n\n' +
-        '# Mac / Linux:\n' +
-        'curl -fsSL https://antigravity.google/install.sh | sh\n\n' +
-        '# 3. Import configurations\n' +
-        'antigravity /config import --source=gemini-cli\n\n' +
-        '# 4. Add alias to shell config\n' +
-        'alias gemini="antigravity"' +
-      '</div>' +
-      '</div>';
-  }
-
-  var html = '<div class="provider-section" data-provider="gemini">' +
-    '<div class="provider-header" data-toggle-provider="section-gemini">' +
-    '<div class="provider-header-left">' +
-    '<span class="provider-chevron" id="pchev-section-gemini">' + gmChevron + '</span>' +
-    '<span class="provider-name">\u2728 Gemini CLI' + (hasConsumerTier ? ' <span class="gemini-deprecation-badge">⚠️ Sunset Alert: June 18</span>' : '') + '</span>' +
-    '<span class="provider-count">' + geminiSnaps.length + ' account' + (geminiSnaps.length !== 1 ? 's' : '') + '</span>' +
-    '</div></div>' +
-    '<div class="provider-body' + gmCollapseClass + '" id="section-gemini">' +
-    migrationHTML +
-    '<div class="grid-header grid-gemini">' +
-    '<div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div>' +
-    '<div class="sortable" data-sort="tier">Tier <span class="sort-indicator"></span></div>' +
-    '<div class="sortable" data-sort="usage">Usage <span class="sort-indicator"></span></div>' +
-    '<div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div>' +
-    '<div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div>' +
-    '</div>';
-
-  var sortedSnaps = sortProviderArray(geminiSnaps, 'gemini');
-  var renderedCount = 0;
-  for (var i = 0; i < sortedSnaps.length; i++) {
-    var gs = sortedSnaps[i];
-    var gmStatus = getGeminiStatus(gs);
-    if (statusFilter !== 'all' && gmStatus !== statusFilter) continue;
-    renderedCount++;
-
-    var overallPct = gs.overallPct || 0;
-    var remaining = Math.max(0, 100 - overallPct);
-    var cls = remaining > 50 ? 'good' : remaining > 20 ? 'ok' : remaining > 0 ? 'warning' : 'exhausted';
-    var capturedAgo = gs.capturedAt ? formatTimeAgo(gs.capturedAt) : '\u2014';
-    var dotCls = overallPct >= 80 ? 'dot-low' : 'dot-ready';
-    var dotText = dotCls === 'dot-ready' ? 'Ready' : 'Low';
-    var displayName = gs.email || 'Gemini CLI';
-
-    // Build per-model breakdown rows from modelsJson
-    var modelRows = '';
-    if (gs.modelsJson && gs.modelsJson !== '[]') {
-      try {
-        var models = typeof gs.modelsJson === 'string' ? JSON.parse(gs.modelsJson) : gs.modelsJson;
-        if (Array.isArray(models) && models.length > 0) {
-          modelRows = '<div class="cursor-model-breakdown">';
-          for (var mi = 0; mi < models.length; mi++) {
-            var m = models[mi];
-            var mUsedPct = m.usedPct || 0;
-            var mRemPct = Math.max(0, 100 - mUsedPct);
-            var mCls = mRemPct > 50 ? 'good' : mRemPct > 20 ? 'ok' : mRemPct > 0 ? 'warning' : 'exhausted';
-            var mResetStr = m.resetTime ? formatResetTime(m.resetTime) : '';
-            var tierLabel = (m.tier || m.modelId || 'unknown');
-            modelRows += '<div class="cursor-model-row">' +
-              '<span class="cursor-model-name">' + esc(m.modelId || tierLabel) + '</span>' +
-              '<div class="quota-minibar"><div class="quota-minibar-fill ' + mCls + '" style="width:' + mRemPct + '%"></div></div>' +
-              '<span class="cursor-model-usage">' + mRemPct.toFixed(0) + '% left</span>' +
-              (mResetStr ? '<span class="quota-reset">\u21bb ' + mResetStr + '</span>' : '') +
-              '</div>';
-          }
-          modelRows += '</div>';
-        }
-      } catch(e) { /* graceful degradation */ }
-    }
-
-    var localAccId = gs.accountId || 0;
-    var accId = 'acc-gemini-' + gs.id;
-    var isExpanded = expandedAccounts.has(accId as any);
-    var chevronCls = isExpanded ? 'chevron expanded' : 'chevron';
-
-    var chevronHTML = (localAccId > 0 || modelRows) ? '<span class="' + chevronCls + '" id="chev-' + accId + '">▸</span> ' : '';
-    var manageBadge = localAccId > 0 ? ' <span class="manage-account-badge">⚙️ Manage</span>' : '';
-    var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + manageBadge + '</div>';
-
-    var actionsHTML = '';
-    if (localAccId > 0 || modelRows) {
-      var expandedCls = isExpanded ? ' is-expanded' : '';
-      var accountActions = localAccId > 0 ?
-        '<div class="account-actions">' +
-        '<button class="btn-clear-snaps" data-clear-account="' + localAccId + '" data-clear-email="' + esc(displayName) + '" title="Delete all snapshots for this account">Clear Snapshots</button>' +
-        '<button class="btn-delete-account" data-delete-account="' + localAccId + '" data-delete-email="' + esc(displayName) + '" title="Remove account and all its data">Remove Account</button>' +
-        '</div>' : '';
-      actionsHTML = '<div class="model-details' + expandedCls + '" id="' + accId + '">' +
-        modelRows +
-        accountActions +
-        '</div>';
-    }
-
-    var toggleAttr = (localAccId > 0 || modelRows) ? ' data-toggle="' + accId + '"' : '';
-
-    var statusClass = '';
-    if (gmStatus === 'empty') statusClass = ' status-empty';
-    else if (gmStatus === 'low') statusClass = ' status-low';
-    else statusClass = ' status-ready';
-
-    html += '<div class="account-card' + statusClass + '"><div class="account-row grid-gemini"' + toggleAttr + '>' +
-      '<div class="account-info">' + emailHTML + '</div>' +
-      '<div>' + (gs.tier ? (function() {
-        var tierL = gs.tier.toLowerCase();
-        var badge = '<span class="plan-badge">' + esc(gs.tier) + '</span>';
-        if (tierL === 'free' || tierL === 'pro' || tierL === 'ultra') {
-          badge += ' <span class="gemini-deprecation-badge" style="margin-left: 5px; font-size: 9px; padding: 1px 4px;">⚠️ Sunset</span>';
-        }
-        return badge;
-      })() : String.fromCharCode(8212)) + '</div>' +
-      '<div class="quota-cell" title="Arithmetic mean across reported Gemini model buckets"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span>' +
-      '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div>' +
-      '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
-      '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
-      '</div>' +
-      actionsHTML +
-      '</div>';
-  }
-
-  if (renderedCount === 0) return '';
-  html += '</div></div>';
-  return html;
-}
 
 export function getCopilotStatus(snap: any): string {
   var premiumPct = snap.premiumPct || 0;

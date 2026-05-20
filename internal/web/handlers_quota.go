@@ -64,12 +64,6 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		result["cursorSnapshots"] = cursorSnaps
 	}
 
-	// F15b: Include Gemini CLI snapshots if available
-	geminiSnaps, _ := s.store.LatestGeminiSnapshots()
-	if len(geminiSnaps) > 0 {
-		result["geminiSnapshots"] = geminiSnaps
-	}
-
 	// F15c: Include Copilot snapshots if available
 	copilotSnaps, _ := s.store.LatestCopilotSnapshots()
 	if len(copilotSnaps) > 0 {

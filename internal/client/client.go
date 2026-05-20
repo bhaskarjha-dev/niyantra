@@ -5,14 +5,11 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/bhaskarjha-com/niyantra/internal/gemini"
 )
 
 // Sentinel errors for client operations.
@@ -129,8 +126,7 @@ func (c *Client) Detect(ctx context.Context) error {
 func (c *Client) FetchQuotas(ctx context.Context) ([]*UserStatusResponse, error) {
 	err := c.Detect(ctx)
 	if err != nil {
-		c.logger.Debug("no active local language servers found, trying CLI PA API fallback", "error", err)
-		return c.fetchQuotasFallback(ctx)
+		return nil, err
 	}
 
 	var results []*UserStatusResponse
@@ -207,81 +203,10 @@ func (c *Client) FetchQuotas(ctx context.Context) ([]*UserStatusResponse, error)
 	c.conns = activeConns
 
 	if len(results) == 0 {
-		c.logger.Debug("all local language server connections failed, trying CLI PA API fallback")
-		return c.fetchQuotasFallback(ctx)
+		return nil, ErrPortNotFound
 	}
 
 	return results, nil
-}
-
-// fetchQuotasFallback uses Gemini CLI credentials to query Google PA API directly when no server is active.
-func (c *Client) fetchQuotasFallback(ctx context.Context) ([]*UserStatusResponse, error) {
-	c.logger.Debug("detecting local Gemini CLI credentials")
-	creds, err := gemini.DetectCredentials(c.logger)
-	if err != nil {
-		return nil, fmt.Errorf("fallback failed: %w", err)
-	}
-
-	clientID, clientSecret := gemini.ExtractOAuthClientCreds(c.logger)
-	geminiClient := gemini.NewClient(creds, c.logger, clientID, clientSecret)
-
-	snap, err := geminiClient.FetchSnapshot(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("fallback API poll failed: %w", err)
-	}
-
-	if snap == nil || snap.Email == "" {
-		return nil, fmt.Errorf("fallback returned empty snapshot or email")
-	}
-
-	usr := convertGeminiSnapshotToUserStatusResponse(snap)
-	return []*UserStatusResponse{usr}, nil
-}
-
-// convertGeminiSnapshotToUserStatusResponse converts a gemini.Snapshot to a client.UserStatusResponse.
-func convertGeminiSnapshotToUserStatusResponse(gSnap *gemini.Snapshot) *UserStatusResponse {
-	userStatus := &UserStatus{
-		Email: gSnap.Email,
-		Name:  strings.Split(gSnap.Email, "@")[0],
-		PlanStatus: &PlanStatus{
-			PlanInfo: &PlanInfo{
-				PlanName:             gSnap.Tier,
-				MonthlyPromptCredits: 0,
-			},
-			AvailablePromptCredits: 0,
-		},
-		CascadeModelConfigData: &CascadeModelConfigData{
-			ClientModelConfigs: []ModelConfig{},
-		},
-		UserTier: &UserTier{
-			ID:               gSnap.Tier,
-			Name:             gSnap.Tier,
-			AvailableCredits: []rawCredit{},
-		},
-	}
-
-	for _, m := range gSnap.Models {
-		userStatus.CascadeModelConfigData.ClientModelConfigs = append(
-			userStatus.CascadeModelConfigData.ClientModelConfigs,
-			ModelConfig{
-				Label: m.ModelID,
-				ModelOrAlias: &ModelOrAlias{
-					Model: m.ModelID,
-				},
-				QuotaInfo: &QuotaInfo{
-					RemainingFraction: m.RemainingFraction,
-					ResetTime:         m.ResetTime,
-				},
-			},
-		)
-	}
-
-	rawBytes, _ := json.Marshal(gSnap)
-
-	return &UserStatusResponse{
-		UserStatus:      userStatus,
-		OriginalRawJSON: string(rawBytes),
-	}
 }
 
 // Reset forces the next call to Detect to re-discover the language servers.

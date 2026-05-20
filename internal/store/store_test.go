@@ -950,16 +950,6 @@ func TestHeatmapData(t *testing.T) {
 	}
 	_, _ = s.InsertCursorSnapshot(cursorSnap)
 
-	// Gemini snapshot (today)
-	geminiSnap := &GeminiSnapshot{
-		Tier:          "standard",
-		OverallPct:    25.0,
-		ModelsJSON:    `[{"modelId":"gemini-2.5-flash","remainingFraction":0.75}]`,
-		CaptureMethod: "auto",
-		CaptureSource: "server",
-	}
-	_, _ = s.InsertGeminiSnapshot(geminiSnap)
-
 	// Copilot snapshot (today)
 	copilotSnap := &CopilotSnapshot{
 		Plan:          "Pro",
@@ -1005,50 +995,14 @@ func TestHeatmapData(t *testing.T) {
 	if day.Cursor != 1 {
 		t.Errorf("expected 1 Cursor snapshot, got %d", day.Cursor)
 	}
-	if day.Gemini != 1 {
-		t.Errorf("expected 1 Gemini snapshot, got %d", day.Gemini)
-	}
 	if day.Copilot != 1 {
 		t.Errorf("expected 1 Copilot snapshot, got %d", day.Copilot)
 	}
 	if day.Plugin != 1 {
 		t.Errorf("expected 1 Plugin snapshot, got %d", day.Plugin)
 	}
-	if day.Count != 8 {
-		t.Errorf("expected total count 8, got %d", day.Count)
-	}
-}
-
-func TestDeleteAccountRemovesGeminiSnapshots(t *testing.T) {
-	s := openTestDB(t)
-
-	accountID, err := s.GetOrCreateAccount("gemini-delete@example.com", "Gemini CLI", "gemini")
-	if err != nil {
-		t.Fatalf("GetOrCreateAccount: %v", err)
-	}
-
-	if _, err := s.InsertGeminiSnapshot(&GeminiSnapshot{
-		AccountID:     accountID,
-		Email:         "gemini-delete@example.com",
-		Tier:          "standard",
-		OverallPct:    42.0,
-		ModelsJSON:    "[]",
-		CaptureMethod: "auto",
-		CaptureSource: "server",
-	}); err != nil {
-		t.Fatalf("InsertGeminiSnapshot: %v", err)
-	}
-
-	if count := s.GeminiSnapshotCount(); count != 1 {
-		t.Fatalf("expected 1 Gemini snapshot before delete, got %d", count)
-	}
-
-	if _, err := s.DeleteAccount(accountID); err != nil {
-		t.Fatalf("DeleteAccount: %v", err)
-	}
-
-	if count := s.GeminiSnapshotCount(); count != 0 {
-		t.Fatalf("expected Gemini snapshots to be deleted, got %d", count)
+	if day.Count != 7 {
+		t.Errorf("expected total count 7, got %d", day.Count)
 	}
 }
 

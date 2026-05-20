@@ -177,7 +177,11 @@ func (r *UserStatusResponse) ToSnapshot(capturedAt time.Time) *Snapshot {
 	if r.UserStatus.PlanStatus != nil {
 		snap.PromptCredits = r.UserStatus.PlanStatus.AvailablePromptCredits
 		if r.UserStatus.PlanStatus.PlanInfo != nil {
-			snap.PlanName = r.UserStatus.PlanStatus.PlanInfo.PlanName
+			planName := r.UserStatus.PlanStatus.PlanInfo.PlanName
+			if strings.EqualFold(planName, "Gemini Code Assist") {
+				planName = "Google AI Pro"
+			}
+			snap.PlanName = planName
 			snap.MonthlyCredits = r.UserStatus.PlanStatus.PlanInfo.MonthlyPromptCredits
 		}
 	}

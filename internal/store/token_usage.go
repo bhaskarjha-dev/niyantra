@@ -7,7 +7,7 @@ package store
 type TokenUsageRow struct {
 	ID            int64   `json:"id"`
 	Date          string  `json:"date"`          // YYYY-MM-DD
-	Provider      string  `json:"provider"`      // claude, antigravity, codex, cursor, gemini
+	Provider      string  `json:"provider"`      // claude, antigravity, codex, cursor
 	Model         string  `json:"model"`         // model identifier (empty for provider-level aggregates)
 	InputTokens   int64   `json:"inputTokens"`
 	OutputTokens  int64   `json:"outputTokens"`
