@@ -63,11 +63,16 @@ func (a *PollingAgent) pollCursor(ctx context.Context) {
 		CaptureSource: "server",
 	}
 
-	if creds.Email != "" {
-		accountID, err := a.store.GetOrCreateAccount(creds.Email, "Cursor", "cursor")
-		if err == nil {
-			snap.AccountID = accountID
-		}
+	email := creds.Email
+	if email == "" {
+		email = creds.UserID
+	}
+	if email == "" {
+		email = "Cursor Account"
+	}
+	accountID, err := a.store.GetOrCreateAccount(email, "Cursor", "cursor")
+	if err == nil {
+		snap.AccountID = accountID
 	}
 
 	if _, err := a.store.InsertCursorSnapshot(snap); err != nil {

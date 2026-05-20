@@ -68,11 +68,16 @@ func (s *Server) handleCursorSnap(w http.ResponseWriter, r *http.Request) {
 		CaptureSource: "ui",
 	}
 
-	if creds.Email != "" {
-		accountID, err := s.store.GetOrCreateAccount(creds.Email, "Cursor", "cursor")
-		if err == nil {
-			snap.AccountID = accountID
-		}
+	email := creds.Email
+	if email == "" {
+		email = creds.UserID
+	}
+	if email == "" {
+		email = "Cursor Account"
+	}
+	accountID, err := s.store.GetOrCreateAccount(email, "Cursor", "cursor")
+	if err == nil {
+		snap.AccountID = accountID
 	}
 
 	snapID, err := s.store.InsertCursorSnapshot(snap)

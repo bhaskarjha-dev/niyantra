@@ -968,6 +968,126 @@ func (s *Store) migrate() error {
 		}
 	}
 
+	// ── v23: Backfill missing accounts and owner_account_id / account_id links ──
+	if s.getUserVersion() < 23 {
+		tx, err := s.db.Begin()
+		if err != nil {
+			return fmt.Errorf("store: v23 begin: %w", err)
+		}
+		defer tx.Rollback()
+
+		// 1. Backfill Codex snapshots
+		rows, err := tx.Query(`
+			SELECT id, COALESCE(NULLIF(email, ''), account_id) as grouping_key, plan_type
+			FROM codex_snapshots
+			WHERE COALESCE(owner_account_id, 0) = 0
+			  AND (NULLIF(email, '') IS NOT NULL OR NULLIF(account_id, '') IS NOT NULL)
+		`)
+		if err != nil {
+			return fmt.Errorf("store: v23 query codex: %w", err)
+		}
+
+		type codexBackfill struct {
+			id    int64
+			email string
+			plan  string
+		}
+		var codexItems []codexBackfill
+		for rows.Next() {
+			var item codexBackfill
+			if err := rows.Scan(&item.id, &item.email, &item.plan); err == nil {
+				if item.email == "" {
+					item.email = "Codex Account"
+				}
+				codexItems = append(codexItems, item)
+			}
+		}
+		rows.Close()
+
+		for _, item := range codexItems {
+			var accID int64
+			err = tx.QueryRow(`
+				SELECT id FROM accounts WHERE email = ? AND provider = 'codex'
+			`, item.email).Scan(&accID)
+			if err == sql.ErrNoRows {
+				res, err := tx.Exec(`
+					INSERT INTO accounts (email, plan_name, provider) VALUES (?, ?, 'codex')
+				`, item.email, item.plan)
+				if err != nil {
+					return fmt.Errorf("store: v23 insert account: %w", err)
+				}
+				accID, _ = res.LastInsertId()
+			} else if err != nil {
+				return fmt.Errorf("store: v23 query account: %w", err)
+			}
+
+			_, err = tx.Exec(`
+				UPDATE codex_snapshots SET owner_account_id = ? WHERE id = ?
+			`, accID, item.id)
+			if err != nil {
+				return fmt.Errorf("store: v23 update codex snapshot: %w", err)
+			}
+		}
+
+		// 2. Backfill Cursor snapshots
+		rows2, err := tx.Query(`
+			SELECT id, email, plan_type
+			FROM cursor_snapshots
+			WHERE COALESCE(account_id, 0) = 0
+			  AND NULLIF(email, '') IS NOT NULL
+		`)
+		if err != nil {
+			return fmt.Errorf("store: v23 query cursor: %w", err)
+		}
+
+		type cursorBackfill struct {
+			id    int64
+			email string
+			plan  string
+		}
+		var cursorItems []cursorBackfill
+		for rows2.Next() {
+			var item cursorBackfill
+			if err := rows2.Scan(&item.id, &item.email, &item.plan); err == nil {
+				cursorItems = append(cursorItems, item)
+			}
+		}
+		rows2.Close()
+
+		for _, item := range cursorItems {
+			var accID int64
+			err = tx.QueryRow(`
+				SELECT id FROM accounts WHERE email = ? AND provider = 'cursor'
+			`, item.email).Scan(&accID)
+			if err == sql.ErrNoRows {
+				res, err := tx.Exec(`
+					INSERT INTO accounts (email, plan_name, provider) VALUES (?, ?, 'cursor')
+				`, item.email, item.plan)
+				if err != nil {
+					return fmt.Errorf("store: v23 insert cursor account: %w", err)
+				}
+				accID, _ = res.LastInsertId()
+			} else if err != nil {
+				return fmt.Errorf("store: v23 query cursor account: %w", err)
+			}
+
+			_, err = tx.Exec(`
+				UPDATE cursor_snapshots SET account_id = ? WHERE id = ?
+			`, accID, item.id)
+			if err != nil {
+				return fmt.Errorf("store: v23 update cursor snapshot: %w", err)
+			}
+		}
+
+		if err = tx.Commit(); err != nil {
+			return fmt.Errorf("store: v23 commit: %w", err)
+		}
+
+		if err := s.setUserVersion(23); err != nil {
+			return err
+		}
+	}
+
 	if _, err := s.db.Exec(`
 		UPDATE codex_snapshots SET owner_account_id = NULL WHERE owner_account_id = 0;
 		UPDATE cursor_snapshots SET account_id = NULL WHERE account_id = 0;

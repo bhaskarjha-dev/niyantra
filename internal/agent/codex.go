@@ -79,11 +79,16 @@ func (a *PollingAgent) pollCodex(ctx context.Context) {
 	a.codexAuthFails = 0
 
 	var ownerAccountID int64
-	if creds.Email != "" {
-		ownerAccountID, err = a.store.GetOrCreateAccount(creds.Email, usage.PlanType, "codex")
-		if err != nil {
-			a.logger.Warn("Failed to resolve local Codex account ownership", "email", creds.Email, "error", err)
-		}
+	email := creds.Email
+	if email == "" {
+		email = creds.AccountID
+	}
+	if email == "" {
+		email = "Codex Account"
+	}
+	ownerAccountID, err = a.store.GetOrCreateAccount(email, usage.PlanType, "codex")
+	if err != nil {
+		a.logger.Warn("Failed to resolve local Codex account ownership", "email", email, "error", err)
 	}
 
 	// Build and store snapshot
