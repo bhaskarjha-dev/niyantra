@@ -253,36 +253,10 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		limit = 1000
 	}
 
-	snapshots, err := s.store.History(accountID, limit)
+	items, err := s.store.UnifiedHistory(accountID, limit)
 	if err != nil {
 		jsonError(w, "database error", http.StatusInternalServerError)
 		return
-	}
-
-	// Convert snapshots to API format with groups
-	type snapResponse struct {
-		ID            int64                 `json:"id"`
-		AccountID     int64                 `json:"accountId"`
-		Email         string                `json:"email"`
-		CapturedAt    time.Time             `json:"capturedAt"`
-		PlanName      string                `json:"planName"`
-		Groups        []client.GroupedQuota `json:"groups"`
-		CaptureMethod string                `json:"captureMethod"`
-		CaptureSource string                `json:"captureSource"`
-	}
-
-	var items []snapResponse
-	for _, s := range snapshots {
-		items = append(items, snapResponse{
-			ID:            s.ID,
-			AccountID:     s.AccountID,
-			Email:         s.Email,
-			CapturedAt:    s.CapturedAt,
-			PlanName:      s.PlanName,
-			Groups:        client.GroupModels(s.Models),
-			CaptureMethod: s.CaptureMethod,
-			CaptureSource: s.CaptureSource,
-		})
 	}
 
 	writeJSON(w, map[string]interface{}{

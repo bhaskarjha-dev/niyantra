@@ -59,8 +59,26 @@ export function renderHistoryChart(snapshots: any[]): void {
 
   // Build datasets per group
   var groupData: Record<string, (number|null)[]> = {};
-  var groupNames: Record<string, string> = { claude_gpt: 'Claude + GPT', gemini_pro: 'Gemini Pro', gemini_flash: 'Gemini Flash', unknown: 'Unknown' };
-  var groupColors: Record<string, string> = { claude_gpt: '#D97757', gemini_pro: '#10B981', gemini_flash: '#3B82F6', unknown: '#64748B' };
+  var groupNames: Record<string, string> = {
+    claude_gpt: 'Claude + GPT',
+    gemini_pro: 'Gemini Pro',
+    gemini_flash: 'Gemini Flash',
+    cursor: 'Cursor Quota',
+    codex_5h: 'Codex 5-Hour',
+    codex_7d: 'Codex 7-Day',
+    copilot: 'Copilot Premium',
+    unknown: 'Unknown'
+  };
+  var groupColors: Record<string, string> = {
+    claude_gpt: '#D97757',
+    gemini_pro: '#10B981',
+    gemini_flash: '#3B82F6',
+    cursor: '#00E6FF',
+    codex_5h: '#9B51E0',
+    codex_7d: '#BB6BD9',
+    copilot: '#2EA44F',
+    unknown: '#64748B'
+  };
 
   for (var i = 0; i < snapshots.length; i++) {
     var groups = snapshots[i].groups || [];

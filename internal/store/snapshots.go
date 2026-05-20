@@ -4,6 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/bhaskarjha-com/niyantra/internal/client"
@@ -458,4 +461,330 @@ func scanClaudeRows(rows *sql.Rows) ([]ClaudeSnapshot, error) {
 func (s *Store) RecentCodexSnapshots(window time.Duration) ([]*CodexSnapshot, error) {
 	since := time.Now().UTC().Add(-window)
 	return s.CodexHistory(since)
+}
+
+// UnifiedHistory returns merged chronological history from all snapshot tables.
+func (s *Store) UnifiedHistory(accountID int64, limit int) ([]map[string]interface{}, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	var items []map[string]interface{}
+
+	// Determine provider if accountID > 0
+	var provider string
+	if accountID > 0 {
+		err := s.db.QueryRow("SELECT provider FROM accounts WHERE id = ?", accountID).Scan(&provider)
+		if err == sql.ErrNoRows {
+			return items, nil
+		} else if err != nil {
+			return nil, fmt.Errorf("store: query provider: %w", err)
+		}
+	}
+
+	// 1. Antigravity Snapshots
+	if provider == "" || provider == "antigravity" {
+		var query string
+		var args []interface{}
+		if accountID > 0 {
+			query = `SELECT id, account_id, captured_at, email, plan_name,
+				models_json, COALESCE(capture_method,'manual'), COALESCE(capture_source,'cli'), COALESCE(ai_credits_json,'')
+				FROM snapshots WHERE account_id = ?
+				ORDER BY captured_at DESC LIMIT ?`
+			args = []interface{}{accountID, limit}
+		} else {
+			query = `SELECT id, account_id, captured_at, email, plan_name,
+				models_json, COALESCE(capture_method,'manual'), COALESCE(capture_source,'cli'), COALESCE(ai_credits_json,'')
+				FROM snapshots ORDER BY captured_at DESC LIMIT ?`
+			args = []interface{}{limit}
+		}
+
+		rows, err := s.db.Query(query, args...)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var id, accID int64
+				var capturedAtStr, email, planName, modelsJSON, captureMethod, captureSource, aiCreditsJSON string
+				if err := rows.Scan(&id, &accID, &capturedAtStr, &email, &planName, &modelsJSON, &captureMethod, &captureSource, &aiCreditsJSON); err == nil {
+					capturedAt, _ := time.Parse(time.RFC3339, capturedAtStr)
+					
+					// Parse models
+					var models []struct {
+						ModelID           string  `json:"modelId"`
+						Label             string  `json:"label"`
+						RemainingFraction float64 `json:"remainingFraction"`
+						RemainingPercent  float64 `json:"remainingPercent"`
+						IsExhausted       bool    `json:"isExhausted"`
+					}
+					json.Unmarshal([]byte(modelsJSON), &models)
+
+					// Group models
+					var claudeGPTFraction, geminiProFraction, geminiFlashFraction float64
+					var claudeGPTCount, geminiProCount, geminiFlashCount int
+					
+					for _, m := range models {
+						text := strings.ToLower(m.ModelID + " " + m.Label)
+						if strings.Contains(text, "gemini") && strings.Contains(text, "flash") {
+							geminiFlashFraction += m.RemainingFraction
+							geminiFlashCount++
+						} else if strings.Contains(text, "gemini") {
+							geminiProFraction += m.RemainingFraction
+							geminiProCount++
+						} else if strings.Contains(text, "claude") || strings.Contains(text, "anthropic") || strings.Contains(text, "gpt") || strings.Contains(text, "openai") {
+							claudeGPTFraction += m.RemainingFraction
+							claudeGPTCount++
+						}
+					}
+
+					var groups []map[string]interface{}
+					if claudeGPTCount > 0 {
+						rem := claudeGPTFraction / float64(claudeGPTCount)
+						groups = append(groups, map[string]interface{}{
+							"groupKey": "claude_gpt",
+							"displayName": "Claude + GPT",
+							"remainingPercent": math.Round(rem * 100),
+							"isExhausted": rem <= 0,
+							"color": "#D97757",
+						})
+					}
+					if geminiProCount > 0 {
+						rem := geminiProFraction / float64(geminiProCount)
+						groups = append(groups, map[string]interface{}{
+							"groupKey": "gemini_pro",
+							"displayName": "Gemini Pro",
+							"remainingPercent": math.Round(rem * 100),
+							"isExhausted": rem <= 0,
+							"color": "#10B981",
+						})
+					}
+					if geminiFlashCount > 0 {
+						rem := geminiFlashFraction / float64(geminiFlashCount)
+						groups = append(groups, map[string]interface{}{
+							"groupKey": "gemini_flash",
+							"displayName": "Gemini Flash",
+							"remainingPercent": math.Round(rem * 100),
+							"isExhausted": rem <= 0,
+							"color": "#3B82F6",
+						})
+					}
+
+					var aiCredits []map[string]interface{}
+					if aiCreditsJSON != "" {
+						json.Unmarshal([]byte(aiCreditsJSON), &aiCredits)
+					}
+
+					items = append(items, map[string]interface{}{
+						"id": id,
+						"provider": "antigravity",
+						"accountId": accID,
+						"email": email,
+						"capturedAt": capturedAt,
+						"planName": planName,
+						"groups": groups,
+						"captureMethod": captureMethod,
+						"captureSource": captureSource,
+						"aiCredits": aiCredits,
+					})
+				}
+			}
+		}
+	}
+
+	// 2. Cursor Snapshots
+	if provider == "" || provider == "cursor" {
+		var query string
+		var args []interface{}
+		if accountID > 0 {
+			query = `SELECT id, COALESCE(account_id,0), COALESCE(email,''), usage_pct, plan_type, captured_at, capture_method, capture_source
+				FROM cursor_snapshots WHERE account_id = ?
+				ORDER BY captured_at DESC LIMIT ?`
+			args = []interface{}{accountID, limit}
+		} else {
+			query = `SELECT id, COALESCE(account_id,0), COALESCE(email,''), usage_pct, plan_type, captured_at, capture_method, capture_source
+				FROM cursor_snapshots ORDER BY captured_at DESC LIMIT ?`
+			args = []interface{}{limit}
+		}
+
+		rows, err := s.db.Query(query, args...)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var id, accID int64
+				var email, planType, capturedAtStr, captureMethod, captureSource string
+				var usagePct float64
+				if err := rows.Scan(&id, &accID, &email, &usagePct, &planType, &capturedAtStr, &captureMethod, &captureSource); err == nil {
+					capturedAt, _ := time.Parse(time.RFC3339, capturedAtStr)
+					remainingPct := 100.0 - usagePct
+					if remainingPct < 0 {
+						remainingPct = 0
+					}
+
+					groups := []map[string]interface{}{
+						{
+							"groupKey": "cursor",
+							"displayName": "Cursor Quota",
+							"remainingPercent": math.Round(remainingPct),
+							"isExhausted": remainingPct <= 0,
+							"color": "#00E6FF",
+						},
+					}
+
+					items = append(items, map[string]interface{}{
+						"id": id,
+						"provider": "cursor",
+						"accountId": accID,
+						"email": email,
+						"capturedAt": capturedAt,
+						"planName": "Cursor " + planType,
+						"groups": groups,
+						"captureMethod": captureMethod,
+						"captureSource": captureSource,
+					})
+				}
+			}
+		}
+	}
+
+	// 3. Codex Snapshots
+	if provider == "" || provider == "codex" {
+		var query string
+		var args []interface{}
+		if accountID > 0 {
+			query = `SELECT id, COALESCE(owner_account_id,0), COALESCE(email,''), five_hour_pct, seven_day_pct, plan_type, captured_at, capture_method, capture_source
+				FROM codex_snapshots WHERE owner_account_id = ?
+				ORDER BY captured_at DESC LIMIT ?`
+			args = []interface{}{accountID, limit}
+		} else {
+			query = `SELECT id, COALESCE(owner_account_id,0), COALESCE(email,''), five_hour_pct, seven_day_pct, plan_type, captured_at, capture_method, capture_source
+				FROM codex_snapshots ORDER BY captured_at DESC LIMIT ?`
+			args = []interface{}{limit}
+		}
+
+		rows, err := s.db.Query(query, args...)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var id, accID int64
+				var email, planType, capturedAtStr, captureMethod, captureSource string
+				var fiveHourPct float64
+				var sevenDayPct sql.NullFloat64
+				if err := rows.Scan(&id, &accID, &email, &fiveHourPct, &sevenDayPct, &planType, &capturedAtStr, &captureMethod, &captureSource); err == nil {
+					capturedAt, _ := time.Parse(time.RFC3339, capturedAtStr)
+					
+					fiveHourRemaining := 100.0 - fiveHourPct
+					if fiveHourRemaining < 0 {
+						fiveHourRemaining = 0
+					}
+
+					groups := []map[string]interface{}{
+						{
+							"groupKey": "codex_5h",
+							"displayName": "Codex 5-Hour",
+							"remainingPercent": math.Round(fiveHourRemaining),
+							"isExhausted": fiveHourRemaining <= 0,
+							"color": "#9B51E0",
+						},
+					}
+
+					if sevenDayPct.Valid {
+						sevenDayRemaining := 100.0 - sevenDayPct.Float64
+						if sevenDayRemaining < 0 {
+							sevenDayRemaining = 0
+						}
+						groups = append(groups, map[string]interface{}{
+							"groupKey": "codex_7d",
+							"displayName": "Codex 7-Day",
+							"remainingPercent": math.Round(sevenDayRemaining),
+							"isExhausted": sevenDayRemaining <= 0,
+							"color": "#BB6BD9",
+						})
+					}
+
+					items = append(items, map[string]interface{}{
+						"id": id,
+						"provider": "codex",
+						"accountId": accID,
+						"email": email,
+						"capturedAt": capturedAt,
+						"planName": planType,
+						"groups": groups,
+						"captureMethod": captureMethod,
+						"captureSource": captureSource,
+					})
+				}
+			}
+		}
+	}
+
+	// 4. Copilot Snapshots
+	if provider == "" || provider == "copilot" {
+		var query string
+		var args []interface{}
+		if accountID > 0 {
+			query = `SELECT id, COALESCE(account_id,0), COALESCE(email,''), plan, premium_pct, captured_at, capture_method, capture_source
+				FROM copilot_snapshots WHERE account_id = ?
+				ORDER BY captured_at DESC LIMIT ?`
+			args = []interface{}{accountID, limit}
+		} else {
+			query = `SELECT id, COALESCE(account_id,0), COALESCE(email,''), plan, premium_pct, captured_at, capture_method, capture_source
+				FROM copilot_snapshots ORDER BY captured_at DESC LIMIT ?`
+			args = []interface{}{limit}
+		}
+
+		rows, err := s.db.Query(query, args...)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var id, accID int64
+				var email, plan, capturedAtStr, captureMethod, captureSource string
+				var premiumPct float64
+				if err := rows.Scan(&id, &accID, &email, &plan, &premiumPct, &capturedAtStr, &captureMethod, &captureSource); err == nil {
+					capturedAt, _ := time.Parse(time.RFC3339, capturedAtStr)
+					remainingPct := 100.0 - premiumPct
+					if remainingPct < 0 {
+						remainingPct = 0
+					}
+
+					groups := []map[string]interface{}{
+						{
+							"groupKey": "copilot",
+							"displayName": "Copilot Premium",
+							"remainingPercent": math.Round(remainingPct),
+							"isExhausted": remainingPct <= 0,
+							"color": "#2EA44F",
+						},
+					}
+
+					items = append(items, map[string]interface{}{
+						"id": id,
+						"provider": "copilot",
+						"accountId": accID,
+						"email": email,
+						"capturedAt": capturedAt,
+						"planName": "Copilot " + plan,
+						"groups": groups,
+						"captureMethod": captureMethod,
+						"captureSource": captureSource,
+					})
+				}
+			}
+		}
+	}
+
+	// Sort chronological items: newest first
+	sort.Slice(items, func(i, j int) bool {
+		tI := items[i]["capturedAt"].(time.Time)
+		tJ := items[j]["capturedAt"].(time.Time)
+		return tI.After(tJ)
+	})
+
+	// Slice to limit
+	if len(items) > limit {
+		items = items[:limit]
+	}
+
+	return items, nil
 }
