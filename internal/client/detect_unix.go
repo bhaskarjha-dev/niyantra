@@ -81,7 +81,10 @@ func parsePSLine(line string) (*processInfo, error) {
 	return &processInfo{
 		PID:                 pid,
 		CSRFToken:           parseFlag(cmdLine, "--csrf_token"),
+		ExtCSRFToken:        parseFlag(cmdLine, "--extension_server_csrf_token"),
 		ExtensionServerPort: parseFlagInt(cmdLine, "--extension_server_port"),
+		HTTPSServerPort:     parseFlagInt(cmdLine, "--https_server_port"),
+		LSPPort:             parseFlagInt(cmdLine, "--lsp_port"),
 		CommandLine:         cmdLine,
 	}, nil
 }

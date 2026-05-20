@@ -12,6 +12,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Plugin discovery rejects oversized manifests, manifest symlinks, and entry points resolving outside the plugin directory.
 
 ### Fixed
+- **Antigravity V2 multi-process detection** — complete overhaul of LS detection for the new Antigravity stack (Main, IDE Hub, IDE Workspace). Three bugs resolved:
+  - **Context cancel race condition** — `cancel()` was called after `Do()` but before `ReadAll()`, killing the HTTP connection mid-read. Moved `cancel()` after body is fully consumed.
+  - **Port selection/CSRF mismatch** — blind netstat port scanning could connect to the extension server port (which uses `--extension_server_csrf_token`) with the wrong CSRF token (`--csrf_token`). Now uses a 3-strategy prioritized probing: HTTPS port → extension server port (with correct CSRF) → netstat fallback.
+  - **Stale account after IDE account switch** — the old process-level dedup preferred workspace processes (which keep the old account after a switch) over hub processes (which have the new account). Replaced with instance-level dedup in FetchQuotas: hub connections are processed first, and once a tool instance returns data, subsequent processes from the same instance are skipped.
 - Schema v21 repairs legacy sentinel/dangling references and rebuilds affected tables with nullable FK-backed relationships.
 - Advisor output ranks accounts when no current account is supplied and only gives switch guidance with explicit current-account context.
 - Reset-time elapsed no longer converts exhausted quotas into observed availability; estimated/unknown data is labeled with quality metadata.

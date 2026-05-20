@@ -27,7 +27,7 @@ func (c *Client) tryPort(ctx context.Context, port int, scheme, csrfToken string
 	base := fmt.Sprintf("%s://127.0.0.1:%d", scheme, port)
 	probe := base + "/exa.language_server_pb.LanguageServerService/GetUnleashData"
 
-	probeCtx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
+	probeCtx, cancel := context.WithTimeout(ctx, 2000*time.Millisecond)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(probeCtx, http.MethodPost, probe, strings.NewReader(`{"wrapper_data":{}}`))

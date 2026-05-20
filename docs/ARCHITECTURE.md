@@ -59,36 +59,73 @@ cmd/niyantra/main.go
 
 ## 1. internal/client/ — Antigravity Language Server Client (Antigravity v2.0)
 
-Detects running Antigravity language servers concurrently, queries active accounts in parallel, and deduplicates by account email.
+Detects running Antigravity language servers, queries active accounts, and deduplicates results by tool instance and account email.
 
-### Key Antigravity v2.0 Architecture Upgrades:
-- **Multi-Account Concurrent Capturing**: Interrogates all active local language server endpoints concurrently using Go routines with a semaphore-controlled limit to prevent socket exhaustion.
-- **Connect RPC Client Logic**: Handles standard local protobuf Connect RPC APIs over HTTP to securely retrieve tokenized session statuses.
-- **Tiered Process Priority Heuristic**: Filters and ranks discovered local processes to distinguish true Language Server instances (RPC Servers, Rank >= 10) from lightweight terminal CLI or auxiliary processes (Rank < 10) by inspecting startup arguments, port allocations, and process paths.
-- **Protobuf Semantics & Safe Aggregates**: Correctly handles protobuf pointer semantics (`*float64` `remainingFraction`) to distinguish between actual 0% (exhausted) and null/missing quotas.
+### Antigravity V2 Multi-Process Architecture
 
-Detection strategy (platform-specific):
+With the Antigravity V2 overhaul (May 2026), the stack split into separate products that run concurrently:
 
-| Platform | Method | Fallback 1 | Fallback 2 |
-|----------|--------|-----------|-----------| 
-| Windows | CIM (Win32_Process with -Filter) | Get-Process -match | WMIC |
-| macOS/Linux | ps aux grep | - | - |
+| Product | Tool Signature | Process Role | Account Auth |
+|---------|---------------|--------------|--------------|
+| Antigravity Main (V2) | `main\|default\|antigravity` | Standalone agent manager | Own Google account |
+| Antigravity IDE — Hub | `ide\|antigravity-ide\|default` | Extension host, manages auth | **Current** IDE account |
+| Antigravity IDE — Workspace | `ide\|antigravity-ide\|default` | Per-workspace LS, serves RPC | Account at spawn time (may be stale) |
+| Antigravity CLI | `main\|default\|default` | CLI sessions | Same as Main |
 
-Detection flow:
-1. Find all Antigravity processes and rank them using a tiered priority heuristic. Ignored processes (e.g. lightweight terminal CLI client) rank < 10. True RPC servers rank >= 10.
-2. For each ranked process, extract its CSRF token from process arguments.
-3. Discover listening TCP ports from --port flag or via lsof/ss/netstat.
-4. Validate active endpoints via verifyEndpoint.
-5. Query all active language servers concurrently via HTTP POST to GetUserStatus, pruning dead sockets dynamically and deduplicating by account email.
-6. If no active local servers are running, fall back to CLI Solo Mode: read cached browser OAuth credentials from ~/.gemini/oauth_creds.json, perform automatic token refresh, and directly query Google's Cloud Code Developer Assistance API endpoints (loadCodeAssist and retrieveUserQuota).
-7. UI integration maintains absolute state parity: the dashboard reloads the entire `/api/status` state upon capture completion rather than passing partial Antigravity snapshots. This prevents the disappearing-providers UI bug and preserves multi-account toast indicators across switches.
+**Critical insight:** When the user switches accounts in the IDE, the **hub** process gets the new account immediately, but the **workspace** process keeps running with the old account's auth until restarted. This means hub and workspace processes from the same IDE instance can return **different accounts**.
 
-Key types:
-- Snapshot — captured quota data with provenance fields
-- ModelQuota — per-model `*float64` remainingFraction (protobuf semantics: nil=missing, 0=exhausted), resetTime, label
-- GroupedQuota — logical group (claude_gpt, gemini_pro, gemini_flash, unknown)
+### Detection Flow
 
-Data integrity:
+Detection uses platform-specific process scanning with cascading fallbacks:
+
+| Platform | Primary | Fallback 1 | Fallback 2 |
+|----------|---------|-----------|-----------|
+| Windows | CIM (Win32_Process) | Get-Process -match | WMIC |
+| macOS/Linux | ps aux grep | — | — |
+
+Each detected process has its metadata extracted from command-line flags:
+
+```
+processInfo {
+    PID, CSRFToken, ExtCSRFToken, ExtensionServerPort,
+    HTTPSServerPort, LSPPort, CommandLine
+}
+```
+
+### Port Probing (3 strategies, prioritized)
+
+For each detected process, the client attempts connection in this order:
+
+1. **HTTPS server port** (`--https_server_port`) with `--csrf_token` — primary RPC endpoint for workspace processes
+2. **Extension server port** (`--extension_server_port`) with `--extension_server_csrf_token` — only endpoint for hub processes; uses a **separate CSRF token**
+3. **Netstat fallback** — discover all listening TCP ports, exclude already-tried ports, probe with main CSRF token
+
+Each port is probed by sending a lightweight Connect RPC request to `GetUnleashData`. A response of HTTP 200 or 401 confirms the port serves a valid Connect RPC service. Probe timeout: 2000ms (generous for busy workspace LS processes that are actively serving the IDE).
+
+### Instance-Level Deduplication (FetchQuotas)
+
+**Why NOT process-level dedup:** We cannot discard any process before querying it because hub and workspace may hold different (current vs stale) accounts. Instead, we query ALL processes and deduplicate at the result level.
+
+**FetchQuotas dedup strategy:**
+1. Sort connections: **hub processes first**, then workspace processes. The hub always has the current account after an account switch.
+2. Track `seenInstances` by tool signature. Once a tool instance (e.g., `ide|antigravity-ide|default`) returns a result, skip subsequent connections from the same instance.
+3. Track `seenEmails`. If two different tool instances return the same email, only one result is kept.
+
+This ensures: after an account switch, the hub's **current** account is captured and the workspace's **stale** account is discarded.
+
+### Context Lifecycle in FetchQuotas
+
+Each connection gets a 12-second context timeout. **Critical:** `cancel()` must be called **after** the response body is fully read. Calling it after `Do()` but before `ReadAll()` causes a race condition where the canceled context kills the HTTP connection mid-read, producing `"context canceled"` errors on the body read.
+
+### Key Types
+
+- **Snapshot** — captured quota data with provenance fields
+- **ModelQuota** — per-model `*float64` remainingFraction (protobuf semantics: nil=missing, 0=exhausted), resetTime, label
+- **GroupedQuota** — logical group (claude_gpt, gemini_unified, unknown)
+- **connection** — verified endpoint with `ToolSignature` and `IsHub` for instance-level dedup
+
+### Data Integrity
+
 - `remainingFraction` uses `*float64` to distinguish protobuf zero (0% = exhausted) from missing/null
 - AI Credits (`availableCredits`, `promptCredits`, `flowCredits`) extracted from `GetUserStatus` API and stored in `ai_credits_json`
 - LS payload uses `ideName: "antigravity"` (not `windsurf`) for correct data matching
@@ -229,16 +266,29 @@ Stack: Go embed.FS + TypeScript (strict mode, 34 modules) bundled via esbuild in
 
 ## Data Flow
 
-### Snap Flow (1 network call, full provenance)
+### Snap Flow (multi-process detection, instance-level dedup)
 
 ```
 User invokes "snap" (CLI or UI)
   |
   v
-client.FetchQuotas(ctx)                <-- 1 HTTP POST to localhost (LS RPC)
+client.Detect(ctx)                     <-- scan processes, 3-strategy port probing
+  |
+  +-- detectProcesses(ctx)             <-- platform-specific (CIM/ps aux)
+  +-- extract: CSRFToken, ExtCSRFToken, HTTPSServerPort, ExtensionServerPort
+  +-- per process: try HTTPS port → ext port → netstat fallback
+  +-- tag each connection: ToolSignature, IsHub
   |
   v
-Parse response: extract models (*float64 remainingFraction), email, plan, AI credits
+client.FetchQuotas(ctx)                <-- HTTP POST to each verified endpoint
+  |
+  +-- sort: hub connections first      <-- hub has current account after switch
+  +-- dedup by seenInstances           <-- skip workspace if hub already returned
+  +-- dedup by seenEmails              <-- skip same email across tool instances
+  +-- cancel() AFTER ReadAll()         <-- prevent context-cancel race
+  |
+  v
+Parse responses: extract models (*float64 remainingFraction), email, plan, AI credits
   |
   v
 Tag provenance:
@@ -323,7 +373,7 @@ Return anomalies with severity (warning: 2-3σ, critical: >3σ)
 - Backup redaction: CLI and dashboard backups redact sensitive config values from the copied SQLite file
 - No outbound network in core status/read flows; opt-in provider polling uses HTTPS to provider APIs
 - Sensitive config masking: `dashboard_api_token`, `copilot_pat`, `smtp_user`, `smtp_pass`, `webhook_secret`, `webpush_vapid_private`, provider secrets, and plugin secret-like keys are returned as `"configured"` in API responses
-- CSRF token: Extracted from process arguments, used for same-request auth to local LS
+- CSRF tokens: Each LS process has two tokens — `--csrf_token` (main HTTPS server) and `--extension_server_csrf_token` (extension server). Each port must use its matching token for authentication.
 - TLS: Self-signed cert from language server, InsecureSkipVerify: true (localhost only)
 - Optional HTTP basic auth: can be layered on top of bearer-token auth via `--auth user:pass`
 - Environment variables: NIYANTRA_PORT, NIYANTRA_BIND, NIYANTRA_DB, NIYANTRA_AUTH (CLI flags take precedence)

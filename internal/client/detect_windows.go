@@ -66,7 +66,10 @@ func (c *Client) findProcessesViaCIM(ctx context.Context) ([]*processInfo, error
 		p := &processInfo{
 			PID:                 e.ProcessId,
 			CSRFToken:           parseFlag(e.CommandLine, "--csrf_token"),
+			ExtCSRFToken:        parseFlag(e.CommandLine, "--extension_server_csrf_token"),
 			ExtensionServerPort: parseFlagInt(e.CommandLine, "--extension_server_port"),
+			HTTPSServerPort:     parseFlagInt(e.CommandLine, "--https_server_port"),
+			LSPPort:             parseFlagInt(e.CommandLine, "--lsp_port"),
 			CommandLine:         e.CommandLine,
 		}
 
@@ -124,7 +127,10 @@ func (c *Client) findProcessesViaGetProcess(ctx context.Context) ([]*processInfo
 		p := &processInfo{
 			PID:                 r.Id,
 			CSRFToken:           parseFlag(cl, "--csrf_token"),
+			ExtCSRFToken:        parseFlag(cl, "--extension_server_csrf_token"),
 			ExtensionServerPort: parseFlagInt(cl, "--extension_server_port"),
+			HTTPSServerPort:     parseFlagInt(cl, "--https_server_port"),
+			LSPPort:             parseFlagInt(cl, "--lsp_port"),
 			CommandLine:         cl,
 		}
 
@@ -175,7 +181,10 @@ func (c *Client) findProcessesViaWMIC(ctx context.Context) ([]*processInfo, erro
 		p := &processInfo{
 			PID:                 pid,
 			CSRFToken:           parseFlag(cl, "--csrf_token"),
+			ExtCSRFToken:        parseFlag(cl, "--extension_server_csrf_token"),
 			ExtensionServerPort: parseFlagInt(cl, "--extension_server_port"),
+			HTTPSServerPort:     parseFlagInt(cl, "--https_server_port"),
+			LSPPort:             parseFlagInt(cl, "--lsp_port"),
 			CommandLine:         cl,
 		}
 
