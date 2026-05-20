@@ -32,15 +32,9 @@ func DefaultQuotaCeilings() map[string]GroupCeiling {
 			TokensPerCycle:     5_000_000,
 			CycleDurationHours: 5,
 		},
-		"gemini_pro": {
-			GroupKey:           "gemini_pro",
-			DisplayName:        "Gemini Pro",
-			TokensPerCycle:     3_000_000,
-			CycleDurationHours: 5,
-		},
-		"gemini_flash": {
-			GroupKey:           "gemini_flash",
-			DisplayName:        "Gemini Flash",
+		"gemini_unified": {
+			GroupKey:           "gemini_unified",
+			DisplayName:        "Gemini Pool",
 			TokensPerCycle:     10_000_000,
 			CycleDurationHours: 5,
 		},

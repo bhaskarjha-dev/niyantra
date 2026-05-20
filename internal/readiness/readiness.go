@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/bhaskarjha-com/niyantra/internal/client"
@@ -18,6 +19,7 @@ type AccountReadiness struct {
 	PlanTier            string            `json:"planTier"`
 	OverageCredits      float64           `json:"overageCredits"`
 	HasClaimedBonus2026 int               `json:"hasClaimedBonus2026"`
+	Provider            string            `json:"provider"`
 	Notes               string            `json:"notes"`
 	Tags                string            `json:"tags"`
 	PinnedGroup         string            `json:"pinnedGroup"`
@@ -106,8 +108,107 @@ func Calculate(snapshots []*client.Snapshot, threshold float64) []AccountReadine
 		// Per-model details + build corrected models for group computation
 		// Bug fix: GroupModels must use reset-time-corrected values, not raw snapshot data.
 		// Without this, group-level columns (Claude+GPT) show stale values even after reset.
-		correctedModels := make([]client.ModelQuota, 0, len(snap.Models))
+		// Dynamic migration of snapshot models to ensure all 4 contemporary Google Gemini models are displayed
+		var upgradedModels []client.ModelQuota
+		var otherModels []client.ModelQuota
+		var geminiModels []client.ModelQuota
 		for _, m := range snap.Models {
+			if client.GroupForModel(m.ModelID, m.Label) == client.GroupGeminiUnified {
+				geminiModels = append(geminiModels, m)
+			} else {
+				otherModels = append(otherModels, m)
+			}
+		}
+
+		upgradedModels = append(upgradedModels, otherModels...)
+
+		if len(geminiModels) > 0 {
+			var refFlash, refPro *client.ModelQuota
+			for idx := range geminiModels {
+				m := &geminiModels[idx]
+				if strings.Contains(strings.ToLower(m.Label), "flash") || m.ModelID == "MODEL_PLACEHOLDER_M133" || m.ModelID == "MODEL_PLACEHOLDER_M20" || m.ModelID == "gemini-2.5-flash" {
+					if refFlash == nil || m.ModelID == "MODEL_PLACEHOLDER_M133" {
+						refFlash = m
+					}
+				}
+				if strings.Contains(strings.ToLower(m.Label), "pro") || m.ModelID == "MODEL_PLACEHOLDER_M16" || m.ModelID == "MODEL_PLACEHOLDER_M36" || m.ModelID == "gemini-3.1-pro" || m.ModelID == "gemini-pro" {
+					if refPro == nil || m.ModelID == "MODEL_PLACEHOLDER_M16" {
+						refPro = m
+					}
+				}
+			}
+
+			if refFlash == nil && refPro != nil {
+				clone := *refPro
+				refFlash = &clone
+			} else if refFlash == nil {
+				refFlash = &client.ModelQuota{
+					RemainingPercent: 100.0,
+				}
+			}
+			if refPro == nil && refFlash != nil {
+				clone := *refFlash
+				refPro = &clone
+			} else if refPro == nil {
+				refPro = &client.ModelQuota{
+					RemainingPercent: 100.0,
+				}
+			}
+
+			// Initialize the 4 contemporary models from reference/synthesized objects
+			m133 := *refFlash
+			m133.ModelID = "MODEL_PLACEHOLDER_M133"
+			m133.Label = "Gemini 3.5 Flash (High)"
+
+			m20 := *refFlash
+			m20.ModelID = "MODEL_PLACEHOLDER_M20"
+			m20.Label = "Gemini 3.5 Flash (Medium)"
+
+			m16 := *refPro
+			m16.ModelID = "MODEL_PLACEHOLDER_M16"
+			m16.Label = "Gemini 3.1 Pro (High)"
+
+			m36 := *refPro
+			m36.ModelID = "MODEL_PLACEHOLDER_M36"
+			m36.Label = "Gemini 3.1 Pro (Low)"
+
+			// Restore specific values if they were present
+			for _, m := range geminiModels {
+				switch m.ModelID {
+				case "MODEL_PLACEHOLDER_M133":
+					m133 = m
+				case "MODEL_PLACEHOLDER_M20":
+					m20 = m
+				case "MODEL_PLACEHOLDER_M16":
+					m16 = m
+				case "MODEL_PLACEHOLDER_M36":
+					m36 = m
+				default:
+					if m.Label == "Gemini 3.5 Flash (High)" || m.Label == "Gemini 3 Flash (High)" {
+						m133 = m
+						m133.ModelID = "MODEL_PLACEHOLDER_M133"
+						m133.Label = "Gemini 3.5 Flash (High)"
+					} else if m.Label == "Gemini 3.5 Flash (Medium)" || m.Label == "Gemini 3 Flash (Medium)" {
+						m20 = m
+						m20.ModelID = "MODEL_PLACEHOLDER_M20"
+						m20.Label = "Gemini 3.5 Flash (Medium)"
+					} else if m.Label == "Gemini 3.1 Pro (High)" {
+						m16 = m
+						m16.ModelID = "MODEL_PLACEHOLDER_M16"
+						m16.Label = "Gemini 3.1 Pro (High)"
+					} else if m.Label == "Gemini 3.1 Pro (Low)" {
+						m36 = m
+						m36.ModelID = "MODEL_PLACEHOLDER_M36"
+						m36.Label = "Gemini 3.1 Pro (Low)"
+					}
+				}
+			}
+
+			upgradedModels = append(upgradedModels, m133, m20, m16, m36)
+		}
+
+		correctedModels := make([]client.ModelQuota, 0, len(upgradedModels))
+		for _, m := range upgradedModels {
 			m = client.ApplyResetInference(m, now)
 			resetSec := 0.0
 			if m.ResetTime != nil {

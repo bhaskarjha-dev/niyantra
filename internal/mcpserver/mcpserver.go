@@ -78,7 +78,7 @@ func New(s *store.Store, t *tracker.Tracker, logger *slog.Logger, version string
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "best_model",
-		Description: "Recommend the best model to use in a quota group based on remaining quota, consumption rate, and time until reset. Groups: 'claude_gpt' (Claude + GPT models), 'gemini_pro' (Gemini Pro), 'gemini_flash' (Gemini Flash).",
+		Description: "Recommend the best model to use in a quota group based on remaining quota, consumption rate, and time until reset. Groups: 'claude_gpt' (Claude + GPT models), 'gemini_unified' (Gemini Pool).",
 	}, m.handleBestModel)
 
 	mcp.AddTool(srv, &mcp.Tool{

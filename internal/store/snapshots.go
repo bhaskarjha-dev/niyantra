@@ -464,7 +464,7 @@ func (s *Store) RecentCodexSnapshots(window time.Duration) ([]*CodexSnapshot, er
 }
 
 // UnifiedHistory returns merged chronological history from all snapshot tables.
-func (s *Store) UnifiedHistory(accountID int64, limit int) ([]map[string]interface{}, error) {
+func (s *Store) UnifiedHistory(accountID int64, limit int, providerFilter string, sinceStr string, untilStr string) ([]map[string]interface{}, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -486,21 +486,34 @@ func (s *Store) UnifiedHistory(accountID int64, limit int) ([]map[string]interfa
 	}
 
 	// 1. Antigravity Snapshots
-	if provider == "" || provider == "antigravity" {
+	if (accountID == 0 && (providerFilter == "" || providerFilter == "all" || providerFilter == "antigravity")) || (accountID > 0 && provider == "antigravity") {
 		var query string
 		var args []interface{}
+		var conditions []string
+
 		if accountID > 0 {
-			query = `SELECT id, account_id, captured_at, email, plan_name,
-				models_json, COALESCE(capture_method,'manual'), COALESCE(capture_source,'cli'), COALESCE(ai_credits_json,'')
-				FROM snapshots WHERE account_id = ?
-				ORDER BY captured_at DESC LIMIT ?`
-			args = []interface{}{accountID, limit}
-		} else {
-			query = `SELECT id, account_id, captured_at, email, plan_name,
-				models_json, COALESCE(capture_method,'manual'), COALESCE(capture_source,'cli'), COALESCE(ai_credits_json,'')
-				FROM snapshots ORDER BY captured_at DESC LIMIT ?`
-			args = []interface{}{limit}
+			conditions = append(conditions, "account_id = ?")
+			args = append(args, accountID)
 		}
+		if sinceStr != "" {
+			conditions = append(conditions, "datetime(captured_at) >= datetime(?)")
+			args = append(args, sinceStr)
+		}
+		if untilStr != "" {
+			conditions = append(conditions, "datetime(captured_at) <= datetime(?)")
+			args = append(args, untilStr)
+		}
+
+		whereClause := ""
+		if len(conditions) > 0 {
+			whereClause = "WHERE " + strings.Join(conditions, " AND ")
+		}
+
+		query = fmt.Sprintf(`SELECT id, account_id, captured_at, email, plan_name,
+			models_json, COALESCE(capture_method,'manual'), COALESCE(capture_source,'cli'), COALESCE(ai_credits_json,'')
+			FROM snapshots %s
+			ORDER BY captured_at DESC LIMIT ?`, whereClause)
+		args = append(args, limit)
 
 		rows, err := s.db.Query(query, args...)
 		if err == nil {
@@ -522,17 +535,18 @@ func (s *Store) UnifiedHistory(accountID int64, limit int) ([]map[string]interfa
 					json.Unmarshal([]byte(modelsJSON), &models)
 
 					// Group models
-					var claudeGPTFraction, geminiProFraction, geminiFlashFraction float64
-					var claudeGPTCount, geminiProCount, geminiFlashCount int
+					var claudeGPTFraction, geminiUnifiedFraction float64
+					var claudeGPTCount, geminiUnifiedCount int
 					
 					for _, m := range models {
 						text := strings.ToLower(m.ModelID + " " + m.Label)
-						if strings.Contains(text, "gemini") && strings.Contains(text, "flash") {
-							geminiFlashFraction += m.RemainingFraction
-							geminiFlashCount++
-						} else if strings.Contains(text, "gemini") {
-							geminiProFraction += m.RemainingFraction
-							geminiProCount++
+						if strings.Contains(text, "gemini") ||
+							strings.Contains(text, "model_placeholder_m133") ||
+							strings.Contains(text, "model_placeholder_m20") ||
+							strings.Contains(text, "model_placeholder_m16") ||
+							strings.Contains(text, "model_placeholder_m36") {
+							geminiUnifiedFraction += m.RemainingFraction
+							geminiUnifiedCount++
 						} else if strings.Contains(text, "claude") || strings.Contains(text, "anthropic") || strings.Contains(text, "gpt") || strings.Contains(text, "openai") {
 							claudeGPTFraction += m.RemainingFraction
 							claudeGPTCount++
@@ -550,21 +564,11 @@ func (s *Store) UnifiedHistory(accountID int64, limit int) ([]map[string]interfa
 							"color": "#D97757",
 						})
 					}
-					if geminiProCount > 0 {
-						rem := geminiProFraction / float64(geminiProCount)
+					if geminiUnifiedCount > 0 {
+						rem := geminiUnifiedFraction / float64(geminiUnifiedCount)
 						groups = append(groups, map[string]interface{}{
-							"groupKey": "gemini_pro",
-							"displayName": "Gemini Pro",
-							"remainingPercent": math.Round(rem * 100),
-							"isExhausted": rem <= 0,
-							"color": "#10B981",
-						})
-					}
-					if geminiFlashCount > 0 {
-						rem := geminiFlashFraction / float64(geminiFlashCount)
-						groups = append(groups, map[string]interface{}{
-							"groupKey": "gemini_flash",
-							"displayName": "Gemini Flash",
+							"groupKey": "gemini_unified",
+							"displayName": "Gemini Pool",
 							"remainingPercent": math.Round(rem * 100),
 							"isExhausted": rem <= 0,
 							"color": "#3B82F6",
@@ -594,19 +598,33 @@ func (s *Store) UnifiedHistory(accountID int64, limit int) ([]map[string]interfa
 	}
 
 	// 2. Cursor Snapshots
-	if provider == "" || provider == "cursor" {
+	if (accountID == 0 && (providerFilter == "" || providerFilter == "all" || providerFilter == "cursor")) || (accountID > 0 && provider == "cursor") {
 		var query string
 		var args []interface{}
+		var conditions []string
+
 		if accountID > 0 {
-			query = `SELECT id, COALESCE(account_id,0), COALESCE(email,''), usage_pct, plan_type, captured_at, capture_method, capture_source
-				FROM cursor_snapshots WHERE account_id = ?
-				ORDER BY captured_at DESC LIMIT ?`
-			args = []interface{}{accountID, limit}
-		} else {
-			query = `SELECT id, COALESCE(account_id,0), COALESCE(email,''), usage_pct, plan_type, captured_at, capture_method, capture_source
-				FROM cursor_snapshots ORDER BY captured_at DESC LIMIT ?`
-			args = []interface{}{limit}
+			conditions = append(conditions, "account_id = ?")
+			args = append(args, accountID)
 		}
+		if sinceStr != "" {
+			conditions = append(conditions, "datetime(captured_at) >= datetime(?)")
+			args = append(args, sinceStr)
+		}
+		if untilStr != "" {
+			conditions = append(conditions, "datetime(captured_at) <= datetime(?)")
+			args = append(args, untilStr)
+		}
+
+		whereClause := ""
+		if len(conditions) > 0 {
+			whereClause = "WHERE " + strings.Join(conditions, " AND ")
+		}
+
+		query = fmt.Sprintf(`SELECT id, COALESCE(account_id,0), COALESCE(email,''), usage_pct, plan_type, captured_at, capture_method, capture_source
+			FROM cursor_snapshots %s
+			ORDER BY captured_at DESC LIMIT ?`, whereClause)
+		args = append(args, limit)
 
 		rows, err := s.db.Query(query, args...)
 		if err == nil {
@@ -649,19 +667,33 @@ func (s *Store) UnifiedHistory(accountID int64, limit int) ([]map[string]interfa
 	}
 
 	// 3. Codex Snapshots
-	if provider == "" || provider == "codex" {
+	if (accountID == 0 && (providerFilter == "" || providerFilter == "all" || providerFilter == "codex")) || (accountID > 0 && provider == "codex") {
 		var query string
 		var args []interface{}
+		var conditions []string
+
 		if accountID > 0 {
-			query = `SELECT id, COALESCE(owner_account_id,0), COALESCE(email,''), five_hour_pct, seven_day_pct, plan_type, captured_at, capture_method, capture_source
-				FROM codex_snapshots WHERE owner_account_id = ?
-				ORDER BY captured_at DESC LIMIT ?`
-			args = []interface{}{accountID, limit}
-		} else {
-			query = `SELECT id, COALESCE(owner_account_id,0), COALESCE(email,''), five_hour_pct, seven_day_pct, plan_type, captured_at, capture_method, capture_source
-				FROM codex_snapshots ORDER BY captured_at DESC LIMIT ?`
-			args = []interface{}{limit}
+			conditions = append(conditions, "owner_account_id = ?")
+			args = append(args, accountID)
 		}
+		if sinceStr != "" {
+			conditions = append(conditions, "datetime(captured_at) >= datetime(?)")
+			args = append(args, sinceStr)
+		}
+		if untilStr != "" {
+			conditions = append(conditions, "datetime(captured_at) <= datetime(?)")
+			args = append(args, untilStr)
+		}
+
+		whereClause := ""
+		if len(conditions) > 0 {
+			whereClause = "WHERE " + strings.Join(conditions, " AND ")
+		}
+
+		query = fmt.Sprintf(`SELECT id, COALESCE(owner_account_id,0), COALESCE(email,''), five_hour_pct, seven_day_pct, plan_type, captured_at, capture_method, capture_source
+			FROM codex_snapshots %s
+			ORDER BY captured_at DESC LIMIT ?`, whereClause)
+		args = append(args, limit)
 
 		rows, err := s.db.Query(query, args...)
 		if err == nil {
@@ -720,19 +752,33 @@ func (s *Store) UnifiedHistory(accountID int64, limit int) ([]map[string]interfa
 	}
 
 	// 4. Copilot Snapshots
-	if provider == "" || provider == "copilot" {
+	if (accountID == 0 && (providerFilter == "" || providerFilter == "all" || providerFilter == "copilot")) || (accountID > 0 && provider == "copilot") {
 		var query string
 		var args []interface{}
+		var conditions []string
+
 		if accountID > 0 {
-			query = `SELECT id, COALESCE(account_id,0), COALESCE(email,''), plan, premium_pct, captured_at, capture_method, capture_source
-				FROM copilot_snapshots WHERE account_id = ?
-				ORDER BY captured_at DESC LIMIT ?`
-			args = []interface{}{accountID, limit}
-		} else {
-			query = `SELECT id, COALESCE(account_id,0), COALESCE(email,''), plan, premium_pct, captured_at, capture_method, capture_source
-				FROM copilot_snapshots ORDER BY captured_at DESC LIMIT ?`
-			args = []interface{}{limit}
+			conditions = append(conditions, "account_id = ?")
+			args = append(args, accountID)
 		}
+		if sinceStr != "" {
+			conditions = append(conditions, "datetime(captured_at) >= datetime(?)")
+			args = append(args, sinceStr)
+		}
+		if untilStr != "" {
+			conditions = append(conditions, "datetime(captured_at) <= datetime(?)")
+			args = append(args, untilStr)
+		}
+
+		whereClause := ""
+		if len(conditions) > 0 {
+			whereClause = "WHERE " + strings.Join(conditions, " AND ")
+		}
+
+		query = fmt.Sprintf(`SELECT id, COALESCE(account_id,0), COALESCE(email,''), plan, premium_pct, captured_at, capture_method, capture_source
+			FROM copilot_snapshots %s
+			ORDER BY captured_at DESC LIMIT ?`, whereClause)
+		args = append(args, limit)
 
 		rows, err := s.db.Query(query, args...)
 		if err == nil {

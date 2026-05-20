@@ -33,10 +33,8 @@ func simpleAssigner(modelID string) string {
 	switch modelID {
 	case "claude-sonnet-4.6", "claude-opus-4.6", "gpt-4o":
 		return "claude_gpt"
-	case "gemini-3.1-pro":
-		return "gemini_pro"
-	case "gemini-2.5-flash":
-		return "gemini_flash"
+	case "gemini-3.1-pro", "gemini-2.5-flash":
+		return "gemini_unified"
 	default:
 		return "claude_gpt"
 	}
@@ -174,36 +172,34 @@ func TestEstimateGroupCost_FullRemaining(t *testing.T) {
 	}
 }
 
-func TestEstimateGroupCost_GeminiFlash(t *testing.T) {
+func TestEstimateGroupCost_GeminiUnified(t *testing.T) {
 	rate := GroupRate{
-		GroupKey:  "gemini_flash",
+		GroupKey:  "gemini_unified",
 		BurnRate:  0.20,
 		Remaining: 0.30, // 70% consumed
 		HasData:   true,
 	}
 	ceiling := GroupCeiling{
-		GroupKey:           "gemini_flash",
-		DisplayName:        "Gemini Flash",
+		GroupKey:           "gemini_unified",
+		DisplayName:        "Gemini Pool",
 		TokensPerCycle:     10_000_000,
 		CycleDurationHours: 5,
 	}
 
 	est := EstimateGroupCost(rate, ceiling, testPricing(), simpleAssigner)
 
-	// Flash is cheap — cost should be lower than Claude+GPT for same consumption
 	if est.EstCost <= 0 {
 		t.Errorf("EstCost = %v, want > 0", est.EstCost)
 	}
 
-	t.Logf("Gemini Flash: consumed=%.0f%%, tokens=%.0f, cost=%s, hourly=%s",
+	t.Logf("Gemini Unified: consumed=%.0f%%, tokens=%.0f, cost=%s, hourly=%s",
 		est.ConsumedFrac*100, est.EstTokens, est.CostLabel, est.HourlyLabel)
 }
 
 func TestEstimateAccountCost(t *testing.T) {
 	rates := []GroupRate{
 		{GroupKey: "claude_gpt", BurnRate: 0.10, Remaining: 0.60, HasData: true},
-		{GroupKey: "gemini_pro", BurnRate: 0.05, Remaining: 0.80, HasData: true},
-		{GroupKey: "gemini_flash", BurnRate: 0.20, Remaining: 0.30, HasData: true},
+		{GroupKey: "gemini_unified", BurnRate: 0.20, Remaining: 0.30, HasData: true},
 	}
 
 	est := EstimateAccountCost(1, "user@example.com", rates, DefaultQuotaCeilings(), testPricing(), simpleAssigner)
@@ -214,8 +210,8 @@ func TestEstimateAccountCost(t *testing.T) {
 	if est.TotalCost <= 0 {
 		t.Errorf("TotalCost = %v, want > 0", est.TotalCost)
 	}
-	if len(est.Groups) != 3 {
-		t.Errorf("len(Groups) = %d, want 3", len(est.Groups))
+	if len(est.Groups) != 2 {
+		t.Errorf("len(Groups) = %d, want 2", len(est.Groups))
 	}
 	if est.TotalLabel == "" || est.TotalLabel == "$0.00" {
 		t.Errorf("TotalLabel = %q, want non-zero cost", est.TotalLabel)
@@ -262,11 +258,11 @@ func TestFormatCost(t *testing.T) {
 
 func TestDefaultQuotaCeilings(t *testing.T) {
 	c := DefaultQuotaCeilings()
-	if len(c) != 3 {
-		t.Fatalf("DefaultQuotaCeilings() has %d groups, want 3", len(c))
+	if len(c) != 2 {
+		t.Fatalf("DefaultQuotaCeilings() has %d groups, want 2", len(c))
 	}
 
-	for _, key := range []string{"claude_gpt", "gemini_pro", "gemini_flash"} {
+	for _, key := range []string{"claude_gpt", "gemini_unified"} {
 		g, ok := c[key]
 		if !ok {
 			t.Errorf("missing group %q", key)
@@ -286,8 +282,8 @@ func TestParseCeilings_Empty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(c) != 3 {
-		t.Errorf("ParseCeilings('') returned %d ceilings, want 3 (defaults)", len(c))
+	if len(c) != 2 {
+		t.Errorf("ParseCeilings('') returned %d ceilings, want 2 (defaults)", len(c))
 	}
 }
 

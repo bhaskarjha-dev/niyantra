@@ -659,7 +659,7 @@ func TestPinnedGroupPartialUpdate(t *testing.T) {
 	}
 
 	// Pin a group — should preserve notes and tags
-	if err := s.UpdateAccountMeta(accountID, "My notes", "work,dev", "gemini_pro", 0); err != nil {
+	if err := s.UpdateAccountMeta(accountID, "My notes", "work,dev", "gemini_unified", 0); err != nil {
 		t.Fatalf("UpdateAccountMeta pin: %v", err)
 	}
 
@@ -673,18 +673,18 @@ func TestPinnedGroupPartialUpdate(t *testing.T) {
 	if tags != "work,dev" {
 		t.Errorf("pinning should preserve tags, got %q", tags)
 	}
-	if pinned != "gemini_pro" {
-		t.Errorf("expected pinned 'gemini_pro', got %q", pinned)
+	if pinned != "gemini_unified" {
+		t.Errorf("expected pinned 'gemini_unified', got %q", pinned)
 	}
 
 	// Change pin to another group
-	if err := s.UpdateAccountMeta(accountID, "My notes", "work,dev", "gemini_flash", 0); err != nil {
+	if err := s.UpdateAccountMeta(accountID, "My notes", "work,dev", "claude_gpt", 0); err != nil {
 		t.Fatalf("UpdateAccountMeta repin: %v", err)
 	}
 
 	_, _, pinned, _, _ = s.AccountMeta(accountID)
-	if pinned != "gemini_flash" {
-		t.Errorf("expected pinned 'gemini_flash', got %q", pinned)
+	if pinned != "claude_gpt" {
+		t.Errorf("expected pinned 'claude_gpt', got %q", pinned)
 	}
 
 	// Unpin (clear pinned group)
@@ -775,8 +775,8 @@ func TestModelPricingDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetModelPricing: %v", err)
 	}
-	if len(prices) != 6 {
-		t.Fatalf("expected 6 default models, got %d", len(prices))
+	if len(prices) != 10 {
+		t.Fatalf("expected 10 default models, got %d", len(prices))
 	}
 
 	// Verify specific defaults
@@ -813,8 +813,8 @@ func TestModelPricingDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetModelPricing second call: %v", err)
 	}
-	if len(prices2) != 6 {
-		t.Fatalf("expected 6 models on second call, got %d", len(prices2))
+	if len(prices2) != 10 {
+		t.Fatalf("expected 10 models on second call, got %d", len(prices2))
 	}
 }
 

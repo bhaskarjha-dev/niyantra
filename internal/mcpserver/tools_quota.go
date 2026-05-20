@@ -24,7 +24,7 @@ type ModelInput struct {
 
 // GroupInput is the input for best_model.
 type GroupInput struct {
-	Group string `json:"group" jsonschema:"the quota group key: 'claude_gpt', 'gemini_pro', or 'gemini_flash'"`
+	Group string `json:"group" jsonschema:"the quota group key: 'claude_gpt' or 'gemini_unified'"`
 }
 
 // QuotaStatusOutput is the output of quota_status.
@@ -343,7 +343,7 @@ func (m *MCPServer) handleBestModel(_ context.Context, _ *mcp.CallToolRequest, i
 	if group == "" {
 		return nil, BestModelOutput{
 			Found:  false,
-			Reason: "Please specify a group: 'claude_gpt', 'gemini_pro', or 'gemini_flash'.",
+			Reason: "Please specify a group: 'claude_gpt' or 'gemini_unified'.",
 		}, nil
 	}
 	if group == client.GroupUnknown {
@@ -402,7 +402,7 @@ func (m *MCPServer) handleBestModel(_ context.Context, _ *mcp.CallToolRequest, i
 	if len(candidates) == 0 {
 		return nil, BestModelOutput{
 			Found:  false,
-			Reason: fmt.Sprintf("No models found in group '%s'. Available groups: claude_gpt, gemini_pro, gemini_flash.", input.Group),
+			Reason: fmt.Sprintf("No models found in group '%s'. Available groups: claude_gpt, gemini_unified.", input.Group),
 		}, nil
 	}
 

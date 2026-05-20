@@ -33,11 +33,18 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			accounts[i].PlanTier = acc.PlanTier
 			accounts[i].OverageCredits = acc.OverageCredits
 			accounts[i].HasClaimedBonus2026 = acc.HasClaimedBonus2026
+			accounts[i].Provider = acc.Provider
 		}
+	}
+
+	allAccounts, err := s.store.AllAccounts()
+	if err != nil {
+		allAccounts = nil
 	}
 
 	result := map[string]interface{}{
 		"accounts":      accounts,
+		"allAccounts":   allAccounts,
 		"snapshotCount": s.store.SnapshotCount(),
 		"accountCount":  s.store.AccountCount(),
 		"observedAt":    latestObservedAt(snapshots),
@@ -208,6 +215,19 @@ func (s *Server) handleSnap(w http.ResponseWriter, r *http.Request) {
 	// Return updated accounts
 	snapshots, _ := s.store.LatestPerAccount()
 	accounts := readiness.Calculate(snapshots, 0.0)
+	for i := range accounts {
+		acc, err := s.store.GetAccountByID(accounts[i].AccountID)
+		if err == nil {
+			accounts[i].Notes = acc.Notes
+			accounts[i].Tags = acc.Tags
+			accounts[i].PinnedGroup = acc.PinnedGroup
+			accounts[i].CreditRenewalDay = acc.CreditRenewalDay
+			accounts[i].PlanTier = acc.PlanTier
+			accounts[i].OverageCredits = acc.OverageCredits
+			accounts[i].HasClaimedBonus2026 = acc.HasClaimedBonus2026
+			accounts[i].Provider = acc.Provider
+		}
+	}
 
 	firstEmail := ""
 	firstPlan := ""
@@ -221,6 +241,8 @@ func (s *Server) handleSnap(w http.ResponseWriter, r *http.Request) {
 		firstAccountID = captured[0].AccountID
 	}
 
+	allAccounts, _ := s.store.AllAccounts()
+
 	writeJSON(w, map[string]interface{}{
 		"message":       "snapshot captured",
 		"email":         firstEmail,
@@ -229,6 +251,7 @@ func (s *Server) handleSnap(w http.ResponseWriter, r *http.Request) {
 		"accountId":     firstAccountID,
 		"captured":      captured,
 		"accounts":      accounts,
+		"allAccounts":   allAccounts,
 		"accountCount":  s.store.AccountCount(),
 		"snapshotCount": s.store.SnapshotCount(),
 	})
@@ -253,9 +276,13 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		limit = 1000
 	}
 
-	items, err := s.store.UnifiedHistory(accountID, limit)
+	providerFilter := r.URL.Query().Get("provider")
+	sinceStr := r.URL.Query().Get("since")
+	untilStr := r.URL.Query().Get("until")
+
+	items, err := s.store.UnifiedHistory(accountID, limit, providerFilter, sinceStr, untilStr)
 	if err != nil {
-		jsonError(w, "database error", http.StatusInternalServerError)
+		jsonError(w, "database error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 

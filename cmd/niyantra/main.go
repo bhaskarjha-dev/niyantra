@@ -524,14 +524,28 @@ func cmdDemo(logger *slog.Logger, dbPath string, allowPlaintextSecrets bool) {
 					ResetTime:         &resetTime,
 				},
 				{
-					Label:             "Gemini 2.5 Pro",
+					ModelID:           "MODEL_PLACEHOLDER_M133",
+					Label:             "Gemini 3.5 Flash (High)",
+					RemainingFraction: geminiFlashRemaining,
+					ResetTime:         &resetTime3,
+				},
+				{
+					ModelID:           "MODEL_PLACEHOLDER_M20",
+					Label:             "Gemini 3.5 Flash (Medium)",
+					RemainingFraction: geminiFlashRemaining * 0.95,
+					ResetTime:         &resetTime3,
+				},
+				{
+					ModelID:           "MODEL_PLACEHOLDER_M16",
+					Label:             "Gemini 3.1 Pro (High)",
 					RemainingFraction: geminiProRemaining,
 					ResetTime:         &resetTime2,
 				},
 				{
-					Label:             "Gemini 2.5 Flash",
-					RemainingFraction: geminiFlashRemaining,
-					ResetTime:         &resetTime3,
+					ModelID:           "MODEL_PLACEHOLDER_M36",
+					Label:             "Gemini 3.1 Pro (Low)",
+					RemainingFraction: geminiProRemaining * 0.9,
+					ResetTime:         &resetTime2,
 				},
 			}
 

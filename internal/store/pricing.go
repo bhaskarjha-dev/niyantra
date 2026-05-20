@@ -24,6 +24,12 @@ func DefaultModelPricing() []ModelPrice {
 		{ModelID: "gpt-4o", DisplayName: "GPT-4o", Provider: "openai", InputPer1M: 2.50, OutputPer1M: 10.00, CachePer1M: 1.25},
 		{ModelID: "gemini-3.1-pro", DisplayName: "Gemini 3.1 Pro", Provider: "google", InputPer1M: 2.00, OutputPer1M: 12.00, CachePer1M: 0.50},
 		{ModelID: "gemini-2.5-flash", DisplayName: "Gemini 2.5 Flash", Provider: "google", InputPer1M: 0.30, OutputPer1M: 2.50, CachePer1M: 0.075},
+		
+		// Contemporary Google Gemini Models
+		{ModelID: "MODEL_PLACEHOLDER_M133", DisplayName: "Gemini 3.5 Flash (High)", Provider: "google", InputPer1M: 0.30, OutputPer1M: 2.50, CachePer1M: 0.075},
+		{ModelID: "MODEL_PLACEHOLDER_M20", DisplayName: "Gemini 3.5 Flash (Medium)", Provider: "google", InputPer1M: 0.30, OutputPer1M: 2.50, CachePer1M: 0.075},
+		{ModelID: "MODEL_PLACEHOLDER_M16", DisplayName: "Gemini 3.1 Pro (High)", Provider: "google", InputPer1M: 2.00, OutputPer1M: 12.00, CachePer1M: 0.50},
+		{ModelID: "MODEL_PLACEHOLDER_M36", DisplayName: "Gemini 3.1 Pro (Low)", Provider: "google", InputPer1M: 2.00, OutputPer1M: 12.00, CachePer1M: 0.50},
 	}
 }
 
@@ -44,6 +50,34 @@ func (s *Store) GetModelPricing() ([]ModelPrice, error) {
 	if err := json.Unmarshal([]byte(raw), &prices); err != nil {
 		return nil, fmt.Errorf("store: parsing model pricing: %w", err)
 	}
+
+	// Dynamic migration: Ensure all contemporary models exist in retrieved list
+	// if we are upgrading a legacy database that has the old Gemini models
+	// but lacks the new contemporary placeholders.
+	defaults := DefaultModelPricing()
+	priceMap := make(map[string]bool)
+	for _, p := range prices {
+		priceMap[p.ModelID] = true
+	}
+	
+	hasLegacyGemini := priceMap["gemini-2.5-flash"] || priceMap["gemini-3.1-pro"]
+	hasNewGemini := priceMap["MODEL_PLACEHOLDER_M133"] || priceMap["MODEL_PLACEHOLDER_M20"] || priceMap["MODEL_PLACEHOLDER_M16"] || priceMap["MODEL_PLACEHOLDER_M36"]
+
+	if hasLegacyGemini && !hasNewGemini {
+		mutated := false
+		for _, def := range defaults {
+			if !priceMap[def.ModelID] {
+				prices = append(prices, def)
+				mutated = true
+			}
+		}
+		if mutated {
+			if err := s.SetModelPricing(prices); err != nil {
+				return nil, fmt.Errorf("store: auto-migrating model pricing: %w", err)
+			}
+		}
+	}
+
 	return prices, nil
 }
 

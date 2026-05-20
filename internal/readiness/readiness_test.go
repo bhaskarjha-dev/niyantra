@@ -170,8 +170,8 @@ func TestCalculate_MultipleModelsGrouping(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 account, got %d", len(result))
 	}
-	if len(result[0].Models) != 4 {
-		t.Errorf("expected 4 models, got %d", len(result[0].Models))
+	if len(result[0].Models) != 6 {
+		t.Errorf("expected 6 models (2 non-Gemini + 4 upgraded Gemini), got %d", len(result[0].Models))
 	}
 	// Should have groups (exact count depends on GroupModels logic)
 	if len(result[0].Groups) == 0 {
