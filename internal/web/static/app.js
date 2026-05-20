@@ -383,15 +383,6 @@
   function refreshGrid() {
     if (_renderAccounts) fetchStatus().then(_renderAccounts);
   }
-  function renderPinnedBadge(groupData, pinnedKey) {
-    if (!groupData) return "";
-    var pct = Math.round(groupData.remainingPercent);
-    var cls = "good";
-    if (groupData.isExhausted || pct === 0) cls = "exhausted";
-    else if (pct < 20) cls = "warning";
-    else if (pct < 50) cls = "ok";
-    return ' <span class="pinned-badge ' + cls + '" title="Pinned: ' + esc(groupData.displayName || pinnedKey) + '">\u2605 ' + esc(groupData.displayName || GROUP_NAMES[pinnedKey] || pinnedKey) + ": " + pct + "%</span>";
-  }
   function pinGroup(accountId, groupKey) {
     updateAccountMeta(accountId, { pinnedGroup: groupKey }).then(function() {
       showToast("\u2B50 Pinned " + (GROUP_NAMES[groupKey] || groupKey), "success");
@@ -594,11 +585,10 @@
     var currentNote = el.getAttribute("data-current-note") || "";
     var editor = document.createElement("span");
     editor.className = "note-inline-editor";
-    editor.innerHTML = '<input type="text" class="note-inline-input" value="' + esc(currentNote) + '" placeholder="Add a note..." maxlength="100">';
+    editor.innerHTML = '<textarea class="note-inline-input" placeholder="Add a note..." maxlength="500" rows="3">' + esc(currentNote) + "</textarea>";
     el.replaceWith(editor);
     var input = editor.querySelector(".note-inline-input");
     input.focus();
-    input.select();
     editor.addEventListener("click", function(e) {
       e.stopPropagation();
     });
@@ -610,7 +600,7 @@
       });
     }
     input.addEventListener("keydown", function(e) {
-      if (e.key === "Enter") {
+      if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         save();
       }
@@ -1061,7 +1051,8 @@
             }
           }
           var cellTitle = tooltipParts.join(" | ") || (GRID_LABELS[gi] || key);
-          groupCells += '<div class="quota-cell' + (key === "gemini_unified" ? " unified-pool-cell" : "") + '" title="' + esc(cellTitle) + '" style="display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative;"><span class="quota-pct ' + cls + '">' + pct + "%</span>" + renderQualityBadge(g) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + barCls + '" style="width:' + pct + '%"></div></div>' + groupAdjust + "</div>";
+          var pinnedStarHTML = key === pinnedKey ? '<span class="pinned-group-star" title="Pinned group" style="position: absolute; top: 4px; right: 4px; font-size: 12px; line-height: 1; z-index: 2;">\u2B50</span>' : "";
+          groupCells += '<div class="quota-cell' + (key === "gemini_unified" ? " unified-pool-cell" : "") + '" title="' + esc(cellTitle) + '" style="display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative;">' + pinnedStarHTML + '<span class="quota-pct ' + cls + '">' + pct + "%</span>" + renderQualityBadge(g) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + barCls + '" style="width:' + pct + '%"></div></div>' + groupAdjust + "</div>";
         }
         var dotCls = "dot-ready";
         var badgeText = "Ready";
@@ -1196,14 +1187,14 @@
         if (allExhausted(acc)) statusClass = " status-empty";
         else if (!acc.isReady) statusClass = " status-low";
         else statusClass = " status-ready";
-        html += '<div class="account-card' + statusClass + '"><div class="account-row" data-toggle="' + accId + '"><div class="account-info"><div class="account-email"><span class="' + chevronCls + '" id="chev-' + accId + '">\u25B8</span> ' + esc(acc.email) + renderPinnedBadge(pinnedGroupData, pinnedKey) + '</div><div class="account-meta" style="position:relative">' + (acc.planName ? '<span class="plan-badge">' + esc(acc.planName) + "</span>" : "") + renderAccountTags(acc) + renderAccountNote(acc) + "</div></div>" + groupCells + creditsCell + '<div class="snap-cell"><span class="snap-ago" title="' + esc(acc.lastSeen || "") + '">' + esc(acc.stalenessLabel) + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + badgeText + "</span></div></div>" + modelsHTML + "</div>";
+        html += '<div class="account-card' + statusClass + '"><div class="account-row" data-toggle="' + accId + '"><div class="account-info"><div class="account-email"><span class="' + chevronCls + '" id="chev-' + accId + '">\u25B8</span> ' + esc(acc.email) + '</div><div class="account-meta" style="position:relative">' + (acc.planName ? '<span class="plan-badge">' + esc(acc.planName) + "</span>" : "") + renderAccountTags(acc) + renderAccountNote(acc) + "</div></div>" + groupCells + creditsCell + '<div class="snap-cell"><span class="snap-ago" title="' + esc(acc.lastSeen || "") + '">' + esc(acc.stalenessLabel) + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + badgeText + "</span></div></div>" + modelsHTML + "</div>";
       }
       html += "</div></div>";
     }
     var sf = document.getElementById("quota-filter-status");
     var statusVal = sf ? sf.value : "all";
     if (data.codexSnapshots && data.codexSnapshots.length > 0 && (pf === "all" || pf === "codex")) {
-      html += renderCodexProviderSection(data.codexSnapshots, statusVal);
+      html += renderCodexProviderSection(data.codexSnapshots, statusVal, data.allAccounts || []);
     }
     if (data.claudeSnapshot && (pf === "all" || pf === "claude")) {
       var clStatus = getCodexClaudeStatus(data.claudeSnapshot);
@@ -1212,10 +1203,10 @@
       }
     }
     if (data.cursorSnapshots && data.cursorSnapshots.length > 0 && (pf === "all" || pf === "cursor")) {
-      html += renderCursorProviderSection(data.cursorSnapshots, statusVal);
+      html += renderCursorProviderSection(data.cursorSnapshots, statusVal, data.allAccounts || []);
     }
     if (data.copilotSnapshots && data.copilotSnapshots.length > 0 && (pf === "all" || pf === "copilot")) {
-      html += renderCopilotProviderSection(data.copilotSnapshots, statusVal);
+      html += renderCopilotProviderSection(data.copilotSnapshots, statusVal, data.allAccounts || []);
     }
     if (pf === "antigravity" && acctCount === 0) {
       html += '<div class="provider-empty-state" data-provider="antigravity"><span class="provider-empty-icon">\u26A1</span><p>No Antigravity accounts detected</p><p class="empty-hint">Open Windsurf and log in to start tracking quotas</p></div>';
@@ -1281,7 +1272,7 @@
     });
     updateSortHeaders();
   }
-  function renderCodexProviderSection(codexSnaps, statusFilter) {
+  function renderCodexProviderSection(codexSnaps, statusFilter, allAccounts = []) {
     var cxCollapseClass = collapsedProviders.has("section-codex") ? " collapsed" : "";
     var cxChevron = collapsedProviders.has("section-codex") ? "\u25B8" : "\u25BE";
     var html = '<div class="provider-section" data-provider="codex"><div class="provider-header" data-toggle-provider="section-codex"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-codex">' + cxChevron + '</span><span class="provider-name">\u{1F916} Codex / ChatGPT</span><span class="provider-count">' + codexSnaps.length + " account" + (codexSnaps.length !== 1 ? "s" : "") + '</span></div></div><div class="provider-body' + cxCollapseClass + '" id="section-codex"><div class="grid-header grid-codex"><div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div><div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div><div class="sortable" data-sort="fiveHour">5-Hour <span class="sort-indicator"></span></div><div class="sortable" data-sort="sevenDay">7-Day <span class="sort-indicator"></span></div><div class="sortable" data-sort="credits">Credits <span class="sort-indicator"></span></div><div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div></div>';
@@ -1310,8 +1301,11 @@
       var isExpanded = expandedAccounts.has(accId);
       var chevronCls = isExpanded ? "chevron expanded" : "chevron";
       var chevronHTML = localAccId > 0 ? '<span class="' + chevronCls + '" id="chev-' + accId + '">\u25B8</span> ' : "";
-      var manageBadge = localAccId > 0 ? ' <span class="manage-account-badge">\u2699\uFE0F Manage</span>' : "";
-      var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + manageBadge + "</div>";
+      var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + "</div>";
+      var accData = localAccId > 0 ? allAccounts.find(function(a) {
+        return a.id === localAccId;
+      }) : null;
+      var metaHTML = accData ? '<div class="account-meta" style="position:relative">' + renderAccountTags(accData) + renderAccountNote(accData) + "</div>" : "";
       var actionsHTML = "";
       if (localAccId > 0) {
         var expandedCls = isExpanded ? " is-expanded" : "";
@@ -1322,7 +1316,7 @@
       if (cxStatus === "empty") statusClass = " status-empty";
       else if (cxStatus === "low") statusClass = " status-low";
       else statusClass = " status-ready";
-      html += '<div class="account-card' + statusClass + '"><div class="account-row grid-codex"' + toggleAttr + '><div class="account-info">' + emailHTML + "</div><div>" + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell"><span class="quota-pct ' + fiveCls + '">' + fiveRem.toFixed(0) + '%</span><div class="quota-minibar"><div class="quota-minibar-fill ' + fiveCls + '" style="width:' + fiveRem + '%"></div></div>' + (fiveReset ? '<span class="quota-reset">\u21BB ' + fiveReset + "</span>" : "") + '</div><div class="quota-cell"><span class="quota-pct ' + sevenCls + '">' + sevenRem.toFixed(0) + '%</span><div class="quota-minibar"><div class="quota-minibar-fill ' + sevenCls + '" style="width:' + sevenRem + '%"></div></div>' + (sevenReset ? '<span class="quota-reset">\u21BB ' + sevenReset + "</span>" : "") + '</div><div class="credits-cell"><span class="credit-amount">' + creditsStr + '</span></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div>" + actionsHTML + "</div>";
+      html += '<div class="account-card' + statusClass + '"><div class="account-row grid-codex"' + toggleAttr + '><div class="account-info">' + emailHTML + metaHTML + "</div><div>" + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell"><span class="quota-pct ' + fiveCls + '">' + fiveRem.toFixed(0) + '%</span><div class="quota-minibar"><div class="quota-minibar-fill ' + fiveCls + '" style="width:' + fiveRem + '%"></div></div>' + (fiveReset ? '<span class="quota-reset">\u21BB ' + fiveReset + "</span>" : "") + '</div><div class="quota-cell"><span class="quota-pct ' + sevenCls + '">' + sevenRem.toFixed(0) + '%</span><div class="quota-minibar"><div class="quota-minibar-fill ' + sevenCls + '" style="width:' + sevenRem + '%"></div></div>' + (sevenReset ? '<span class="quota-reset">\u21BB ' + sevenReset + "</span>" : "") + '</div><div class="credits-cell"><span class="credit-amount">' + creditsStr + '</span></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div>" + actionsHTML + "</div>";
     }
     if (renderedCount === 0) return "";
     html += "</div></div>";
@@ -1362,7 +1356,7 @@
     if (usagePct >= 80) return "low";
     return "ready";
   }
-  function renderCursorProviderSection(cursorSnaps, statusFilter) {
+  function renderCursorProviderSection(cursorSnaps, statusFilter, allAccounts = []) {
     var crCollapseClass = collapsedProviders.has("section-cursor") ? " collapsed" : "";
     var crChevron = collapsedProviders.has("section-cursor") ? "\u25B8" : "\u25BE";
     var html = '<div class="provider-section" data-provider="cursor"><div class="provider-header" data-toggle-provider="section-cursor"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-cursor">' + crChevron + '</span><span class="provider-name">\u{1F5B1}\uFE0F Cursor</span><span class="provider-count">' + cursorSnaps.length + " account" + (cursorSnaps.length !== 1 ? "s" : "") + '</span></div></div><div class="provider-body' + crCollapseClass + '" id="section-cursor"><div class="grid-header grid-cursor"><div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div><div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div><div class="sortable" data-sort="premiumUsed">Premium Used <span class="sort-indicator"></span></div><div class="sortable" data-sort="usage">Usage <span class="sort-indicator"></span></div><div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div></div>';
@@ -1409,8 +1403,11 @@
       var isExpanded = expandedAccounts.has(accId);
       var chevronCls = isExpanded ? "chevron expanded" : "chevron";
       var chevronHTML = localAccId > 0 || modelRows ? '<span class="' + chevronCls + '" id="chev-' + accId + '">\u25B8</span> ' : "";
-      var manageBadge = localAccId > 0 ? ' <span class="manage-account-badge">\u2699\uFE0F Manage</span>' : "";
-      var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + manageBadge + "</div>";
+      var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + "</div>";
+      var accData = localAccId > 0 ? allAccounts.find(function(a) {
+        return a.id === localAccId;
+      }) : null;
+      var metaHTML = accData ? '<div class="account-meta" style="position:relative">' + renderAccountTags(accData) + renderAccountNote(accData) + "</div>" : "";
       var actionsHTML = "";
       if (localAccId > 0 || modelRows) {
         var expandedCls = isExpanded ? " is-expanded" : "";
@@ -1422,7 +1419,7 @@
       if (crStatus === "empty") statusClass = " status-empty";
       else if (crStatus === "low") statusClass = " status-low";
       else statusClass = " status-ready";
-      html += '<div class="account-card' + statusClass + '"><div class="account-row grid-cursor"' + toggleAttr + '><div class="account-info">' + emailHTML + "</div><div>" + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell"><span class="quota-pct ' + cls + '">' + usedStr + " / " + limitStr + '</span><div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div><div class="quota-cell"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div>" + actionsHTML + "</div>";
+      html += '<div class="account-card' + statusClass + '"><div class="account-row grid-cursor"' + toggleAttr + '><div class="account-info">' + emailHTML + metaHTML + "</div><div>" + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell"><span class="quota-pct ' + cls + '">' + usedStr + " / " + limitStr + '</span><div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div><div class="quota-cell"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div>" + actionsHTML + "</div>";
     }
     if (renderedCount === 0) return "";
     html += "</div></div>";
@@ -1435,7 +1432,7 @@
     if (premiumPct >= 80) return "low";
     return "ready";
   }
-  function renderCopilotProviderSection(copilotSnaps, statusFilter) {
+  function renderCopilotProviderSection(copilotSnaps, statusFilter, allAccounts = []) {
     var cpCollapseClass = collapsedProviders.has("section-copilot") ? " collapsed" : "";
     var cpChevron = collapsedProviders.has("section-copilot") ? "\u25B8" : "\u25BE";
     var html = '<div class="provider-section" data-provider="copilot"><div class="provider-header" data-toggle-provider="section-copilot"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-copilot">' + cpChevron + '</span><span class="provider-name">\u{1F419} GitHub Copilot</span><span class="provider-count">' + copilotSnaps.length + " account" + (copilotSnaps.length !== 1 ? "s" : "") + '</span></div></div><div class="provider-body' + cpCollapseClass + '" id="section-copilot"><div class="grid-header grid-copilot"><div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div><div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div><div class="sortable" data-sort="premium">Premium <span class="sort-indicator"></span></div><div class="sortable" data-sort="chat">Chat <span class="sort-indicator"></span></div><div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div></div>';
@@ -1461,8 +1458,11 @@
       var isExpanded = expandedAccounts.has(accId);
       var chevronCls = isExpanded ? "chevron expanded" : "chevron";
       var chevronHTML = localAccId > 0 ? '<span class="' + chevronCls + '" id="chev-' + accId + '">\u25B8</span> ' : "";
-      var manageBadge = localAccId > 0 ? ' <span class="manage-account-badge">\u2699\uFE0F Manage</span>' : "";
-      var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + manageBadge + "</div>";
+      var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + "</div>";
+      var accData = localAccId > 0 ? allAccounts.find(function(a) {
+        return a.id === localAccId;
+      }) : null;
+      var metaHTML = accData ? '<div class="account-meta" style="position:relative">' + renderAccountTags(accData) + renderAccountNote(accData) + "</div>" : "";
       var actionsHTML = "";
       if (localAccId > 0) {
         var expandedCls = isExpanded ? " is-expanded" : "";
@@ -1473,7 +1473,7 @@
       if (cpStatus === "empty") statusClass = " status-empty";
       else if (cpStatus === "low") statusClass = " status-low";
       else statusClass = " status-ready";
-      html += '<div class="account-card' + statusClass + '"><div class="account-row grid-copilot"' + toggleAttr + '><div class="account-info">' + emailHTML + "</div><div>" + (cp.plan ? '<span class="plan-badge">' + esc(cp.plan) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell"><span class="quota-pct ' + premiumCls + '">' + premiumRem.toFixed(0) + '% left</span><div class="quota-minibar"><div class="quota-minibar-fill ' + premiumCls + '" style="width:' + premiumRem + '%"></div></div></div><div class="quota-cell"><span class="quota-pct ' + chatCls + '">' + chatRem.toFixed(0) + '% left</span><div class="quota-minibar"><div class="quota-minibar-fill ' + chatCls + '" style="width:' + chatRem + '%"></div></div></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div>" + actionsHTML + "</div>";
+      html += '<div class="account-card' + statusClass + '"><div class="account-row grid-copilot"' + toggleAttr + '><div class="account-info">' + emailHTML + metaHTML + "</div><div>" + (cp.plan ? '<span class="plan-badge">' + esc(cp.plan) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell"><span class="quota-pct ' + premiumCls + '">' + premiumRem.toFixed(0) + '% left</span><div class="quota-minibar"><div class="quota-minibar-fill ' + premiumCls + '" style="width:' + premiumRem + '%"></div></div></div><div class="quota-cell"><span class="quota-pct ' + chatCls + '">' + chatRem.toFixed(0) + '% left</span><div class="quota-minibar"><div class="quota-minibar-fill ' + chatCls + '" style="width:' + chatRem + '%"></div></div></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div>" + actionsHTML + "</div>";
     }
     if (renderedCount === 0) return "";
     html += "</div></div>";

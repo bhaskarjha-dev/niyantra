@@ -24,10 +24,10 @@ func openTestDB(t *testing.T) *Store {
 func TestOpenAndMigrate(t *testing.T) {
 	s := openTestDB(t)
 
-	// Verify schema version is 23
+	// Verify schema version is 24
 	v := s.getUserVersion()
-	if v != 23 {
-		t.Errorf("expected schema version 23, got %d", v)
+	if v != 24 {
+		t.Errorf("expected schema version 24, got %d", v)
 	}
 
 	// Insert a snapshot and query it back
@@ -282,8 +282,8 @@ func TestV21IntegrityMigrationNullsInvalidReferences(t *testing.T) {
 	}
 	defer reopened.Close()
 
-	if reopened.SchemaVersion() != 23 {
-		t.Fatalf("schema version = %d, want 23", reopened.SchemaVersion())
+	if reopened.SchemaVersion() != 24 {
+		t.Fatalf("schema version = %d, want 24", reopened.SchemaVersion())
 	}
 	issues, err := reopened.IntegrityCheck()
 	if err != nil {

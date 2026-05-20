@@ -16,16 +16,7 @@ function refreshGrid(): void {
 
 // ── Pinned/Favorite Model ──
 
-export function renderPinnedBadge(groupData: any, pinnedKey: string): string {
-  if (!groupData) return '';
-  var pct = Math.round(groupData.remainingPercent);
-  var cls = 'good';
-  if (groupData.isExhausted || pct === 0) cls = 'exhausted';
-  else if (pct < 20) cls = 'warning';
-  else if (pct < 50) cls = 'ok';
-  return ' <span class="pinned-badge ' + cls + '" title="Pinned: ' + esc(groupData.displayName || pinnedKey) + '">' +
-    '★ ' + esc(groupData.displayName || GROUP_NAMES[pinnedKey] || pinnedKey) + ': ' + pct + '%</span>';
-}
+
 
 export function pinGroup(accountId: number | string, groupKey: string): void {
   updateAccountMeta(accountId, { pinnedGroup: groupKey }).then(function() {
@@ -236,11 +227,10 @@ export function openNoteEditor(el: HTMLElement): void {
   var currentNote = el.getAttribute('data-current-note') || '';
   var editor = document.createElement('span');
   editor.className = 'note-inline-editor';
-  editor.innerHTML = '<input type="text" class="note-inline-input" value="' + esc(currentNote) + '" placeholder="Add a note..." maxlength="100">';
+  editor.innerHTML = '<textarea class="note-inline-input" placeholder="Add a note..." maxlength="500" rows="3">' + esc(currentNote) + '</textarea>';
   el.replaceWith(editor);
   var input = editor.querySelector('.note-inline-input');
   (input as HTMLElement).focus();
-  (input as HTMLInputElement).select();
   editor.addEventListener('click', function(e) { e.stopPropagation(); });
   function save() {
     var val = (input as HTMLInputElement).value.trim();
@@ -250,7 +240,7 @@ export function openNoteEditor(el: HTMLElement): void {
     });
   }
   input!.addEventListener('keydown', function(e) {
-    if ((e as KeyboardEvent).key === 'Enter') { e.preventDefault(); save(); }
+    if ((e as KeyboardEvent).key === 'Enter' && !(e as KeyboardEvent).shiftKey) { e.preventDefault(); save(); }
     if ((e as KeyboardEvent).key === 'Escape') { refreshGrid(); }
   });
   input!.addEventListener('blur', save);

@@ -629,10 +629,13 @@
   font-size: 11px;
   color: var(--text-muted);
   cursor: pointer;
-  max-width: 200px;
+  max-width: 250px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre-wrap;
+  line-height: 1.4;
   transition: color 120ms ease;
 }
 .account-note:hover { color: var(--text-secondary); }
@@ -653,15 +656,18 @@
   gap: 4px;
 }
 .note-inline-input {
-  padding: 2px 6px;
+  padding: 4px 6px;
   background: var(--bg-elevated);
   border: 1px solid var(--accent);
   border-radius: 4px;
   color: var(--text);
   font-family: var(--font);
   font-size: 11px;
-  width: 180px;
+  width: 250px;
+  min-height: 40px;
+  resize: vertical;
   outline: none;
+  line-height: 1.4;
 }
 
 /* ── F3: Pinned/Favorite Model ── */

@@ -283,30 +283,6 @@ func TestImportJSON_CursorSnapshots(t *testing.T) {
 	}
 }
 
-func TestImportJSON_GeminiSnapshots(t *testing.T) {
-	s := testImportStore(t)
-	capturedAt := time.Now().UTC().Format(time.RFC3339)
-	data := buildExportJSON(t, map[string]interface{}{
-		"geminiSnapshots": []map[string]interface{}{
-			{"email": "user@gmail.com", "tier": "standard", "overallPct": 25.0, "projectId": "proj-1", "capturedAt": capturedAt},
-		},
-	})
-	result, err := s.ImportJSON(data)
-	if err != nil {
-		t.Fatalf("import failed: %v", err)
-	}
-	if result.GeminiImported != 1 {
-		t.Errorf("expected 1 gemini snapshot imported, got %d", result.GeminiImported)
-	}
-	if result.AccountsCreated != 1 {
-		t.Errorf("expected 1 gemini account created, got %d", result.AccountsCreated)
-	}
-
-	result2, _ := s.ImportJSON(data)
-	if result2.GeminiDuped != 1 {
-		t.Errorf("expected 1 gemini snapshot duped, got %d", result2.GeminiDuped)
-	}
-}
 
 func TestImportJSON_CopilotSnapshots(t *testing.T) {
 	s := testImportStore(t)
@@ -376,9 +352,6 @@ func TestImportJSON_FullRoundTrip(t *testing.T) {
 		"cursorSnapshots": []map[string]interface{}{
 			{"email": "user@cursor.sh", "premiumUsed": 50, "premiumLimit": 500, "usagePct": 10.0, "planType": "pro", "capturedAt": now},
 		},
-		"geminiSnapshots": []map[string]interface{}{
-			{"email": "user@google.com", "tier": "standard", "overallPct": 15.0, "capturedAt": now},
-		},
 		"copilotSnapshots": []map[string]interface{}{
 			{"username": "octocat", "plan": "Pro+", "premiumPct": 40.0, "chatPct": 20.0, "capturedAt": now},
 		},
@@ -392,8 +365,8 @@ func TestImportJSON_FullRoundTrip(t *testing.T) {
 		t.Fatalf("full import failed: %v", err)
 	}
 
-	if result.AccountsCreated != 3 {
-		t.Errorf("accounts: expected 3 created, got %d", result.AccountsCreated)
+	if result.AccountsCreated != 2 {
+		t.Errorf("accounts: expected 2 created, got %d", result.AccountsCreated)
 	}
 	if result.SubsCreated != 1 {
 		t.Errorf("subs: expected 1 created, got %d", result.SubsCreated)
@@ -406,9 +379,6 @@ func TestImportJSON_FullRoundTrip(t *testing.T) {
 	}
 	if result.CursorImported != 1 {
 		t.Errorf("cursor: expected 1 imported, got %d", result.CursorImported)
-	}
-	if result.GeminiImported != 1 {
-		t.Errorf("gemini: expected 1 imported, got %d", result.GeminiImported)
 	}
 	if result.CopilotImported != 1 {
 		t.Errorf("copilot: expected 1 imported, got %d", result.CopilotImported)

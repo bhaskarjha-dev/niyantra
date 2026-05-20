@@ -12,7 +12,7 @@ import {
 import { esc, formatSeconds, formatCredits, formatTimeAgo, showToast } from '../core/utils';
 import { claimOverageBonus, fetchStatus } from '../core/api';
 import type { StatusResponse, AccountReadiness } from '../types/api';
-import { renderPinnedBadge, renderAccountTags, renderAccountNote, renderCreditRenewal } from './features';
+import { renderAccountTags, renderAccountNote, renderCreditRenewal } from './features';
 export function getGroupPct(acc: any, groupKey: string): number {
   if (!acc.groups) return -1;
   for (var i = 0; i < acc.groups.length; i++) {
@@ -475,7 +475,10 @@ export function renderAccounts(data: any): void {
 
       var cellTitle = tooltipParts.join(' | ') || (GRID_LABELS[gi] || key);
 
+      var pinnedStarHTML = (key === pinnedKey) ? '<span class="pinned-group-star" title="Pinned group" style="position: absolute; top: 4px; right: 4px; font-size: 12px; line-height: 1; z-index: 2;">⭐</span>' : '';
+
       groupCells += '<div class="quota-cell' + (key === 'gemini_unified' ? ' unified-pool-cell' : '') + '" title="' + esc(cellTitle) + '" style="display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative;">' +
+        pinnedStarHTML +
         '<span class="quota-pct ' + cls + '">' + pct + '%' + '</span>' +
         renderQualityBadge(g) +
         '<div class="quota-minibar"><div class="quota-minibar-fill ' + barCls + '" style="width:' + pct + '%"></div></div>' +
@@ -660,8 +663,7 @@ export function renderAccounts(data: any): void {
     html += '<div class="account-card' + statusClass + '">' +
       '<div class="account-row" data-toggle="' + accId + '">' +
       '<div class="account-info">' +
-      '<div class="account-email"><span class="' + chevronCls + '" id="chev-' + accId + '">▸</span> ' + esc(acc.email) +
-      renderPinnedBadge(pinnedGroupData, pinnedKey) + '</div>' +
+      '<div class="account-email"><span class="' + chevronCls + '" id="chev-' + accId + '">▸</span> ' + esc(acc.email) + '</div>' +
       '<div class="account-meta" style="position:relative">' +
       (acc.planName ? '<span class="plan-badge">' + esc(acc.planName) + '</span>' : '') +
       renderAccountTags(acc) +
@@ -683,7 +685,7 @@ export function renderAccounts(data: any): void {
   var sf = document.getElementById('quota-filter-status');
   var statusVal = sf ? (sf as HTMLSelectElement).value : 'all';
   if (data.codexSnapshots && data.codexSnapshots.length > 0 && (pf === 'all' || pf === 'codex')) {
-    html += renderCodexProviderSection(data.codexSnapshots, statusVal);
+    html += renderCodexProviderSection(data.codexSnapshots, statusVal, data.allAccounts || []);
   }
   if (data.claudeSnapshot && (pf === 'all' || pf === 'claude')) {
     var clStatus = getCodexClaudeStatus(data.claudeSnapshot);
@@ -692,11 +694,11 @@ export function renderAccounts(data: any): void {
     }
   }
   if (data.cursorSnapshots && data.cursorSnapshots.length > 0 && (pf === 'all' || pf === 'cursor')) {
-    html += renderCursorProviderSection(data.cursorSnapshots, statusVal);
+    html += renderCursorProviderSection(data.cursorSnapshots, statusVal, data.allAccounts || []);
   }
 
   if (data.copilotSnapshots && data.copilotSnapshots.length > 0 && (pf === 'all' || pf === 'copilot')) {
-    html += renderCopilotProviderSection(data.copilotSnapshots, statusVal);
+    html += renderCopilotProviderSection(data.copilotSnapshots, statusVal, data.allAccounts || []);
   }
 
   // V3: Empty states when a specific provider is selected but has no data
@@ -791,7 +793,7 @@ export function renderAccounts(data: any): void {
   updateSortHeaders();
 }
 
-export function renderCodexProviderSection(codexSnaps: any[], statusFilter: string): string {
+export function renderCodexProviderSection(codexSnaps: any[], statusFilter: string, allAccounts: any[] = []): string {
   var cxCollapseClass = collapsedProviders.has('section-codex') ? ' collapsed' : '';
   var cxChevron = collapsedProviders.has('section-codex') ? '▸' : '▾';
   var html = '<div class="provider-section" data-provider="codex">' +
@@ -840,8 +842,9 @@ export function renderCodexProviderSection(codexSnaps: any[], statusFilter: stri
     var chevronCls = isExpanded ? 'chevron expanded' : 'chevron';
 
     var chevronHTML = localAccId > 0 ? '<span class="' + chevronCls + '" id="chev-' + accId + '">▸</span> ' : '';
-    var manageBadge = localAccId > 0 ? ' <span class="manage-account-badge">⚙️ Manage</span>' : '';
-    var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + manageBadge + '</div>';
+    var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + '</div>';
+    var accData = localAccId > 0 ? allAccounts.find(function(a: any) { return a.id === localAccId; }) : null;
+    var metaHTML = accData ? '<div class="account-meta" style="position:relative">' + renderAccountTags(accData) + renderAccountNote(accData) + '</div>' : '';
 
     var actionsHTML = '';
     if (localAccId > 0) {
@@ -861,7 +864,7 @@ export function renderCodexProviderSection(codexSnaps: any[], statusFilter: stri
     else statusClass = ' status-ready';
 
     html += '<div class="account-card' + statusClass + '"><div class="account-row grid-codex"' + toggleAttr + '>' +
-      '<div class="account-info">' + emailHTML + '</div>' +
+      '<div class="account-info">' + emailHTML + metaHTML + '</div>' +
       '<div>' + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + '</span>' : String.fromCharCode(8212)) + '</div>' +
       '<div class="quota-cell"><span class="quota-pct ' + fiveCls + '">' + fiveRem.toFixed(0) + '%</span>' +
       '<div class="quota-minibar"><div class="quota-minibar-fill ' + fiveCls + '" style="width:' + fiveRem + '%"></div></div>' +
@@ -940,7 +943,7 @@ export function getCursorStatus(snap: any): string {
   return 'ready';
 }
 
-export function renderCursorProviderSection(cursorSnaps: any[], statusFilter: string): string {
+export function renderCursorProviderSection(cursorSnaps: any[], statusFilter: string, allAccounts: any[] = []): string {
   var crCollapseClass = collapsedProviders.has('section-cursor') ? ' collapsed' : '';
   var crChevron = collapsedProviders.has('section-cursor') ? '▸' : '▾';
 
@@ -1012,8 +1015,9 @@ export function renderCursorProviderSection(cursorSnaps: any[], statusFilter: st
     var chevronCls = isExpanded ? 'chevron expanded' : 'chevron';
 
     var chevronHTML = (localAccId > 0 || modelRows) ? '<span class="' + chevronCls + '" id="chev-' + accId + '">▸</span> ' : '';
-    var manageBadge = localAccId > 0 ? ' <span class="manage-account-badge">⚙️ Manage</span>' : '';
-    var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + manageBadge + '</div>';
+    var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + '</div>';
+    var accData = localAccId > 0 ? allAccounts.find(function(a: any) { return a.id === localAccId; }) : null;
+    var metaHTML = accData ? '<div class="account-meta" style="position:relative">' + renderAccountTags(accData) + renderAccountNote(accData) + '</div>' : '';
 
     var actionsHTML = '';
     if (localAccId > 0 || modelRows) {
@@ -1037,7 +1041,7 @@ export function renderCursorProviderSection(cursorSnaps: any[], statusFilter: st
     else statusClass = ' status-ready';
 
     html += '<div class="account-card' + statusClass + '"><div class="account-row grid-cursor"' + toggleAttr + '>' +
-      '<div class="account-info">' + emailHTML + '</div>' +
+      '<div class="account-info">' + emailHTML + metaHTML + '</div>' +
       '<div>' + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + '</span>' : String.fromCharCode(8212)) + '</div>' +
       '<div class="quota-cell"><span class="quota-pct ' + cls + '">' + usedStr + ' / ' + limitStr + '</span>' +
       '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div>' +
@@ -1064,7 +1068,7 @@ export function getCopilotStatus(snap: any): string {
   return 'ready';
 }
 
-export function renderCopilotProviderSection(copilotSnaps: any[], statusFilter: string): string {
+export function renderCopilotProviderSection(copilotSnaps: any[], statusFilter: string, allAccounts: any[] = []): string {
   var cpCollapseClass = collapsedProviders.has('section-copilot') ? ' collapsed' : '';
   var cpChevron = collapsedProviders.has('section-copilot') ? '▸' : '▾';
 
@@ -1114,8 +1118,9 @@ export function renderCopilotProviderSection(copilotSnaps: any[], statusFilter: 
     var chevronCls = isExpanded ? 'chevron expanded' : 'chevron';
 
     var chevronHTML = localAccId > 0 ? '<span class="' + chevronCls + '" id="chev-' + accId + '">▸</span> ' : '';
-    var manageBadge = localAccId > 0 ? ' <span class="manage-account-badge">⚙️ Manage</span>' : '';
-    var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + manageBadge + '</div>';
+    var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + '</div>';
+    var accData = localAccId > 0 ? allAccounts.find(function(a: any) { return a.id === localAccId; }) : null;
+    var metaHTML = accData ? '<div class="account-meta" style="position:relative">' + renderAccountTags(accData) + renderAccountNote(accData) + '</div>' : '';
 
     var actionsHTML = '';
     if (localAccId > 0) {
@@ -1135,7 +1140,7 @@ export function renderCopilotProviderSection(copilotSnaps: any[], statusFilter: 
     else statusClass = ' status-ready';
 
     html += '<div class="account-card' + statusClass + '"><div class="account-row grid-copilot"' + toggleAttr + '>' +
-      '<div class="account-info">' + emailHTML + '</div>' +
+      '<div class="account-info">' + emailHTML + metaHTML + '</div>' +
       '<div>' + (cp.plan ? '<span class="plan-badge">' + esc(cp.plan) + '</span>' : String.fromCharCode(8212)) + '</div>' +
       '<div class="quota-cell"><span class="quota-pct ' + premiumCls + '">' + premiumRem.toFixed(0) + '% left</span>' +
       '<div class="quota-minibar"><div class="quota-minibar-fill ' + premiumCls + '" style="width:' + premiumRem + '%"></div></div></div>' +

@@ -191,9 +191,6 @@ func (s *Server) onConfigChanged(key, value string) {
 	case "cursor_capture":
 		// F15a: Sync data_sources.cursor.enabled to match config
 		s.store.SetSourceEnabled("cursor", value == "true")
-	case "gemini_capture":
-		// F15b: Sync data_sources.gemini.enabled to match config
-		s.store.SetSourceEnabled("gemini", value == "true")
 	case "notify_enabled", "notify_threshold":
 		s.notifier.Configure(
 			s.store.GetConfigBool("notify_enabled"),

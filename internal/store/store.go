@@ -1088,6 +1088,37 @@ func (s *Store) migrate() error {
 		}
 	}
 
+	// ── v24: Clean up removed Gemini CLI provider ──
+	if s.getUserVersion() < 24 {
+		tx, err := s.db.Begin()
+		if err != nil {
+			return fmt.Errorf("store: v24 begin: %w", err)
+		}
+		defer func() {
+			if err != nil {
+				tx.Rollback()
+			}
+		}()
+
+		if _, err := tx.Exec(`DELETE FROM data_sources WHERE id = 'gemini'`); err != nil {
+			return fmt.Errorf("store: v24 delete gemini data source: %w", err)
+		}
+		if _, err := tx.Exec(`DELETE FROM config WHERE key IN ('gemini_capture', 'gemini_client_id', 'gemini_client_secret')`); err != nil {
+			return fmt.Errorf("store: v24 delete gemini config: %w", err)
+		}
+		if _, err := tx.Exec(`DROP TABLE IF EXISTS gemini_snapshots`); err != nil {
+			return fmt.Errorf("store: v24 drop gemini_snapshots table: %w", err)
+		}
+
+		if err = tx.Commit(); err != nil {
+			return fmt.Errorf("store: v24 commit: %w", err)
+		}
+
+		if err := s.setUserVersion(24); err != nil {
+			return err
+		}
+	}
+
 	if _, err := s.db.Exec(`
 		UPDATE codex_snapshots SET owner_account_id = NULL WHERE owner_account_id = 0;
 		UPDATE cursor_snapshots SET account_id = NULL WHERE account_id = 0;

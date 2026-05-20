@@ -30,11 +30,6 @@ func (s *Store) applyV21IntegrityMigration() error {
 		WHERE COALESCE(account_id, 0) = 0
 		   OR NOT EXISTS (SELECT 1 FROM accounts WHERE accounts.id = cursor_snapshots.account_id);
 
-		UPDATE gemini_snapshots
-		SET account_id = NULL
-		WHERE COALESCE(account_id, 0) = 0
-		   OR NOT EXISTS (SELECT 1 FROM accounts WHERE accounts.id = gemini_snapshots.account_id);
-
 		UPDATE copilot_snapshots
 		SET account_id = NULL
 		WHERE COALESCE(account_id, 0) = 0
@@ -165,28 +160,6 @@ func (s *Store) applyV21IntegrityMigration() error {
 		ALTER TABLE cursor_snapshots_new RENAME TO cursor_snapshots;
 		CREATE INDEX IF NOT EXISTS idx_cursor_snapshots_time ON cursor_snapshots(captured_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_cursor_snapshots_account ON cursor_snapshots(account_id, captured_at DESC);
-
-		CREATE TABLE gemini_snapshots_new (
-			id              INTEGER  PRIMARY KEY AUTOINCREMENT,
-			account_id      INTEGER  DEFAULT NULL,
-			email           TEXT     DEFAULT '',
-			tier            TEXT     DEFAULT '',
-			overall_pct     REAL     DEFAULT 0,
-			models_json     TEXT     DEFAULT '[]',
-			project_id      TEXT     DEFAULT '',
-			captured_at     DATETIME DEFAULT (datetime('now')),
-			capture_method  TEXT     DEFAULT 'manual',
-			capture_source  TEXT     DEFAULT 'ui',
-			FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE SET NULL
-		);
-		INSERT INTO gemini_snapshots_new
-		SELECT id, account_id, email, tier, overall_pct, models_json, project_id,
-			captured_at, capture_method, capture_source
-		FROM gemini_snapshots;
-		DROP TABLE gemini_snapshots;
-		ALTER TABLE gemini_snapshots_new RENAME TO gemini_snapshots;
-		CREATE INDEX IF NOT EXISTS idx_gemini_snapshots_time ON gemini_snapshots(captured_at DESC);
-		CREATE INDEX IF NOT EXISTS idx_gemini_snapshots_account ON gemini_snapshots(account_id, captured_at DESC);
 
 		CREATE TABLE copilot_snapshots_new (
 			id              INTEGER  PRIMARY KEY AUTOINCREMENT,

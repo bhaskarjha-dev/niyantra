@@ -157,7 +157,6 @@ func (s *Store) DeleteAccount(accountID int64) (int64, error) {
 		{"reset_cycles", `DELETE FROM antigravity_reset_cycles WHERE account_id = ?`},
 		{"codex_snapshots", `DELETE FROM codex_snapshots WHERE owner_account_id = ?`},
 		{"cursor_snapshots", `DELETE FROM cursor_snapshots WHERE account_id = ?`},
-		{"gemini_snapshots", `DELETE FROM gemini_snapshots WHERE account_id = ?`},
 		{"copilot_snapshots", `DELETE FROM copilot_snapshots WHERE account_id = ?`},
 		{"accounts", `DELETE FROM accounts WHERE id = ?`},
 	}
@@ -194,7 +193,6 @@ func (s *Store) DeleteAccountSnapshots(accountID int64) (int64, error) {
 		{"snapshots", `DELETE FROM snapshots WHERE account_id = ?`},
 		{"codex_snapshots", `DELETE FROM codex_snapshots WHERE owner_account_id = ?`},
 		{"cursor_snapshots", `DELETE FROM cursor_snapshots WHERE account_id = ?`},
-		{"gemini_snapshots", `DELETE FROM gemini_snapshots WHERE account_id = ?`},
 		{"copilot_snapshots", `DELETE FROM copilot_snapshots WHERE account_id = ?`},
 	}
 

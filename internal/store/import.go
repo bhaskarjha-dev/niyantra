@@ -21,8 +21,6 @@ type ImportResult struct {
 	CodexDuped        int      `json:"codexDuped"`
 	CursorImported    int      `json:"cursorImported"`
 	CursorDuped       int      `json:"cursorDuped"`
-	GeminiImported    int      `json:"geminiImported"`
-	GeminiDuped       int      `json:"geminiDuped"`
 	CopilotImported   int      `json:"copilotImported"`
 	CopilotDuped      int      `json:"copilotDuped"`
 	PluginImported    int      `json:"pluginImported"`
@@ -40,7 +38,6 @@ type importEnvelope struct {
 	ClaudeSnaps   []json.RawMessage `json:"claudeSnapshots"`
 	CodexSnaps    []json.RawMessage `json:"codexSnapshots"`
 	CursorSnaps   []json.RawMessage `json:"cursorSnapshots"`
-	GeminiSnaps   []json.RawMessage `json:"geminiSnapshots"`
 	CopilotSnaps  []json.RawMessage `json:"copilotSnapshots"`
 	PluginSnaps   []json.RawMessage `json:"pluginSnapshots"`
 }
@@ -440,57 +437,6 @@ func (s *Store) ImportJSON(data []byte) (*ImportResult, error) {
 			continue
 		}
 		result.CursorImported++
-	}
-
-	// ── Import Gemini snapshots ──
-	for _, raw := range envelope.GeminiSnaps {
-		var snap struct {
-			Email      string  `json:"email"`
-			Tier       string  `json:"tier"`
-			OverallPct float64 `json:"overallPct"`
-			ModelsJSON string  `json:"modelsJson"`
-			ProjectID  string  `json:"projectId"`
-			CapturedAt string  `json:"capturedAt"`
-		}
-		if err := json.Unmarshal(raw, &snap); err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("gemini snap parse: %v", err))
-			continue
-		}
-		if snap.CapturedAt == "" {
-			continue
-		}
-		capturedAt, err := parseTimeFlexible(snap.CapturedAt)
-		if err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("gemini snap time: %v", err))
-			continue
-		}
-		wStart, wEnd := dedupWindow(capturedAt)
-		var dupeCount int
-		db.QueryRow(`SELECT COUNT(*) FROM gemini_snapshots WHERE captured_at BETWEEN ? AND ?`,
-			wStart, wEnd).Scan(&dupeCount)
-		if dupeCount > 0 {
-			result.GeminiDuped++
-			continue
-		}
-		accountID, created, err := resolveImportAccountID(db, accountKeyToID, "gemini", snap.Email, snap.Tier)
-		if err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("gemini owner resolve %q: %v", snap.Email, err))
-			continue
-		}
-		if created {
-			result.AccountsCreated++
-		}
-		_, err = db.Exec(`
-			INSERT INTO gemini_snapshots (account_id, email, tier, overall_pct, models_json, project_id,
-				captured_at, capture_method, capture_source)
-			VALUES (?, ?, ?, ?, ?, ?, ?, 'imported', 'json')`,
-			nullableAccountID(accountID), snap.Email, snap.Tier, snap.OverallPct, snap.ModelsJSON,
-			snap.ProjectID, snap.CapturedAt)
-		if err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("gemini snap insert: %v", err))
-			continue
-		}
-		result.GeminiImported++
 	}
 
 	// ── Import Copilot snapshots ──
