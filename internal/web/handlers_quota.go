@@ -112,6 +112,7 @@ func (s *Server) handleSnap(w http.ResponseWriter, r *http.Request) {
 		AccountID  int64  `json:"accountId"`
 	}
 	var captured []capturedInfo
+	var lastDBErr error
 
 	for _, resp := range resps {
 		snap := resp.ToSnapshot(time.Now().UTC())
@@ -124,6 +125,7 @@ func (s *Server) handleSnap(w http.ResponseWriter, r *http.Request) {
 		accountID, err := s.store.GetOrCreateAccount(snap.Email, snap.PlanName, "antigravity")
 		if err != nil {
 			s.logger.Error("snap: database error creating account", "error", err, "email", snap.Email)
+			lastDBErr = err
 			continue
 		}
 		snap.AccountID = accountID
@@ -131,6 +133,7 @@ func (s *Server) handleSnap(w http.ResponseWriter, r *http.Request) {
 		snapID, err := s.store.InsertSnapshot(snap)
 		if err != nil {
 			s.logger.Error("snap: database error inserting snapshot", "error", err, "email", snap.Email)
+			lastDBErr = err
 			continue
 		}
 
@@ -188,6 +191,15 @@ func (s *Server) handleSnap(w http.ResponseWriter, r *http.Request) {
 			SnapshotID: snapID,
 			AccountID:  accountID,
 		})
+	}
+
+	if len(resps) > 0 && len(captured) == 0 && lastDBErr != nil {
+		s.logger.Error("snap: database write failed for all detected quotas", "error", lastDBErr)
+		s.store.LogError("ui", "snap_failed", "", map[string]interface{}{
+			"error": "database write failed: " + lastDBErr.Error(),
+		})
+		jsonError(w, "database write failed: "+lastDBErr.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	// Update data source bookkeeping

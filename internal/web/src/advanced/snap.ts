@@ -77,16 +77,14 @@ export function snapSource(source: string): void {
   if (source === 'antigravity' || source === 'all') {
     promises.push(
       triggerSnap().then(function(data) {
-        var label = 'Antigravity';
-        if (data.captured && data.captured.length > 0) {
-          var emails = data.captured.map(function(c: any) { return c.email; });
-          label = 'Antigravity · ' + emails.join(', ');
-        } else if (data.email) {
-          label = 'Antigravity · ' + data.email;
+        if (!data.captured || data.captured.length === 0) {
+          return { source: 'Antigravity', error: 'No active session detected' };
         }
+        var emails = data.captured.map(function(c: any) { return c.email; });
+        var label = 'Antigravity · ' + emails.join(', ');
         return { source: 'Antigravity', data: data, label: label };
       }).catch(function(err) {
-        return { source: 'Antigravity', error: err.message };
+        return { source: 'Antigravity', error: err.message || 'Capture failed' };
       })
     );
   }
