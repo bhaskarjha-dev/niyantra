@@ -807,8 +807,8 @@ export function renderCodexProviderSection(codexSnaps: any[], statusFilter: stri
     '<div class="grid-header grid-codex">' +
     '<div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div>' +
     '<div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div>' +
-    '<div class="sortable" data-sort="fiveHour">5-Hour <span class="sort-indicator"></span></div>' +
-    '<div class="sortable" data-sort="sevenDay">7-Day <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="fiveHour">Short-Term <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="sevenDay">Weekly <span class="sort-indicator"></span></div>' +
     '<div class="sortable" data-sort="credits">Credits <span class="sort-indicator"></span></div>' +
     '<div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div>' +
     '<div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div>' +
@@ -913,7 +913,7 @@ export function renderClaudeProviderSection(cl: any): string {
     '</div></div>' +
     '<div class="provider-body' + clCollapseClass + '" id="section-claude">' +
     '<div class="grid-header grid-claude">' +
-    '<div>Source</div><div>5-Hour</div><div>7-Day</div><div>Last Snap</div><div>Status</div>' +
+    '<div>Source</div><div>Short-Term</div><div>Weekly</div><div>Last Snap</div><div>Status</div>' +
     '</div>' +
     '<div class="account-card' + statusClass + '"><div class="account-row grid-claude">' +
     '<div class="account-info"><div class="account-email">' + esc(cl.source || 'statusline') + '</div></div>' +
