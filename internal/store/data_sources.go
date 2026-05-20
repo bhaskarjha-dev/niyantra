@@ -65,3 +65,21 @@ func (s *Store) SetSourceEnabled(sourceID string, enabled bool) error {
 	}
 	return nil
 }
+
+// UpsertDataSource inserts or updates a data source registration.
+// Used by the plugin system to register discovered plugins.
+func (s *Store) UpsertDataSource(id, name, sourceType string, enabled bool) error {
+	val := 0
+	if enabled {
+		val = 1
+	}
+	_, err := s.db.Exec(`
+		INSERT INTO data_sources (id, name, source_type, enabled, config_json)
+		VALUES (?, ?, ?, ?, '{}')
+		ON CONFLICT(id) DO UPDATE SET name = excluded.name, source_type = excluded.source_type, enabled = excluded.enabled
+	`, id, name, sourceType, val)
+	if err != nil {
+		return fmt.Errorf("store: upsert data source %s: %w", id, err)
+	}
+	return nil
+}

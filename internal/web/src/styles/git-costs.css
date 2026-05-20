@@ -1,0 +1,280 @@
+/* ════════════════════════════════════════════
+   GIT ACTIVITY ATTRIBUTION STYLING
+   ════════════════════════════════════════════ */
+
+.git-costs-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.git-costs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+}
+
+.git-costs-header h3 {
+  margin-bottom: 0 !important;
+}
+
+.git-repo-path {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.git-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 768px) {
+  .git-kpi-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.git-kpi-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  text-align: center;
+  transition: all var(--transition);
+}
+
+.git-kpi-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
+}
+
+.git-kpi-icon {
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.git-kpi-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.git-kpi-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.git-no-ai-banner {
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  color: var(--red, #f87171);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  text-align: center;
+}
+
+.git-section {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.git-section h4 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-top: 0;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+
+/* Commit Chart */
+.git-commit-chart {
+  display: flex;
+  align-items: flex-end;
+  height: 120px;
+  gap: 4px;
+  padding: 10px 0 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+.git-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  justify-content: flex-end;
+  cursor: pointer;
+}
+
+.git-bar {
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+  transition: background-color 200ms ease, opacity 200ms ease;
+}
+
+.git-bar-col:hover .git-bar {
+  filter: brightness(1.2);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.git-bar-hash {
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  display: block;
+}
+
+/* Branch Table */
+.git-branch-table {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.git-branch-header, .git-branch-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.git-branch-header {
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+.git-branch-row {
+  border-bottom: 1px solid rgba(255,255,255,0.02);
+  align-items: center;
+}
+
+.git-branch-row:hover {
+  background: var(--bg-hover);
+}
+
+.git-branch-name {
+  font-family: var(--font-mono, monospace);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-branch-val {
+  color: var(--text-secondary);
+}
+
+.git-branch-cost {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* Commits List */
+.git-commits-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.git-commit-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  transition: all var(--transition);
+}
+
+.git-commit-item:hover {
+  border-color: var(--border-hover);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.git-commit-hash {
+  font-family: var(--font-mono, monospace);
+  color: var(--accent);
+  font-weight: 600;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.git-commit-msg {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-grow: 1;
+  margin-right: 16px;
+}
+
+.git-commit-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.git-cost-badge, .git-token-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 100px;
+}
+
+.git-cost-badge {
+  background: var(--accent-glow);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.git-cost-badge.git-cost-zero {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.git-token-badge {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.git-costs-empty {
+  text-align: center;
+  padding: 40px 20px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}

@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -190,10 +189,6 @@ func TestHandlePluginConfigSurfacesSecretWriteFailure(t *testing.T) {
 }
 
 func TestHandlePluginRunDoesNotPersistSnapshots(t *testing.T) {
-	if _, err := exec.LookPath("pwsh"); err != nil {
-		t.Skip("pwsh not available")
-	}
-
 	home := t.TempDir()
 	setPluginHomeEnv(t, home)
 	createTestPlugin(t, home, "fixture-plugin")
@@ -214,27 +209,8 @@ func TestHandlePluginRunDoesNotPersistSnapshots(t *testing.T) {
 	rec := httptest.NewRecorder()
 	srv.handlePluginRun(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d (%s)", rec.Code, rec.Body.String())
-	}
-
-	var payload struct {
-		Status string `json:"status"`
-		Data   struct {
-			Provider     string `json:"provider"`
-			Label        string `json:"label"`
-			UsageDisplay string `json:"usage_display"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("unmarshal response: %v", err)
-	}
-
-	if payload.Status != "ok" {
-		t.Fatalf("status = %q, want %q", payload.Status, "ok")
-	}
-	if payload.Data.Provider != "fixture" {
-		t.Fatalf("provider = %q, want %q", payload.Data.Provider, "fixture")
+	if rec.Code != http.StatusGone {
+		t.Fatalf("expected 410, got %d (%s)", rec.Code, rec.Body.String())
 	}
 	if st.PluginSnapshotCount() != 0 {
 		t.Fatalf("expected manual test run to avoid persistence, got %d snapshots", st.PluginSnapshotCount())
@@ -261,8 +237,8 @@ func TestHandlePluginRunRejectsMissingRequiredConfig(t *testing.T) {
 	rec := httptest.NewRecorder()
 	srv.handlePluginRun(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d (%s)", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusGone {
+		t.Fatalf("expected 410, got %d (%s)", rec.Code, rec.Body.String())
 	}
 	if st.PluginSnapshotCount() != 0 {
 		t.Fatalf("expected no plugin snapshots after rejected run, got %d", st.PluginSnapshotCount())

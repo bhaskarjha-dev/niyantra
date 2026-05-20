@@ -27,19 +27,19 @@ import (
 func DefaultQuotaCeilings() map[string]GroupCeiling {
 	return map[string]GroupCeiling{
 		"claude_gpt": {
-			GroupKey:            "claude_gpt",
+			GroupKey:           "claude_gpt",
 			DisplayName:        "Claude + GPT",
 			TokensPerCycle:     5_000_000,
 			CycleDurationHours: 5,
 		},
 		"gemini_pro": {
-			GroupKey:            "gemini_pro",
+			GroupKey:           "gemini_pro",
 			DisplayName:        "Gemini Pro",
 			TokensPerCycle:     3_000_000,
 			CycleDurationHours: 5,
 		},
 		"gemini_flash": {
-			GroupKey:            "gemini_flash",
+			GroupKey:           "gemini_flash",
 			DisplayName:        "Gemini Flash",
 			TokensPerCycle:     10_000_000,
 			CycleDurationHours: 5,
@@ -49,7 +49,7 @@ func DefaultQuotaCeilings() map[string]GroupCeiling {
 
 // GroupCeiling defines the assumed token capacity for a quota group's cycle.
 type GroupCeiling struct {
-	GroupKey            string  `json:"groupKey"`
+	GroupKey           string  `json:"groupKey"`
 	DisplayName        string  `json:"displayName"`
 	TokensPerCycle     float64 `json:"tokensPerCycle"`     // total tokens per reset cycle
 	CycleDurationHours float64 `json:"cycleDurationHours"` // cycle length in hours
@@ -76,35 +76,35 @@ func (p ModelPricing) BlendedPricePerToken() float64 {
 
 // GroupCostEstimate is the estimated cost for a single quota group.
 type GroupCostEstimate struct {
-	GroupKey      string  `json:"groupKey"`
-	DisplayName   string  `json:"displayName"`
-	ConsumedFrac  float64 `json:"consumedFraction"`  // fraction consumed in current window
-	EstTokens     float64 `json:"estimatedTokens"`    // estimated tokens consumed
-	EstCost       float64 `json:"estimatedCost"`      // $ cost estimate
-	CostPerHour   float64 `json:"costPerHour"`         // $/hr at current burn rate
-	CostLabel     string  `json:"costLabel"`           // human-readable "$1.23"
-	HourlyLabel   string  `json:"hourlyLabel"`         // "$0.41/hr"
-	HasData       bool    `json:"hasData"`
+	GroupKey     string  `json:"groupKey"`
+	DisplayName  string  `json:"displayName"`
+	ConsumedFrac float64 `json:"consumedFraction"` // fraction consumed in current window
+	EstTokens    float64 `json:"estimatedTokens"`  // estimated tokens consumed
+	EstCost      float64 `json:"estimatedCost"`    // $ cost estimate
+	CostPerHour  float64 `json:"costPerHour"`      // $/hr at current burn rate
+	CostLabel    string  `json:"costLabel"`        // human-readable "$1.23"
+	HourlyLabel  string  `json:"hourlyLabel"`      // "$0.41/hr"
+	HasData      bool    `json:"hasData"`
 }
 
 // AccountCostEstimate is the estimated cost for a single account.
 type AccountCostEstimate struct {
-	AccountID    int64               `json:"accountId"`
-	Email        string              `json:"email"`
-	TotalCost    float64             `json:"totalCost"`
-	TotalLabel   string              `json:"totalLabel"`
-	Groups       []GroupCostEstimate `json:"groups"`
+	AccountID  int64               `json:"accountId"`
+	Email      string              `json:"email"`
+	TotalCost  float64             `json:"totalCost"`
+	TotalLabel string              `json:"totalLabel"`
+	Groups     []GroupCostEstimate `json:"groups"`
 }
 
 // CostSummary is the aggregate estimated cost across all accounts.
 type CostSummary struct {
 	TotalCostToday float64 `json:"totalCostToday"` // sum across all accounts
-	TotalLabel     string  `json:"totalLabel"`      // "$4.56"
+	TotalLabel     string  `json:"totalLabel"`     // "$4.56"
 }
 
 // GroupRate holds per-group burn rate data from the forecast engine.
 type GroupRate struct {
-	GroupKey   string
+	GroupKey  string
 	BurnRate  float64 // fraction consumed per hour
 	Remaining float64 // current remaining fraction (0.0–1.0)
 	HasData   bool
@@ -125,7 +125,7 @@ func EstimateGroupCost(
 	groupAssigner func(modelID string) string,
 ) GroupCostEstimate {
 	est := GroupCostEstimate{
-		GroupKey:     rate.GroupKey,
+		GroupKey:    rate.GroupKey,
 		DisplayName: ceiling.DisplayName,
 		HasData:     rate.HasData,
 	}
@@ -218,19 +218,7 @@ func blendedPriceForGroup(groupKey string, pricing []ModelPricing, groupAssigner
 	}
 
 	if count == 0 {
-		// Fallback: use average of all pricing as rough estimate
-		for _, p := range pricing {
-			bp := p.BlendedPricePerToken()
-			if bp > 0 {
-				total += bp
-				count++
-			}
-		}
-		if count == 0 {
-			return 0
-		}
-		// Divide total by number of groups (~3) to avoid over-counting
-		return total / float64(count) / 3
+		return 0
 	}
 
 	return total / float64(count)

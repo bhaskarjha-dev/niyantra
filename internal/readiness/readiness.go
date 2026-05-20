@@ -1,6 +1,7 @@
 package readiness
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"time"
@@ -10,33 +11,41 @@ import (
 
 // AccountReadiness represents the readiness state of a single account.
 type AccountReadiness struct {
-	AccountID        int64             `json:"accountId"`
-	LatestSnapshotID int64             `json:"latestSnapshotId"`
-	Email            string            `json:"email"`
-	PlanName         string            `json:"planName"`
-	Notes            string            `json:"notes"`
-	Tags             string            `json:"tags"`
-	PinnedGroup      string            `json:"pinnedGroup"`
-	CreditRenewalDay int               `json:"creditRenewalDay"`
-	LastSeen         time.Time         `json:"lastSeen"`
-	Staleness        time.Duration     `json:"-"`
-	StalenessLabel   string            `json:"stalenessLabel"`
-	IsReady          bool              `json:"isReady"`
-	Groups           []GroupReadiness  `json:"groups"`
-	Models           []ModelDetail     `json:"models"`
-	PromptCredits    float64           `json:"promptCredits"`
-	MonthlyCredits   int               `json:"monthlyCredits"`
-	AICredits        []client.AICredit `json:"aiCredits"`
+	AccountID           int64             `json:"accountId"`
+	LatestSnapshotID    int64             `json:"latestSnapshotId"`
+	Email               string            `json:"email"`
+	PlanName            string            `json:"planName"`
+	PlanTier            string            `json:"planTier"`
+	OverageCredits      float64           `json:"overageCredits"`
+	HasClaimedBonus2026 int               `json:"hasClaimedBonus2026"`
+	Notes               string            `json:"notes"`
+	Tags                string            `json:"tags"`
+	PinnedGroup         string            `json:"pinnedGroup"`
+	CreditRenewalDay    int               `json:"creditRenewalDay"`
+	LastSeen            time.Time         `json:"lastSeen"`
+	Staleness           time.Duration     `json:"-"`
+	StalenessLabel      string            `json:"stalenessLabel"`
+	IsReady             bool              `json:"isReady"`
+	UnifiedPool         bool              `json:"unifiedPool"`
+	Groups              []GroupReadiness  `json:"groups"`
+	Models              []ModelDetail     `json:"models"`
+	PromptCredits       float64           `json:"promptCredits"`
+	MonthlyCredits      int               `json:"monthlyCredits"`
+	AICredits           []client.AICredit `json:"aiCredits"`
 }
 
 // ModelDetail is a per-model quota entry for the dashboard.
 type ModelDetail struct {
-	ModelID          string  `json:"modelId"`
-	Label            string  `json:"label"`
-	RemainingPercent float64 `json:"remainingPercent"`
-	IsExhausted      bool    `json:"isExhausted"`
-	ResetSeconds     float64 `json:"resetSeconds"`
-	GroupKey         string  `json:"groupKey"`
+	ModelID           string  `json:"modelId"`
+	Label             string  `json:"label"`
+	RemainingPercent  float64 `json:"remainingPercent"`
+	IsExhausted       bool    `json:"isExhausted"`
+	ResetSeconds      float64 `json:"resetSeconds"`
+	GroupKey          string  `json:"groupKey"`
+	IsEstimated       bool    `json:"isEstimated,omitempty"`
+	Basis             string  `json:"basis,omitempty"`
+	Confidence        string  `json:"confidence,omitempty"`
+	UnavailableReason string  `json:"unavailableReason,omitempty"`
 }
 
 // GroupReadiness represents the readiness state of a single quota group.
@@ -49,6 +58,9 @@ type GroupReadiness struct {
 	Color             string     `json:"color"`
 	ResetTime         *time.Time `json:"resetTime,omitempty"`
 	TimeUntilResetSec float64    `json:"timeUntilResetSec"`
+	IsEstimated       bool       `json:"isEstimated,omitempty"`
+	Basis             string     `json:"basis,omitempty"`
+	Confidence        string     `json:"confidence,omitempty"`
 }
 
 // Calculate computes readiness for all accounts from their latest snapshots.
@@ -64,6 +76,15 @@ func Calculate(snapshots []*client.Snapshot, threshold float64) []AccountReadine
 		now := time.Now()
 		staleness := now.Sub(snap.CapturedAt)
 
+		var rawResp struct {
+			UserStatus struct {
+				CascadeModelConfigData struct {
+					UnifiedPool bool `json:"unifiedPool"`
+				} `json:"cascadeModelConfigData"`
+			} `json:"userStatus"`
+		}
+		_ = json.Unmarshal([]byte(snap.RawJSON), &rawResp)
+
 		ar := AccountReadiness{
 			AccountID:        snap.AccountID,
 			LatestSnapshotID: snap.ID,
@@ -76,6 +97,7 @@ func Calculate(snapshots []*client.Snapshot, threshold float64) []AccountReadine
 			PromptCredits:    snap.PromptCredits,
 			MonthlyCredits:   snap.MonthlyCredits,
 			AICredits:        snap.AICredits,
+			UnifiedPool:      rawResp.UserStatus.CascadeModelConfigData.UnifiedPool,
 		}
 
 		// Q3: Always show actual time-ago — the time IS the staleness indicator
@@ -95,12 +117,16 @@ func Calculate(snapshots []*client.Snapshot, threshold float64) []AccountReadine
 				}
 			}
 			ar.Models = append(ar.Models, ModelDetail{
-				ModelID:          m.ModelID,
-				Label:            m.Label,
-				RemainingPercent: m.RemainingPercent,
-				IsExhausted:      m.IsExhausted,
-				ResetSeconds:     resetSec,
-				GroupKey:         client.GroupForModel(m.ModelID, m.Label),
+				ModelID:           m.ModelID,
+				Label:             m.Label,
+				RemainingPercent:  m.RemainingPercent,
+				IsExhausted:       m.IsExhausted,
+				ResetSeconds:      resetSec,
+				GroupKey:          client.GroupForModel(m.ModelID, m.Label),
+				IsEstimated:       m.IsEstimated,
+				Basis:             m.Basis,
+				Confidence:        m.Confidence,
+				UnavailableReason: m.UnavailableReason,
 			})
 
 			// Build corrected ModelQuota for group computation
@@ -110,6 +136,13 @@ func Calculate(snapshots []*client.Snapshot, threshold float64) []AccountReadine
 		// Group models using CORRECTED values (not raw snapshot)
 		groups := client.GroupModels(correctedModels)
 		for _, g := range groups {
+			groupEstimated := false
+			for _, m := range correctedModels {
+				if client.GroupForModel(m.ModelID, m.Label) == g.GroupKey && m.IsEstimated {
+					groupEstimated = true
+					break
+				}
+			}
 			gr := GroupReadiness{
 				GroupKey:         g.GroupKey,
 				DisplayName:      g.DisplayName,
@@ -117,6 +150,11 @@ func Calculate(snapshots []*client.Snapshot, threshold float64) []AccountReadine
 				IsExhausted:      g.IsExhausted,
 				Color:            g.Color,
 				ResetTime:        g.ResetTime,
+				IsEstimated:      groupEstimated,
+			}
+			if groupEstimated {
+				gr.Basis = "contains_reset_time_elapsed_unverified"
+				gr.Confidence = "low"
 			}
 
 			if g.ResetTime != nil {

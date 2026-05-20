@@ -70,7 +70,7 @@ go build -o niyantra.exe ./cmd/niyantra
 git clone https://github.com/bhaskarjha-com/niyantra.git
 cd niyantra
 docker compose up -d
-# Dashboard at http://localhost:9222
+# Open the tokenized dashboard URL printed in the container logs.
 ```
 
 Or run directly:
@@ -80,9 +80,13 @@ docker build -t niyantra:latest .
 docker run -p 127.0.0.1:9222:9222 \
   -e NIYANTRA_BIND=0.0.0.0 \
   -e NIYANTRA_ALLOW_REMOTE=true \
+  -e NIYANTRA_AUTH=admin:change-me \
+  -e NIYANTRA_BEHIND_HTTPS_PROXY=true \
   -v ./niyantra-data:/data \
   niyantra:latest
 ```
+
+For local Docker testing, publish the container only to host loopback as shown above. The server still sees a non-loopback container bind, so the explicit remote-bind safeguards are required. Use `docker compose logs` or container stdout to copy the generated `?token=...` dashboard URL.
 
 Two image variants: **distroless** (default, ~15 MB, no shell) and **alpine** (`--target runtime-shell`, includes shell for `docker exec`).
 
@@ -102,7 +106,7 @@ go run ./cmd/niyantra serve
 When you're ready to use real data:
 
 ```bash
-niyantra snap     # Capture your Antigravity account's quota (Antigravity must be running)
+niyantra snap     # Capture your Antigravity quotas (detects Antigravity 2.0 Main, IDE, and CLI)
 niyantra serve    # Dashboard shows your real data
 ```
 
@@ -122,15 +126,15 @@ niyantra serve    # Dashboard shows your real data
 
 ### Know Your Quotas
 
-Auto-capture Antigravity per-model quotas (Claude, Gemini, GPT) with rolling 5-hour reset detection. Track your native **Google AI Credits** balances continuously. Monitor **Codex/ChatGPT** via OAuth API, track **Claude Code** rate limits + deep JSONL token analytics, track **Cursor** usage via session token API, monitor **Gemini CLI** quota via OAuth, and track **GitHub Copilot** premium interactions via PAT. **Quick Adjust** lets you fine-tune stale values with ±5%/±10% buttons right on the dashboard. **7 providers** in one unified view. **Plugin system** (F18) lets you track any custom AI service via external scripts in any language.
+Auto-capture the **Antigravity v2.0 suite** per-model quotas (Claude, Gemini, GPT) with rolling 5-hour reset detection. Track active sessions across **Antigravity 2.0 (Main)**, **Antigravity IDE**, and **Antigravity CLI** (with direct Google PA API fallback) concurrently. Track your native **Google AI Credits** balances continuously. Monitor **Codex/ChatGPT** via OAuth API, track **Claude Code** rate limits + deep JSONL token analytics, track **Cursor** usage via session token API, monitor **Gemini / Antigravity CLI** quotas via OAuth, and track **GitHub Copilot** premium interactions via PAT. **Quick Adjust** lets you fine-tune stale values with +/-5%/+/-10% buttons right on the dashboard. **7 providers** in one unified view. Optional plugins can collect custom local data through the polling agent; manual HTTP plugin execution is disabled.
 
 ### Control Your Spending
 
-Track subscriptions across **26+ AI platforms** with renewals, spending breakdowns, and CSV export. Set a monthly budget and get forecasts before you overspend. Visual renewal calendar so nothing surprises you. **Estimated cost tracking** calculates per-model spend from quota deltas × model pricing. **Git commit correlation** attributes AI costs to specific feature branches.
+Track subscriptions across **26+ AI platforms** with renewals, spending breakdowns, and CSV export. Set a monthly budget and compare it against recurring commitments. Visual renewal calendar so nothing surprises you. **Estimated cost tracking** labels quota-derived values as estimates and reports unavailable costs when pricing is missing. **Git commit correlation** is heuristic activity attribution, not billing proof.
 
 ### Let AI Help You Code Smarter
 
-**Switch Advisor** ranks your accounts and tells you which one to use right now. **MCP Server** (13 tools over stdio + Streamable HTTP) lets your AI agent check quotas, analyze spending, query plugin data, and get routing recommendations mid-task — locally or remotely. **Anomaly alerts** stay disabled until Niyantra has enough real daily spend history to analyze.
+**Advisor** ranks accounts by current readiness. It gives switch guidance only when a current account is explicitly supplied. **MCP Server** (13 tools over stdio + token-protected Streamable HTTP) lets your AI agent check quotas, analyze spending, query plugin data, and get routing recommendations. **Anomaly alerts** stay disabled until Niyantra has enough real daily spend history to analyze.
 
 ### Stay Informed
 
@@ -144,6 +148,10 @@ Track subscriptions across **26+ AI platforms** with renewals, spending breakdow
 
 SQLite database. No cloud. No telemetry. Full provenance audit trail on every snapshot -- you can always verify *how* and *when* data entered the system.
 
+### Current Trust Limits
+
+The dashboard prints a generated tokenized URL on `niyantra serve`; every `/api/*` and HTTP `/mcp` request must send `Authorization: Bearer <dashboard_api_token>`. Static UI assets and `/healthz` stay public. HTTP/manual plugin execution is disabled: `POST /api/plugins/{id}/run` returns `410 Gone`, and plugins may run only through the opt-in local polling path. Backups and JSON exports redact sensitive config values, including the dashboard token. Advisor output ranks accounts unless a current account is explicitly supplied.
+
 ---
 
 ## Dashboard
@@ -152,9 +160,9 @@ SQLite database. No cloud. No telemetry. Full provenance audit trail on every sn
 
 | Tab | What it shows |
 |-----|---------------|
-| **Quotas** | Provider-sectioned layout (Antigravity/Codex/Claude/Cursor/Gemini/Copilot), per-model progress bars with reset timers, Quick Adjust (±5%/±10%), provider, status and tag filters, split-button snap, twin-axis history chart with event annotations, activity heatmap, AI Credits tracking |
+| **Quotas** | Provider-sectioned layout (Antigravity/Codex/Claude/Cursor/Gemini/Copilot), per-model progress bars with reset timers, Quick Adjust (+/-5%/+/-10%), provider, status and tag filters, split-button snap, twin-axis history chart with event annotations, activity heatmap, AI Credits tracking |
 | **Subscriptions** | Hybrid card + provider layout with spend summary, search, 26 platform presets, CSV export |
-| **Overview** | Budget headroom against recurring subscriptions, switch advisor, provider status signals, heuristic cost tracking, heuristic git attribution, observed token analytics, sessions timeline, renewal calendar, shareable PNG report, redacted JSON/CSV export + DB backup |
+| **Overview** | Budget headroom against recurring subscriptions, advisor rankings/switch guidance, provider status signals, heuristic cost tracking, heuristic git attribution, observed token analytics, sessions timeline, renewal calendar, shareable PNG report, redacted JSON/CSV export + redacted DB backup |
 | **Settings** | Auto-capture (7 providers), polling interval, notifications (4 channels + digest mode), plugin management, model pricing, Claude bridge, backup/restore, command palette (`Ctrl+K`) |
 
 ---
@@ -165,7 +173,9 @@ SQLite database. No cloud. No telemetry. Full provenance audit trail on every sn
 |---------|-------------|
 | `niyantra snap` | Capture current Antigravity account's quota |
 | `niyantra status` | Show all accounts' readiness (offline) |
-| `niyantra serve` | Launch web dashboard at `localhost:9222` |
+| `niyantra serve` | Launch web dashboard and print the tokenized first-open URL |
+| `niyantra token show` | Print the dashboard API token |
+| `niyantra token rotate` | Rotate the dashboard API token |
 | `niyantra mcp` | Start MCP server (stdio) for AI agents |
 | `niyantra demo` | Seed database with sample data |
 | `niyantra backup` | Create timestamped database backup |
@@ -195,7 +205,7 @@ Niyantra exposes quota intelligence to AI coding agents via the [Model Context P
 }
 ```
 
-**Streamable HTTP transport** (opt-in): `POST /mcp` on the running dashboard server after starting `niyantra serve --mcp-http`. For non-local binds, Niyantra refuses startup unless you also set `--allow-remote`, `--auth user:pass`, and `--behind-https-proxy` so Basic auth is not sent over plaintext HTTP. SSE streaming and session management are handled by the MCP SDK.
+**Streamable HTTP transport** (opt-in): `POST /mcp` on the running dashboard server after starting `niyantra serve --mcp-http`. HTTP MCP requires `Authorization: Bearer <dashboard_api_token>`. For non-local binds, Niyantra refuses startup unless you also set `--allow-remote`, `--auth user:pass`, and `--behind-https-proxy` so Basic auth is not sent over plaintext HTTP. SSE streaming and session management are handled by the MCP SDK.
 
 Then ask: *"What's my quota?"* or *"Which account should I use?"* or *"How much Claude activity landed near my recent commits?"*
 
@@ -205,11 +215,11 @@ Then ask: *"What's my quota?"* or *"Which account should I use?"* or *"How much 
 
 | Feature | Niyantra | Quota trackers (onWatch, CodexBar) | Sub trackers (Wallos) | Account managers (Antigravity-Manager) |
 |---------|----------|-------------------------------|---------------------------|-----------|
-| AI quota monitoring | 7 providers (AG + Codex + Claude + Cursor + Gemini + Copilot + Manual) | 9-16+ providers | — | 4+ providers |
+| AI quota monitoring | 7 providers (AG Suite [Main/IDE/CLI] + Codex + Claude + Cursor + Gemini + Copilot + Manual) | 9-16+ providers | — | 4+ providers |
 | Multi-account per provider | ✅ 28+ (passive, safe) | ❌ Single-account | — | ✅ (active switching ⚠️) |
 | Subscription management | 26 AI platforms, renewals, CSV | — | Generic subs | — |
 | Budget forecasting | Monthly budget with projections | — | Basic budget | — |
-| Switch advisor (account routing) | Multi-factor scoring engine | — | — | — |
+| Advisor (account routing) | Multi-factor scoring; switch guidance only with explicit current account | — | — | — |
 | MCP for AI agents | 13 tools over stdio + HTTP | — | — | — |
 | Notifications | Quad-channel (OS + SMTP + Webhook + WebPush) | — | 10+ channels | — |
 | Token analytics | Per-model cost estimation + git correlation | — | — | — |
@@ -228,10 +238,13 @@ Then ask: *"What's my quota?"* or *"Which account should I use?"* or *"How much 
 
 ### "Antigravity not detected"
 
-Niyantra detects the Antigravity language server process. Make sure:
-1. Antigravity IDE is running (not just installed)
-2. A workspace/file is open (the language server starts when you open a project)
-3. Try `niyantra snap --debug` for detailed detection output
+Niyantra dynamically auto-detects all running tools in the **Antigravity v2.0 suite** (Antigravity 2.0 Main and Antigravity IDE). If neither is active, Niyantra automatically falls back to "CLI Solo Mode" using your local **Antigravity / Gemini CLI** OAuth credentials (`~/.gemini/oauth_creds.json`) and queries Google's Cloud Code PA API directly.
+
+If you are experiencing detection issues, make sure:
+1. Either Antigravity 2.0 Main or Antigravity IDE is active (not just installed).
+2. For the IDE, ensure a project/workspace file is open (as the local language server starts lazily).
+3. For CLI Solo Mode, ensure you have logged in via the terminal (`antigravity auth login` or `gemini auth login`) so credentials are cached at `~/.gemini/oauth_creds.json`.
+4. Try `niyantra snap --debug` for verbose process detection logs.
 
 ### "Can I use this without Antigravity?"
 
@@ -253,10 +266,11 @@ Re-run the install command or download the latest from [Releases](https://github
 |-----------|---------|
 | [`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite) | Pure-Go SQLite -- no CGo, true single binary |
 | [`go-sdk/mcp`](https://github.com/modelcontextprotocol/go-sdk) | Official MCP Go SDK for AI agent integration |
+| [`go-keyring`](https://github.com/zalando/go-keyring) | OS-native secret storage for sensitive config values |
 | Go stdlib | Everything else -- HTTP, JSON, embed, crypto |
 
 No web frameworks. No ORMs. Chart.js bundled locally from embedded assets.
-Frontend: 34 TypeScript modules (strict mode) bundled by esbuild into a single IIFE.
+Frontend: 40 TypeScript modules (strict mode) bundled by esbuild into a single IIFE.
 
 ## Documentation
 
@@ -266,9 +280,9 @@ Frontend: 34 TypeScript modules (strict mode) bundled by esbuild into a single I
 | [VISION.md](docs/VISION.md) | Product vision, market position, roadmap (Phases 1-16), competitive analysis |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, data flow, security model |
 | [API_SPEC.md](docs/API_SPEC.md) | REST API reference (55+ endpoints) |
-| [DATA_MODEL.md](docs/DATA_MODEL.md) | SQLite schema v20 (20 tables) |
+| [DATA_MODEL.md](docs/DATA_MODEL.md) | SQLite schema v21 (18 persistent tables) |
 | [SECURITY.md](docs/SECURITY.md) | What data is accessed, network behavior, threat model |
-| [TESTING.md](docs/TESTING.md) | 432 automated tests + manual test cases |
+| [TESTING.md](docs/TESTING.md) | Automated gates and comprehensive manual release checklist |
 | [CONTRIBUTING.md](docs/CONTRIBUTING.md) | Development setup, code style, PR guidelines |
 | [CHANGELOG.md](CHANGELOG.md) | Version history (v0.1.0 → v0.29.0) |
 

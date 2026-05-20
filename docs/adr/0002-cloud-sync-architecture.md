@@ -1,6 +1,6 @@
 # ADR-0002: Cloud Sync Architecture
 
-**Status:** Accepted  
+**Status:** Accepted; needs resequencing after local schema v21
 **Date:** 2026-05-17  
 **Authors:** Bhaskar Jha  
 **Supersedes:** `draft/cloud/00-10` (written 2026-05-01 at v0.15.0, Schema v9)
@@ -12,8 +12,8 @@ with an embedded SQLite database. Users have requested multi-machine synchroniza
 access their quota data, subscription tracking, and analytics from multiple workstations.
 
 The original cloud architecture was designed when the project had 4 tables, 1 provider,
-and a monolithic JavaScript frontend. Since then, the project has grown to 19 tables,
-7 providers, 30 TypeScript modules, 12 MCP tools, 4 notification channels, and 40+ config
+and a monolithic JavaScript frontend. Since then, the project has grown to 18 persistent local tables,
+7 providers, 40 TypeScript modules, 13 MCP tools, 4 notification channels, and many config
 keys (many containing secrets like PATs, SMTP passwords, and VAPID keys).
 
 ### Key Requirements
@@ -22,7 +22,7 @@ keys (many containing secrets like PATs, SMTP passwords, and VAPID keys).
 2. **Single-binary philosophy:** `go build ./cmd/niyantra` must still produce one executable.
 3. **Zero daemon by default:** No background services unless user opts in.
 4. **Secret safety:** Provider credentials (PATs, tokens, passwords) must never leave the machine.
-5. **Minimal dependencies:** Currently only `modernc.org/sqlite` + MCP Go SDK.
+5. **Minimal dependencies:** Current runtime dependencies are `modernc.org/sqlite`, MCP Go SDK, and OS keyring support.
 
 ## Decision
 
@@ -45,7 +45,7 @@ security rules, and an admin dashboard.
 
 ### Sync Protocol: Selective Push + SSE Subscribe
 
-Of 19 local tables, 12 are classified as "sync-eligible" and 7 as "local-only":
+The exact sync set must be recalculated after the local v21 integrity migration. The intended split remains selective sync:
 
 - **Sync:** accounts, snapshots (all 7 providers), subscriptions, config (non-secret keys only),
   activity_log, token_usage, plugin_snapshots
@@ -57,9 +57,9 @@ and **append-only with UUID dedup** for time-series data (all snapshot tables, a
 
 ### Secret Management: "Secrets Don't Sync" Policy
 
-Config keys are classified into syncable and local-only via a new `syncable` column (schema v20).
+Config keys must be classified into sync-eligible and local-only groups by a future sync metadata migration.
 Any key that is masked in the API response (copilot_pat, smtp_pass, webhook_secret,
-webpush_vapid_private, plugin API keys) is marked `syncable=0` and never leaves the machine.
+webpush_vapid_private, dashboard_api_token, provider credentials, plugin API keys) is local-only and never leaves the machine.
 
 ### Authentication: Google + GitHub OAuth via PKCE
 
@@ -108,11 +108,9 @@ PocketBase hooks enable cloud-native features:
 - Cron job → weekly AI spend summary email
 - No retention cleanup → infinite historical data (vs. 90-day local default)
 
-### Schema: v20 Migration
+### Schema Migration
 
-Adds UUID, machine_id, and synced_at columns to all 12 synced tables. Adds `syncable` column
-to config table. Creates `sync_queue` table for offline resilience. UUID backfill for existing
-rows uses stdlib `crypto/rand` (no new dependency).
+The previous draft targeted schema v20. Current local storage is schema v21, so cloud sync must be resequenced as a later migration. It should add UUID, machine_id, and synced_at columns only to sync-eligible tables, add explicit sync metadata for config keys, and create a `sync_queue` table for offline resilience. UUID backfill for existing rows should use stdlib `crypto/rand` (no new dependency).
 
 ## Consequences
 
@@ -123,7 +121,7 @@ rows uses stdlib `crypto/rand` (no new dependency).
 - 5 cloud-exclusive features (cross-machine analytics, fleet view, scheduled emails, infinite history, data continuity) add genuine Pro tier value
 - PWA mobile access with zero extra framework (existing sw.js extends)
 - Cloud sync is the revenue gate (Free = local, Pro = cloud) — enables sustainability
-- Only 1 new dependency (go-keyring) — consistent with minimal-dep philosophy
+- Reuses the existing OS keyring dependency for OAuth token storage instead of introducing a separate secret store
 - Data isolation guaranteed by PocketBase row-level security
 - PocketBase hooks enable server-side intelligence (alerts, cron reports) that run 24/7
 
@@ -131,8 +129,8 @@ rows uses stdlib `crypto/rand` (no new dependency).
 
 - PocketBase is pre-v1.0, single-maintainer (mitigated: data is standard SQLite, portable)
 - Oracle Free tier has termination risk (mitigated: backups + migration plan)
-- go-keyring may not work in all Linux environments (mitigated: env var fallback)
-- 12 PocketBase collections to maintain (mitigated: auto-created via admin UI)
+- go-keyring may not work in all Linux environments; current local fallback is explicit `--insecure-plaintext-secrets` / `NIYANTRA_INSECURE_PLAINTEXT_SECRETS=true`, and cloud sync should avoid adding a silent plaintext fallback
+- PocketBase collections to maintain; the final count must be recalculated after the v21 local schema (mitigated: generated/checked collection definitions, not manual drift)
 
 ### Risks
 
@@ -140,7 +138,7 @@ rows uses stdlib `crypto/rand` (no new dependency).
 |------|----------|------------|
 | PocketBase breaking change on upgrade | Medium | Pin version, test in staging |
 | Oracle account termination | High | PAYG + offsite backups + Hetzner fallback |
-| Secret leakage via sync | Critical | `syncable=0` on all secret keys, enforced at engine level |
+| Secret leakage via sync | Critical | Future sync metadata must mark masked config keys local-only and enforce that policy in the sync engine |
 | Service worker conflict (push + cache) | Low | Single sw.js with both event handlers |
 
 ## References

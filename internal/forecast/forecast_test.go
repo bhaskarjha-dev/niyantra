@@ -62,9 +62,10 @@ func TestComputeRates_SteadyBurn(t *testing.T) {
 }
 
 func TestComputeRates_IdlePeriodAccuracy(t *testing.T) {
-	// The KEY accuracy test: active for 30min, then idle for 30min.
-	// Old approach: TotalDelta/cycleAge = 0.3/1h = 0.3/hr
-	// New approach: should reflect that last 30min had zero consumption.
+	// Test: active for 30min (0.30 consumed), then idle for 30min.
+	// With C3 fix: idle intervals (consumed <= 0) are SKIPPED, so the rate
+	// reflects only active-phase consumption (~0.60/hr).
+	// This is correct for TTX prediction: "how fast am I burning when active?"
 	now := time.Now()
 	points := []SnapshotPoint{
 		// Active phase: 30% consumed in 30 minutes
@@ -93,17 +94,13 @@ func TestComputeRates_IdlePeriodAccuracy(t *testing.T) {
 		t.Fatal("expected rate for m1")
 	}
 
-	// Old broken calculation: 0.30 / 1.0h = 0.30/hr
-	// New sliding-window: active phase had 0.60/hr, idle phase had 0/hr.
-	// With recency weighting, the idle (recent) data dominates.
-	// The rate should be much lower than 0.30/hr because the user is currently idle.
-	if r.Rate >= 0.25 {
-		t.Errorf("rate should be < 0.25/hr (idle period should reduce it), got %f", r.Rate)
+	// With idle-skip, rate should reflect active-phase consumption only.
+	// Active phase: 0.30 consumed over 0.5h = 0.60/hr.
+	// Idle intervals (consumed == 0) are skipped entirely.
+	if r.Rate < 0.40 {
+		t.Errorf("rate should be >= 0.40/hr (active-only rate), got %f", r.Rate)
 	}
-
-	// But also shouldn't be exactly 0 since there was active usage in the window
-	// (unless the recency weighting completely zeroes it, which it shouldn't)
-	t.Logf("Computed rate: %f/hr (correctly accounting for idle period)", r.Rate)
+	t.Logf("Computed rate: %f/hr (active-only, idle intervals skipped per C3 fix)", r.Rate)
 }
 
 func TestComputeRates_RecentBurstAccuracy(t *testing.T) {

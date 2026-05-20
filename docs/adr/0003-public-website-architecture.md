@@ -25,7 +25,7 @@ The cloud dashboard SPA (`/app/`) and PocketBase REST API (`/api/`) are separate
 - **Deploy target** — all static output goes to PocketBase's `pb_public/` directory on the Oracle Cloud VM
 - **Documentation volume** — 10 markdown files totaling 217KB+ with code blocks, tables, diagrams, and deep technical content (the `API_SPEC.md` alone is 58KB)
 - **Single maintainer** — the chosen tool must be maintainable by a solo developer long-term
-- **Niyantra's identity** — `VISION.md` states: "Go compiles to a single static binary... No runtime dependencies, no package managers, no containers, no node_modules" and "Trivially portable, trivially deployable, trivially auditable"
+- **Niyantra's identity** — `VISION.md` states that the shipped binary has no runtime package manager or `node_modules`, with Docker as an optional packaging wrapper, and that it should remain trivially portable and auditable
 - **Existing toolchain** — the main repo contains `package.json` with esbuild + TypeScript for the dashboard frontend (embedded in the Go binary via `embed.FS`)
 
 ### Prior Art: GitSetu Web
@@ -54,7 +54,7 @@ Initially, same-repo (`website/` subfolder) was considered because Niyantra alre
 
 **Clone bloat:** Anyone cloning the repo to use the tool (for `go install`, Docker build, or development) downloads the entire website source — Astro components, marketing copy, pricing page templates — none of which are needed to build or use the tool.
 
-**Philosophy violation:** Niyantra's `VISION.md` explicitly states "no node_modules" and "trivially auditable." The existing `node_modules` (esbuild + TypeScript) are build tools for the core product — they compile the dashboard that ships inside the binary. Astro's `node_modules` would serve marketing, a categorically different purpose. Adding them contradicts the tool's identity.
+**Philosophy violation:** Niyantra's `VISION.md` keeps runtime dependencies out of the shipped tool. The existing `node_modules` (esbuild + TypeScript) are build tools for the core product — they compile the dashboard that ships inside the binary. Astro's `node_modules` would serve marketing, a categorically different purpose. Adding them contradicts the tool's identity.
 
 **Commit history pollution:** Go developers doing `git log` would see "Update pricing table copy" and "Fix hero section responsive breakpoint" mixed with "Fix Claude provider polling timeout." These are completely different work streams.
 
@@ -160,7 +160,7 @@ Hugo is a Go-native SSG — the fastest static site generator available. It rend
 github.com/bhaskarjha-com/niyantra       ← Go tool (pure, focused)
   ├── cmd/niyantra/                        ← Go entrypoint
   ├── internal/web/                        ← Dashboard backend + frontend
-  │   ├── src/                             ← 34 TypeScript modules
+  │   ├── src/                             ← 40 TypeScript modules
   │   └── static/                          ← Embedded assets (app.js, style.css)
   ├── docs/                                ← Documentation SOURCE OF TRUTH
   ├── package.json                         ← esbuild + TS only (product build)
@@ -231,7 +231,7 @@ niyantra           + niyantra-web          = 🔜 This ADR
 - **Clean commit history** — Go development and website updates are completely separate git histories. Contributors see only relevant commits.
 - **Stack freedom** — the website framework can be changed at any time without touching the main repo. Archive `niyantra-web`, create a new one with a different tool.
 - **Proven pattern** — identical to the working `gitsetu` + `gitsetu-web` architecture
-- **Philosophy preserved** — Niyantra's identity as a "trivially auditable, no node_modules" tool remains intact. The website is a separate project.
+- **Philosophy preserved** — Niyantra's identity as a trivially auditable single-binary tool remains intact. The website is a separate project.
 - **Independent release cycles** — fix a typo on the pricing page without a Go binary release. Deploy in 30 seconds.
 - **~70% reusable** — fork `gitsetu-web` as template; sync script, search, SEO, transitions all carry over
 - **Focused CI** — each repo has simple, targeted pipelines. No path filters needed.

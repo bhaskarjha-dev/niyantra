@@ -86,20 +86,20 @@ Niyantra gathers data from multiple sources, each with its own capture method:
 │                                                      ▼   │
 │                              ┌─────────────────────┐     │
 │                              │  SQLite Ledger      │     │
-│                              │  (19 tables, v19)   │     │
+│                              │  (18 tables, v21)   │     │
 │                              │                     │     │
 │                              │  snapshots           │     │
 │                              │  subscriptions       │     │
 │                              │  activity_log        │     │
-│                              │  config (74 keys)    │     │
+│                              │  config + secrets    │     │
 │                              │  data_sources        │     │
-│                              │  token_usage_daily   │     │
+│                              │  token_usage         │     │
 │                              │  webpush_subscriptions│    │
 │                              └─────────┬───────────┘     │
 │                                        │                 │
 │                    ┌───────────────────▼──────────┐      │
 │                    │  Dashboard / CLI / MCP       │      │
-│                    │  (60 API endpoints)          │      │
+│                    │  (55+ API routes)            │      │
 │                    └─────────────────────────────┘       │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -155,7 +155,7 @@ Niyantra starts in **manual mode** — data enters the system only when you expl
 
 ### 3. Single Binary
 
-Go compiles to a single static binary with the web dashboard embedded via `embed.FS`. No runtime dependencies, no package managers, no containers, no `node_modules`.
+Go compiles to a single static binary with the web dashboard embedded via `embed.FS`. The shipped binary has no runtime package manager or `node_modules`; Docker is an optional packaging wrapper, not a required runtime model.
 
 **Why:** Copy it, run it, done. Trivially portable, trivially deployable, trivially auditable.
 
@@ -181,7 +181,7 @@ Manual snaps are **always** allowed regardless of mode. The auto-capture toggle 
 ## Data Sources
 
 ### Current (Implemented — 7 Providers)
-- **Antigravity Language Server** — quota snapshots via local Connect RPC API. Handles protobuf `*float64` semantics for `remainingFraction`. Users can fine-tune stale LS cache values post-snap via Quick Adjust (±5%/±10%).
+- **Antigravity v2.0 Suite** — multi-account concurrent capturing across **Antigravity 2.0 (Main)** and **Antigravity IDE** via local Connect RPC APIs. Features a tiered priority heuristic ranking to isolate real language servers from CLI processes. Implements a direct Google Partner Assist (PA) API fallback for **Antigravity / Gemini CLI Solo Mode** (resolving `~/.gemini/oauth_creds.json` and querying GCP endpoints directly with token auto-refresh). Handles protobuf `*float64` semantics for `remainingFraction`. Users can fine-tune stale LS cache values post-snap via Quick Adjust (±5%/±10%). Features an **intelligent multi-account snap toast** displaying an elegantly formatted comma-separated email list (with truncation to `and X more` for clean UI rendering). Incorporates **tab-switch and focus-switch auto-resilience** by firing `niyantra:status-refreshed` events to maintain synchronized, complete state across all 7 providers without card vanish or cache degradation.
 - **Claude Code** — real-time rate limit data via statusline file bridge + deep JSONL session parsing for per-turn token analytics (input/output/cache) with model-aware cost estimation. New `internal/claude/` package (refactored from claudebridge).
 - **Codex / ChatGPT** — OAuth API polling with proactive token refresh, multi-quota tracking (5h window, 7d window, code review). Credentials from `~/.codex/auth.json`, account identity via JWT `id_token` parsing with OIDC name + picture extraction.
 - **Cursor** — Session token detection from filesystem, HTTP API polling to `cursor.com/api/usage` for request counts + USD credit balance. Supports legacy request-based and new credit-based billing models.
@@ -229,11 +229,11 @@ Daily:
 
 ### Dashboard
 
-Four-tab dashboard at `http://localhost:9222`:
+Four-tab dashboard at the tokenized URL printed by `niyantra serve`:
 
 - **Quotas** — provider-sectioned layout (Antigravity / Codex / Claude / Cursor / Gemini / Copilot), per-model progress bars with reset timers, provider filter dropdown, status filter (Ready / Low / Empty), tag filter, text search, split-button snap (Snap Now / Snap All Sources), twin-axis history chart, activity heatmap, AI Credits tracking, Quick Adjust
 - **Subscriptions** — hybrid card + provider layout with spend summary bar, search, 26 platform presets, CSV export, platform filter, status filter
-- **Overview** — monthly budget vs actual, switch advisor, provider health cards, estimated cost tracking, Git commit costs, sessions timeline, renewal calendar, spending breakdown, token usage analytics, JSON/CSV export
+- **Overview** — recurring budget headroom, advisor rankings/current-account guidance, provider health cards, estimated cost tracking, heuristic Git attribution, sessions timeline, renewal calendar, spending breakdown, observed token analytics, JSON/CSV export
 - **Settings** — capture config (7 providers), budget, model pricing, notifications (4 channels), data sources, import/export, activity log, keyboard shortcuts, command palette (`Ctrl+K`)
 
 ## Roadmap
@@ -283,11 +283,11 @@ MCP server over stdio (13 tools) for AI agent integration. Uses official Go SDK 
 - **Schema v5** — `claude_snapshots` table, config keys: `claude_bridge`, `notify_enabled`, `notify_threshold`
 
 ### ✅ Phase 10: Intelligence & Insights
-- **Smart switch advisor** — cross-account routing engine: ranks accounts by remaining% (60%), burn rate (20%), time-to-reset (20%). Actions: "switch", "stay", "wait". New `internal/advisor/` package.
+- **Advisor** — cross-account ranking engine: ranks accounts by remaining% (60%), burn rate (20%), time-to-reset (20%). Without explicit current-account context it only ranks; with context it can return "switch", "stay", or "wait". New `internal/advisor/` package.
 - **MCP insight tools** — `analyze_spending` (spending analysis, savings detection, category breakdown) + `switch_recommendation` (wraps advisor for AI agents). Total: 7 MCP tools.
 - **Enhanced subscription insights** — structured insights with type/severity/icon: unused detection (30+ days), imminent renewal (3 days), spending anomaly (2× budget), category overlap (3+ subs)
 - **Renewal calendar** — CSS grid month-view calendar with pin markers on renewal dates, month navigation, legend
-- **JSON export** — `GET /api/export/json` as a redacted/importable report. Use `POST /api/backup/create` for a full-fidelity database backup.
+- **JSON export** — `GET /api/export/json` as a redacted/importable report. Use `POST /api/backup/create` for a SQLite backup with sensitive config values redacted.
 - **System alerts** — persistent dismissible banners for quota warnings, budget overages, bridge errors (schema v6: `system_alerts` table)
 - **Data retention cleanup** — enforce `retention_days` config via agent poll hook
 
@@ -361,16 +361,21 @@ MCP server over stdio (13 tools) for AI agent integration. Uses official Go SDK 
 - ✅ **SMTP/Email notifications** — pure Go SMTP with TLS/STARTTLS, HTML templates
 - ✅ **Webhook notifications** — Discord, Telegram, Slack, ntfy/Gotify/generic
 - ✅ **WebPush notifications** — VAPID (RFC 8292) + RFC 8291 encryption, zero x/crypto dependency
-- ✅ **Plugin system** — language-agnostic subprocess exec architecture (ADR-0001), `~/.niyantra/plugins/` with JSON manifests, 4 API endpoints, MCP tool
+- ✅ **Plugin system** — language-agnostic operator-trusted local polling architecture (ADR-0001), `~/.niyantra/plugins/` with JSON manifests, config/status APIs, MCP tool; manual HTTP execution is disabled
 - **Cloud sync (Pro tier)** — TLS-secured multi-device sync via PocketBase (architecture finalized, ADR-0002 accepted)
 - **Context window dashboard** — visualize IDE context consumption (requires LS research)
+
+### 🔲 Phase 17: Agentic Observability & Heartbeats — planned
+- **Antigravity "Always-On" Profile Discovery**: Passively scan local settings JSON and SQLite index `state.vscdb` to immediately discover and register all logged-in Google accounts even when they are offline/sleeping.
+- **Antigravity Deep Session Audit Logs (Protobuf)**: Parse conversation logs (`.pb` Protobuf streams) under `~/.gemini/antigravity/conversations/` and CLI logs to display step-by-step reasoning tracks and per-turn input/output cost estimates on the Niyantra dashboard.
+- **Real-Time Heartbeats**: Read live window stream and heartbeat log files (`Antigravity.log`) to display when autonomous background agents/subagents are running, showing active session timers and real-time projected quota consumption.
 
 > **Full details:** The internal development roadmap (`draft/roadmap.md`) contains 22 features with quantified scoring across Gap, Value, Effort, and Moat dimensions, plus a 37-feature × 12-tool competitive comparison matrix. Cloud sync architecture documented in 11 internal design documents + ADR-0002.
 
 ## Real-World Use Cases
 
 ### The Quota Emergency
-You're deep in a coding flow. Claude hits 0% mid-task. You have 3 Antigravity accounts. Which one has quota? Open Niyantra dashboard -- the readiness grid tells you in 1 second. The switch advisor says "switch to personal@gmail.com (85% remaining, score 78)."
+You're deep in a coding flow. Claude hits 0% mid-task. You have 3 Antigravity accounts. Which one has quota? Open Niyantra dashboard -- the readiness grid tells you in 1 second. The advisor ranks personal@gmail.com highest (85% remaining, score 78). If you explicitly mark your current account, it can recommend whether to switch.
 
 ### The Expense Report
 End of month, your manager asks "how much are we spending on AI tools?" Open Subscriptions tab, click CSV Export. Done. Total monthly spend, per-platform breakdown, renewal dates -- all in one file.
@@ -403,11 +408,11 @@ Niyantra has a fully designed cloud tier for optional multi-device sync:
 - **Domain:** `niyantra.bhaskarjha.dev` (single first-level subdomain, Cloudflare free SSL)
 - **Backend:** PocketBase on Oracle Cloud ARM (Mumbai, `ap-mumbai-1`, Always Free tier)
 - **Auth:** Google + GitHub OAuth with PKCE (no client_secret on device), tokens in OS keychain
-- **Sync:** 12/19 tables sync selectively — secrets never leave the machine (`syncable` column)
+- **Sync:** eligible tables sync selectively; secrets never leave the machine. The exact sync metadata migration must be designed after local schema v21 rather than assuming a column already exists.
 - **Mobile:** PWA served from PocketBase `pb_public/` (same-origin, no CORS)
 - **Desktop wrapper:** Deferred (Wails v3 alpha — cloud sync works in browser mode)
 - **Monetization:** Free (local-only, all features) / Pro ($29/year, cloud sync + multi-machine)
-- **Security:** Row-Level Security on all 12 PocketBase collections, TLS via Caddy + Let's Encrypt
+- **Security:** Row-Level Security on every sync-eligible PocketBase collection, TLS via Caddy + Let's Encrypt
 
 Full architecture documented in 11 design documents (`draft/cloud/`) + ADR (`docs/adr/0002-cloud-sync-architecture.md`).
 
@@ -426,6 +431,6 @@ Niyantra is successful when:
 7. **Multi-source** — 7 AI coding tools tracked in a unified view ✅
 8. **7 providers** shipped: Antigravity + Codex + Claude deep + Cursor + Gemini CLI + Copilot + Manual ✅
 9. **37+ features** shipped across Phases 1-16, closing all competitive gaps vs onWatch ✅
-10. **129 tests** across 10 packages, all passing ✅
+10. **286 tests** across 14 packages in the current tree ✅
 11. **4 notification channels**: OS + SMTP + Webhook + WebPush ✅
-12. **12 MCP tools** (stdio + Streamable HTTP) ✅
+12. **13 MCP tools** (stdio + token-protected Streamable HTTP) ✅

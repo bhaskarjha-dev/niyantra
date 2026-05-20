@@ -60,7 +60,9 @@ EXPOSE 9222
 
 ENV NIYANTRA_DB=/data/niyantra.db \
     NIYANTRA_PORT=9222 \
-    NIYANTRA_BIND=127.0.0.1
+    # Bind 0.0.0.0 inside container — Docker network provides isolation.
+    # 127.0.0.1 would make the server unreachable from the host.
+    NIYANTRA_BIND=0.0.0.0
 
 USER nonroot
 ENTRYPOINT ["/app/niyantra"]
@@ -85,7 +87,9 @@ EXPOSE 9222
 
 ENV NIYANTRA_DB=/data/niyantra.db \
     NIYANTRA_PORT=9222 \
-    NIYANTRA_BIND=127.0.0.1
+    # Bind 0.0.0.0 inside container — Docker network provides isolation.
+    # 127.0.0.1 would make the server unreachable from the host.
+    NIYANTRA_BIND=0.0.0.0
 
 # distroless has no shell — use exec form
 ENTRYPOINT ["/app/niyantra"]

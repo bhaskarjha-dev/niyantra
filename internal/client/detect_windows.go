@@ -11,23 +11,23 @@ import (
 	"strings"
 )
 
-// detectProcess finds the language server on Windows using a cascade of
+// detectProcesses finds all language servers on Windows using a cascade of
 // detection methods: CIM query → Get-Process → WMIC (legacy).
-func (c *Client) detectProcess(ctx context.Context) (*processInfo, error) {
-	if p, err := c.findViaCIM(ctx); err == nil {
+func (c *Client) detectProcesses(ctx context.Context) ([]*processInfo, error) {
+	if p, err := c.findProcessesViaCIM(ctx); err == nil && len(p) > 0 {
 		return p, nil
 	}
-	if p, err := c.findViaGetProcess(ctx); err == nil {
+	if p, err := c.findProcessesViaGetProcess(ctx); err == nil && len(p) > 0 {
 		return p, nil
 	}
-	if p, err := c.findViaWMIC(ctx); err == nil {
+	if p, err := c.findProcessesViaWMIC(ctx); err == nil && len(p) > 0 {
 		return p, nil
 	}
 	return nil, ErrProcessNotFound
 }
 
-// findViaCIM queries Win32_Process through Get-CimInstance.
-func (c *Client) findViaCIM(ctx context.Context) (*processInfo, error) {
+// findProcessesViaCIM queries Win32_Process through Get-CimInstance.
+func (c *Client) findProcessesViaCIM(ctx context.Context) ([]*processInfo, error) {
 	query := `Get-CimInstance Win32_Process -Filter "CommandLine LIKE '%antigravity%' OR Name LIKE '%language_server%'" | ` +
 		`Select-Object ProcessId, Name, CommandLine | ConvertTo-Json -Compress`
 
@@ -41,12 +41,6 @@ func (c *Client) findViaCIM(ctx context.Context) (*processInfo, error) {
 		return nil, ErrProcessNotFound
 	}
 
-	return c.pickBestCIM(text)
-}
-
-// pickBestCIM parses CIM JSON (may be array or single object) and selects
-// the highest-ranked candidate.
-func (c *Client) pickBestCIM(raw string) (*processInfo, error) {
 	type entry struct {
 		ProcessId   int    `json:"ProcessId"`
 		Name        string `json:"Name"`
@@ -54,18 +48,16 @@ func (c *Client) pickBestCIM(raw string) (*processInfo, error) {
 	}
 
 	var entries []entry
-	if err := json.Unmarshal([]byte(raw), &entries); err != nil {
+	if err := json.Unmarshal([]byte(text), &entries); err != nil {
 		// PowerShell emits a bare object when only one row matches
 		var single entry
-		if err2 := json.Unmarshal([]byte(raw), &single); err2 != nil {
+		if err2 := json.Unmarshal([]byte(text), &single); err2 != nil {
 			return nil, ErrProcessNotFound
 		}
 		entries = []entry{single}
 	}
 
-	var best *processInfo
-	topRank := -1
-
+	var procs []*processInfo
 	for _, e := range entries {
 		if e.CommandLine == "" || !containsFold(e.CommandLine, "antigravity") {
 			continue
@@ -78,20 +70,19 @@ func (c *Client) pickBestCIM(raw string) (*processInfo, error) {
 			CommandLine:         e.CommandLine,
 		}
 
-		if r := rankCandidate(p); r > topRank {
-			best = p
-			topRank = r
+		if rankCandidate(p) >= 10 {
+			procs = append(procs, p)
 		}
 	}
 
-	if best == nil {
+	if len(procs) == 0 {
 		return nil, ErrProcessNotFound
 	}
-	return best, nil
+	return procs, nil
 }
 
-// findViaGetProcess uses Get-Process as a lightweight fallback.
-func (c *Client) findViaGetProcess(ctx context.Context) (*processInfo, error) {
+// findProcessesViaGetProcess uses Get-Process as a lightweight fallback.
+func (c *Client) findProcessesViaGetProcess(ctx context.Context) ([]*processInfo, error) {
 	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-Command",
 		`Get-Process | Where-Object { $_.ProcessName -match 'antigravity|language_server' } | `+
 			`Select-Object Id, ProcessName | ConvertTo-Json -Compress`)
@@ -114,9 +105,7 @@ func (c *Client) findViaGetProcess(ctx context.Context) (*processInfo, error) {
 		rows = []row{single}
 	}
 
-	var best *processInfo
-	topRank := -1
-
+	var procs []*processInfo
 	for _, r := range rows {
 		// Retrieve the full command line for ranking
 		clCmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-Command",
@@ -139,20 +128,19 @@ func (c *Client) findViaGetProcess(ctx context.Context) (*processInfo, error) {
 			CommandLine:         cl,
 		}
 
-		if rk := rankCandidate(p); rk > topRank {
-			best = p
-			topRank = rk
+		if rankCandidate(p) >= 10 {
+			procs = append(procs, p)
 		}
 	}
 
-	if best == nil {
+	if len(procs) == 0 {
 		return nil, ErrProcessNotFound
 	}
-	return best, nil
+	return procs, nil
 }
 
-// findViaWMIC is a legacy fallback for older Windows builds.
-func (c *Client) findViaWMIC(ctx context.Context) (*processInfo, error) {
+// findProcessesViaWMIC is a legacy fallback for older Windows builds.
+func (c *Client) findProcessesViaWMIC(ctx context.Context) ([]*processInfo, error) {
 	cmd := exec.CommandContext(ctx, "wmic", "process", "where",
 		"name like '%antigravity%' or commandline like '%antigravity%'",
 		"get", "processid,commandline", "/format:csv")
@@ -162,9 +150,7 @@ func (c *Client) findViaWMIC(ctx context.Context) (*processInfo, error) {
 		return nil, ErrProcessNotFound
 	}
 
-	var best *processInfo
-	topRank := -1
-
+	var procs []*processInfo
 	for _, line := range strings.Split(string(out), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "Node,") {
@@ -193,16 +179,15 @@ func (c *Client) findViaWMIC(ctx context.Context) (*processInfo, error) {
 			CommandLine:         cl,
 		}
 
-		if r := rankCandidate(p); r > topRank {
-			best = p
-			topRank = r
+		if rankCandidate(p) >= 10 {
+			procs = append(procs, p)
 		}
 	}
 
-	if best == nil {
+	if len(procs) == 0 {
 		return nil, ErrProcessNotFound
 	}
-	return best, nil
+	return procs, nil
 }
 
 // discoverPorts enumerates listening ports for a given PID on Windows.

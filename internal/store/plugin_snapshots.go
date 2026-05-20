@@ -6,6 +6,7 @@ import "fmt"
 type PluginSnapshot struct {
 	ID            int64   `json:"id"`
 	PluginID      string  `json:"pluginId"`
+	DataSourceID  string  `json:"dataSourceId,omitempty"`
 	Provider      string  `json:"provider"`
 	Label         string  `json:"label"`
 	Email         string  `json:"email"`
@@ -22,10 +23,10 @@ type PluginSnapshot struct {
 func (s *Store) InsertPluginSnapshot(snap *PluginSnapshot) (int64, error) {
 	res, err := s.db.Exec(`
 		INSERT INTO plugin_snapshots
-			(plugin_id, provider, label, email, usage_pct, usage_display,
+			(plugin_id, data_source_id, provider, label, email, usage_pct, usage_display,
 			 plan, models_json, metadata_json, capture_method)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, snap.PluginID, snap.Provider, snap.Label, snap.Email,
+		VALUES (?, (SELECT id FROM data_sources WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, snap.PluginID, pluginDataSourceID(snap.PluginID), snap.Provider, snap.Label, snap.Email,
 		snap.UsagePct, snap.UsageDisplay, snap.Plan,
 		snap.ModelsJSON, snap.MetadataJSON, snap.CaptureMethod)
 	if err != nil {
@@ -38,14 +39,14 @@ func (s *Store) InsertPluginSnapshot(snap *PluginSnapshot) (int64, error) {
 func (s *Store) LatestPluginSnapshot(pluginID string) (*PluginSnapshot, error) {
 	snap := &PluginSnapshot{}
 	err := s.db.QueryRow(`
-		SELECT id, plugin_id, provider, label, email, usage_pct, usage_display,
+		SELECT id, plugin_id, COALESCE(data_source_id,''), provider, label, email, usage_pct, usage_display,
 			   plan, models_json, metadata_json, captured_at, capture_method
 		FROM plugin_snapshots
 		WHERE plugin_id = ?
 		ORDER BY captured_at DESC
 		LIMIT 1
 	`, pluginID).Scan(
-		&snap.ID, &snap.PluginID, &snap.Provider, &snap.Label, &snap.Email,
+		&snap.ID, &snap.PluginID, &snap.DataSourceID, &snap.Provider, &snap.Label, &snap.Email,
 		&snap.UsagePct, &snap.UsageDisplay, &snap.Plan,
 		&snap.ModelsJSON, &snap.MetadataJSON, &snap.CapturedAt, &snap.CaptureMethod)
 	if err != nil {
@@ -57,7 +58,7 @@ func (s *Store) LatestPluginSnapshot(pluginID string) (*PluginSnapshot, error) {
 // AllLatestPluginSnapshots returns the most recent snapshot for each plugin.
 func (s *Store) AllLatestPluginSnapshots() ([]*PluginSnapshot, error) {
 	rows, err := s.db.Query(`
-		SELECT ps.id, ps.plugin_id, ps.provider, ps.label, ps.email,
+		SELECT ps.id, ps.plugin_id, COALESCE(ps.data_source_id,''), ps.provider, ps.label, ps.email,
 			   ps.usage_pct, ps.usage_display, ps.plan,
 			   ps.models_json, ps.metadata_json, ps.captured_at, ps.capture_method
 		FROM plugin_snapshots ps
@@ -77,7 +78,7 @@ func (s *Store) AllLatestPluginSnapshots() ([]*PluginSnapshot, error) {
 	for rows.Next() {
 		snap := &PluginSnapshot{}
 		if err := rows.Scan(
-			&snap.ID, &snap.PluginID, &snap.Provider, &snap.Label, &snap.Email,
+			&snap.ID, &snap.PluginID, &snap.DataSourceID, &snap.Provider, &snap.Label, &snap.Email,
 			&snap.UsagePct, &snap.UsageDisplay, &snap.Plan,
 			&snap.ModelsJSON, &snap.MetadataJSON, &snap.CapturedAt, &snap.CaptureMethod,
 		); err != nil {
@@ -86,6 +87,13 @@ func (s *Store) AllLatestPluginSnapshots() ([]*PluginSnapshot, error) {
 		snapshots = append(snapshots, snap)
 	}
 	return snapshots, nil
+}
+
+func pluginDataSourceID(pluginID string) string {
+	if pluginID == "" {
+		return ""
+	}
+	return "plugin_" + pluginID
 }
 
 // PluginSnapshotCount returns the total number of plugin snapshots.

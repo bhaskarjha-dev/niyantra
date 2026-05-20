@@ -69,21 +69,7 @@ func (s *Server) pluginSourceIndex() map[string]*store.DataSource {
 
 func (s *Server) ensurePluginDataSource(p *plugin.Plugin) error {
 	sourceID := "plugin_" + p.Manifest.ID
-	if err := s.store.ExecRaw(`
-		INSERT OR IGNORE INTO data_sources (id, name, source_type, enabled, config_json)
-		VALUES (?, ?, 'plugin', ?, '{}')
-	`, sourceID, p.Manifest.Name, boolToSQLite(p.Enabled)); err != nil {
-		return err
-	}
-
-	if err := s.store.ExecRaw(`
-		UPDATE data_sources
-		SET name = ?, source_type = 'plugin', enabled = ?
-		WHERE id = ?
-	`, p.Manifest.Name, boolToSQLite(p.Enabled), sourceID); err != nil {
-		return err
-	}
-	return nil
+	return s.store.UpsertDataSource(sourceID, p.Manifest.Name, "plugin", p.Enabled)
 }
 
 func boolToSQLite(v bool) int {

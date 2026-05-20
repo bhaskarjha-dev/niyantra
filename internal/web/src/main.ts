@@ -19,6 +19,7 @@ import {
 } from './core/utils';
 
 import {
+  installAuthenticatedFetch,
   fetchStatus, triggerSnap,
   fetchSubscriptions, createSubscription, updateSubscription, deleteSubscription,
   fetchOverview, fetchPresets, fetchUsage, downloadBackup,
@@ -53,7 +54,6 @@ import { loadModelPricing } from './settings/pricing';
 import { initKeyboardShortcuts } from './advanced/keyboard';
 import { initCommandPalette } from './advanced/palette';
 import { loadSystemAlerts } from './advanced/alerts';
-import { renderOnboarding, checkOnboardingStep, autoDetectSteps } from './core/onboarding';
 import { emptyQuotas } from './core/emptyStates';
 
 // ════════════════════════════════════════════
@@ -62,8 +62,33 @@ import { emptyQuotas } from './core/emptyStates';
 
 
 document.addEventListener('DOMContentLoaded', function() {
+  installAuthenticatedFetch();
   initTheme();
+  var isInitialTabChange = true;
+
+  // Tab-change event: domain modules react to tab activation
+  document.addEventListener('niyantra:tab-change', function(e) {
+    var tab = (e as CustomEvent).detail.tab;
+    if (tab === 'overview') {
+      loadOverview();
+    }
+    if (tab === 'quotas') {
+      if (!isInitialTabChange) {
+        fetchStatus().then(function(data) {
+          document.dispatchEvent(new CustomEvent('niyantra:status-refreshed', { detail: { data: data } }));
+        }).catch(function() {});
+      }
+    }
+    if (tab === 'subscriptions') {
+      if (!isInitialTabChange) {
+        loadSubscriptions();
+      }
+    }
+    if (tab === 'settings') { loadActivityLog(); loadMode(); loadDataSources(); }
+  });
+
   initTabs();
+  isInitialTabChange = false;
   setRenderAccounts(renderAccounts);
   initQuotas();
   setupToggle();
@@ -74,14 +99,25 @@ document.addEventListener('DOMContentLoaded', function() {
   initKeyboardShortcuts();
   initAccountMetaHandlers();
 
-  // Tab-change event: domain modules react to tab activation
-  document.addEventListener('niyantra:tab-change', function(e) {
-    var tab = (e as CustomEvent).detail.tab;
-    if (tab === 'overview') {
-      loadOverview();
-      checkOnboardingStep('overview');
+  // Global visibility change event listener for tab focus resilience
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') {
+      var activeTab = document.querySelector('.tab-btn.active')?.getAttribute('data-tab');
+      if (activeTab === 'quotas') {
+        fetchStatus().then(function(data) {
+          document.dispatchEvent(new CustomEvent('niyantra:status-refreshed', { detail: { data: data } }));
+        }).catch(function() {});
+      }
     }
-    if (tab === 'settings') { loadActivityLog(); loadMode(); loadDataSources(); }
+  });
+
+  // Status refreshed event: update UI and charts consistently
+  document.addEventListener('niyantra:status-refreshed', function(e) {
+    var data = (e as CustomEvent).detail.data;
+    renderAccounts(data);
+    populateChartAccountSelect(data);
+    loadHistoryChart();
+    updateTimestamp();
   });
 
   // Theme-change event: update chart colors
@@ -130,10 +166,6 @@ document.addEventListener('DOMContentLoaded', function() {
       var emptySnapBtn = document.getElementById('empty-snap-btn');
       if (emptySnapBtn) emptySnapBtn.addEventListener('click', handleSnap);
     }
-
-    // F7-UX: Auto-detect onboarding steps
-    autoDetectSteps(data, serverConfig);
-    renderOnboarding();
 
     // Bug 1 fix: If no codex/claude data on first load, retry after 3s
     if (!data.codexSnapshot || !data.claudeSnapshot) {

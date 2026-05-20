@@ -31,6 +31,9 @@ jobs:
       - name: Test
         run: go test -count=1 ./...
 
+      - name: Security And Integrity Focus Tests
+        run: go test -count=1 ./cmd/niyantra ./internal/web ./internal/store ./internal/plugin ./internal/advisor ./internal/costtrack
+
   race:
     runs-on: ubuntu-latest
     steps:
@@ -59,6 +62,9 @@ jobs:
       - name: Type Check
         run: npm run check
 
+      - name: Dependency Audit
+        run: npm audit --audit-level=high
+
       - name: Bundle App
         run: npm run build
 
@@ -66,6 +72,20 @@ jobs:
         run: npm run css
 
       - name: Verify Generated Assets
+        run: git diff --exit-code -- internal/web/static/app.js internal/web/static/style.css
+
+      - name: Production Bundle App
+        run: npm run build:prod
+
+      - name: Production Bundle CSS
+        run: npm run css:prod
+
+      - name: Restore Development Bundles
+        run: |
+          npm run build
+          npm run css
+
+      - name: Verify Production Build Did Not Leave Drift
         run: git diff --exit-code -- internal/web/static/app.js internal/web/static/style.css
 
   docs:

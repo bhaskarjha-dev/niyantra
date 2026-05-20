@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"encoding/json"
 	"path/filepath"
 	"testing"
@@ -23,10 +24,10 @@ func openTestDB(t *testing.T) *Store {
 func TestOpenAndMigrate(t *testing.T) {
 	s := openTestDB(t)
 
-	// Verify schema version is 20
+	// Verify schema version is 21
 	v := s.getUserVersion()
-	if v != 20 {
-		t.Errorf("expected schema version 20, got %d", v)
+	if v != 21 {
+		t.Errorf("expected schema version 21, got %d", v)
 	}
 
 	// Insert a snapshot and query it back
@@ -229,8 +230,8 @@ func TestCodexOwnerAccountMigrationBackfillsFromEmail(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("InsertCodexSnapshot: %v", err)
 	}
-	if _, err := seed.db.Exec(`UPDATE codex_snapshots SET owner_account_id = 0`); err != nil {
-		t.Fatalf("zero owner_account_id: %v", err)
+	if _, err := seed.db.Exec(`UPDATE codex_snapshots SET owner_account_id = NULL`); err != nil {
+		t.Fatalf("clear owner_account_id: %v", err)
 	}
 	if _, err := seed.db.Exec(`PRAGMA user_version = 19`); err != nil {
 		t.Fatalf("downgrade user_version: %v", err)
@@ -249,6 +250,75 @@ func TestCodexOwnerAccountMigrationBackfillsFromEmail(t *testing.T) {
 	}
 	if ownerAccountID != accountID {
 		t.Fatalf("owner_account_id = %d, want %d", ownerAccountID, accountID)
+	}
+}
+
+func TestV21IntegrityMigrationNullsInvalidReferences(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "v21-integrity.db")
+
+	seed, err := Open(dbPath, WithSecretBackend(NewMemorySecretBackend()))
+	if err != nil {
+		t.Fatalf("Open seed store: %v", err)
+	}
+	seed.db.SetMaxOpenConns(1)
+	if _, err := seed.db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+		t.Fatalf("disable FKs: %v", err)
+	}
+	if _, err := seed.db.Exec(`
+		INSERT INTO activity_log (event_type, snapshot_id) VALUES ('legacy_bad_snapshot', 9999);
+		INSERT INTO subscriptions (platform, account_id) VALUES ('Legacy', 9999);
+		INSERT INTO cursor_snapshots (account_id, captured_at) VALUES (9999, datetime('now'));
+		INSERT INTO data_sources (id, name, source_type, enabled, config_json) VALUES ('plugin_fixture', 'Fixture', 'plugin', 1, '{}');
+		INSERT INTO plugin_snapshots (plugin_id, provider) VALUES ('fixture', 'fixture');
+		PRAGMA user_version = 20;
+	`); err != nil {
+		t.Fatalf("seed invalid refs: %v", err)
+	}
+	seed.Close()
+
+	reopened, err := Open(dbPath, WithSecretBackend(NewMemorySecretBackend()))
+	if err != nil {
+		t.Fatalf("Open migrated store: %v", err)
+	}
+	defer reopened.Close()
+
+	if reopened.SchemaVersion() != 21 {
+		t.Fatalf("schema version = %d, want 21", reopened.SchemaVersion())
+	}
+	issues, err := reopened.IntegrityCheck()
+	if err != nil {
+		t.Fatalf("IntegrityCheck: %v", err)
+	}
+	if len(issues) != 0 {
+		t.Fatalf("integrity issues after v21 migration: %+v", issues)
+	}
+
+	var snapshotID, subAccountID, cursorAccountID sql.NullInt64
+	if err := reopened.db.QueryRow(`SELECT snapshot_id FROM activity_log WHERE event_type = 'legacy_bad_snapshot'`).Scan(&snapshotID); err != nil {
+		t.Fatalf("query activity_log: %v", err)
+	}
+	if snapshotID.Valid {
+		t.Fatalf("snapshot_id = %d, want NULL", snapshotID.Int64)
+	}
+	if err := reopened.db.QueryRow(`SELECT account_id FROM subscriptions WHERE platform = 'Legacy'`).Scan(&subAccountID); err != nil {
+		t.Fatalf("query subscriptions: %v", err)
+	}
+	if subAccountID.Valid {
+		t.Fatalf("subscription account_id = %d, want NULL", subAccountID.Int64)
+	}
+	if err := reopened.db.QueryRow(`SELECT account_id FROM cursor_snapshots LIMIT 1`).Scan(&cursorAccountID); err != nil {
+		t.Fatalf("query cursor_snapshots: %v", err)
+	}
+	if cursorAccountID.Valid {
+		t.Fatalf("cursor account_id = %d, want NULL", cursorAccountID.Int64)
+	}
+
+	var dataSourceID string
+	if err := reopened.db.QueryRow(`SELECT COALESCE(data_source_id, '') FROM plugin_snapshots WHERE plugin_id = 'fixture'`).Scan(&dataSourceID); err != nil {
+		t.Fatalf("query plugin_snapshots: %v", err)
+	}
+	if dataSourceID != "plugin_fixture" {
+		t.Fatalf("plugin data_source_id = %q, want plugin_fixture", dataSourceID)
 	}
 }
 
@@ -1483,4 +1553,3 @@ func TestColumnExists(t *testing.T) {
 		t.Error("expected nonexistent_table.id to not exist")
 	}
 }
-

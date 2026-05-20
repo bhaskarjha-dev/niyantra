@@ -79,6 +79,9 @@ func (s *Store) History(accountID int64, limit int) ([]*client.Snapshot, error) 
 	if limit <= 0 {
 		limit = 50
 	}
+	if limit > 1000 {
+		limit = 1000
+	}
 
 	var query string
 	var args []interface{}

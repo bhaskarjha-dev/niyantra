@@ -5,6 +5,8 @@ import type { ServerConfig, QuotaSortState, StatusResponse, GroupColorMap, Group
 
 export const GROUP_ORDER: string[] = ['claude_gpt', 'gemini_pro', 'gemini_flash', 'unknown'];
 export const GROUP_LABELS: string[] = ['Claude + GPT', 'Gemini Pro', 'Gemini Flash', 'Other'];
+export const GRID_COLUMNS: string[] = ['claude_gpt', 'gemini_pro', 'gemini_flash'];
+export const GRID_LABELS: string[] = ['Claude + GPT', 'Gemini Pro', 'Gemini Flash'];
 export const GROUP_COLORS: GroupColorMap = { claude_gpt: '#D97757', gemini_pro: '#10B981', gemini_flash: '#3B82F6', unknown: '#64748B' };
 export const GROUP_NAMES: GroupNameMap = { claude_gpt: 'Claude + GPT', gemini_pro: 'Gemini Pro', gemini_flash: 'Gemini Flash', unknown: 'Other' };
 
@@ -12,7 +14,12 @@ export const GROUP_NAMES: GroupNameMap = { claude_gpt: 'Claude + GPT', gemini_pr
 export const expandedAccounts: Set<number> = new Set();
 
 // Track which provider sections are collapsed (survives re-renders)
-export const collapsedProviders: Set<string> = new Set();
+const savedCollapsed = typeof localStorage !== 'undefined' ? localStorage.getItem('niyantra_collapsed_providers') : null;
+export const collapsedProviders: Set<string> = new Set(savedCollapsed ? JSON.parse(savedCollapsed) : []);
+
+// Track collapsed providers in the Subscriptions tab (survives re-renders)
+const savedSubCollapsed = typeof localStorage !== 'undefined' ? localStorage.getItem('niyantra_collapsed_subs_providers') : null;
+export const collapsedSubProviders: Set<string> = new Set(savedSubCollapsed ? JSON.parse(savedSubCollapsed) : []);
 
 // Platform presets (loaded from API)
 export let presetsData: PresetEntry[] = [];

@@ -43,8 +43,8 @@ export function loadPlugins(): void {
     }
 
     var html = '<div class="plugin-warning">' +
-      '<strong>Trusted local code only.</strong> Enabling or running a plugin executes its entry point with your current user permissions. ' +
-      'Plugins can read local files, environment variables, network resources, and any secrets already stored in Niyantra.' +
+      '<strong>Trusted local code only.</strong> Enabled plugins execute only through the local polling agent with your current user permissions. ' +
+      'Manual HTTP plugin execution is disabled.' +
       '</div>';
 
     // Show discovery errors if any
@@ -107,10 +107,8 @@ export function loadPlugins(): void {
         html += '</div>'; // plugin-config
       }
 
-      // Test run button
       html += '<div class="plugin-footer" style="' + (p.enabled ? '' : 'display:none') + '">';
-      html += '<button class="btn-sm plugin-test-btn" data-plugin="' + esc(p.manifest.id) + '">Run Trusted Plugin</button>';
-      html += '<span class="plugin-test-result" id="plugin-result-' + esc(p.manifest.id) + '"></span>';
+      html += '<span class="plugin-test-result" id="plugin-result-' + esc(p.manifest.id) + '">Manual HTTP run disabled</span>';
       html += '</div>';
 
       html += '</div>'; // plugin-card
@@ -185,53 +183,6 @@ export function loadPlugins(): void {
         }).catch(function(err) {
           showToast('❌ ' + (err instanceof Error ? err.message : 'Failed to save config'), 'error');
         });
-      });
-    });
-
-    // Bind test run handlers
-    container.querySelectorAll('.plugin-test-btn').forEach(function(el) {
-      el.addEventListener('click', function() {
-        var btn = el as HTMLButtonElement;
-        var pluginId = btn.dataset.plugin!;
-        var resultEl = document.getElementById('plugin-result-' + pluginId)!;
-
-        if (!confirm('Run trusted plugin "' + pluginId + '" now?\n\nPlugins run as local subprocesses with access to your files, environment, network, and stored Niyantra secrets.')) {
-          return;
-        }
-
-        btn.disabled = true;
-        btn.textContent = 'Running trusted plugin...';
-        resultEl.textContent = '';
-
-        fetch('/api/plugins/' + pluginId + '/run', { method: 'POST' })
-          .then(function(r) {
-            return r.json().then(function(data) {
-              return { ok: r.ok, data: data };
-            });
-          })
-          .then(function(data) {
-            if (!data.ok || data.data.error) {
-              resultEl.textContent = '❌ ' + (data.data.error || 'Plugin test failed');
-              resultEl.style.color = '#ef4444';
-            } else if (data.data.status === 'ok') {
-              var d = data.data.data || {};
-              resultEl.textContent = '✅ ' + (d.label || d.provider || 'OK') +
-                (d.usage_pct ? ' — ' + d.usage_pct.toFixed(1) + '%' : '') +
-                (d.usage_display ? ' (' + d.usage_display + ')' : '');
-              resultEl.style.color = '#22c55e';
-            } else {
-              resultEl.textContent = '⚠️ ' + (data.data.error || 'Unknown response');
-              resultEl.style.color = '#f59e0b';
-            }
-          })
-          .catch(function() {
-            resultEl.textContent = '❌ Network error';
-            resultEl.style.color = '#ef4444';
-          })
-          .finally(function() {
-            btn.disabled = false;
-            btn.textContent = 'Run Trusted Plugin';
-          });
       });
     });
 

@@ -184,6 +184,54 @@ func TestDiscoverSkipsInvalidPlugin(t *testing.T) {
 	}
 }
 
+func TestDiscoverRejectsOversizedManifest(t *testing.T) {
+	dir := t.TempDir()
+	pluginDir := filepath.Join(dir, "large")
+	if err := os.MkdirAll(pluginDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), []byte(strings.Repeat("x", maxManifestBytes+1)), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	plugins, errs := Discover(dir)
+	if len(plugins) != 0 {
+		t.Fatalf("expected oversized plugin to be skipped, got %d plugins", len(plugins))
+	}
+	if len(errs) == 0 {
+		t.Fatal("expected oversized manifest error")
+	}
+}
+
+func TestDiscoverRejectsEntryPointSymlinkOutsidePluginDir(t *testing.T) {
+	dir := t.TempDir()
+	pluginDir := filepath.Join(dir, "symlink")
+	outsideDir := t.TempDir()
+	if err := os.MkdirAll(pluginDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	outsideScript := filepath.Join(outsideDir, "capture.py")
+	if err := os.WriteFile(outsideScript, []byte("#!/usr/bin/env python3\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	linkPath := filepath.Join(pluginDir, "capture.py")
+	if err := os.Symlink(outsideScript, linkPath); err != nil {
+		t.Skipf("symlink creation unavailable: %v", err)
+	}
+	manifest, _ := json.Marshal(Manifest{ID: "symlink", Name: "Symlink", EntryPoint: "capture.py"})
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), manifest, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	plugins, errs := Discover(dir)
+	if len(plugins) != 0 {
+		t.Fatalf("expected symlink plugin to be skipped, got %d plugins", len(plugins))
+	}
+	if len(errs) == 0 {
+		t.Fatal("expected symlink escape error")
+	}
+}
+
 func TestPluginRunSuccess(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Skipping subprocess test on Windows CI (no python3)")

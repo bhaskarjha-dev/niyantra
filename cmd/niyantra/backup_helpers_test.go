@@ -41,6 +41,12 @@ func TestCreateDatabaseBackupProducesValidSQLiteCopy(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("InsertSnapshot: %v", err)
 	}
+	if _, _, err := s.EnsureDashboardToken(); err != nil {
+		t.Fatalf("EnsureDashboardToken: %v", err)
+	}
+	if _, err := s.SetConfig("copilot_pat", "ghp_secret"); err != nil {
+		t.Fatalf("SetConfig copilot_pat: %v", err)
+	}
 	s.Close()
 
 	backupPath := filepath.Join(t.TempDir(), "backup.db")
@@ -59,6 +65,12 @@ func TestCreateDatabaseBackupProducesValidSQLiteCopy(t *testing.T) {
 	}
 	if got := backup.SnapshotCount(); got != 1 {
 		t.Fatalf("backup snapshot count = %d, want 1", got)
+	}
+	if got := backup.GetConfig(store.DashboardTokenConfigKey); got != "" {
+		t.Fatal("dashboard token was present in CLI backup")
+	}
+	if got := backup.GetConfig("copilot_pat"); got != "" {
+		t.Fatal("copilot_pat was present in CLI backup")
 	}
 }
 

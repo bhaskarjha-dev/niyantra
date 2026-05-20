@@ -114,6 +114,12 @@ func (s *Server) handleBackupCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	defer os.Remove(backupPath)
 
+	if err := store.RedactSensitiveConfigFile(backupPath); err != nil {
+		s.logger.Error("Backup redaction failed", "error", err)
+		jsonError(w, "backup redaction failed", http.StatusInternalServerError)
+		return
+	}
+
 	f, err := os.Open(backupPath)
 	if err != nil {
 		jsonError(w, "cannot open backup", http.StatusInternalServerError)
@@ -436,7 +442,13 @@ func (s *Server) handleAdvisor(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	rec := advisor.Recommend(snapshots, summariesByAccount)
+	var currentAccountID int64
+	if raw := r.URL.Query().Get("currentAccountId"); raw != "" {
+		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil && parsed > 0 {
+			currentAccountID = parsed
+		}
+	}
+	rec := advisor.RecommendWithCurrent(snapshots, summariesByAccount, currentAccountID)
 	writeJSON(w, rec)
 }
 

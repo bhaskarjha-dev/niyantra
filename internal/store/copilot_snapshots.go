@@ -62,37 +62,47 @@ func formatCopilotModelsJSON(snap *CopilotSnapshot) string {
 	return string(data)
 }
 
-// LatestCopilotSnapshot returns the most recent Copilot snapshot.
-func (s *Store) LatestCopilotSnapshot() (*CopilotSnapshot, error) {
-	row := s.db.QueryRow(`
-		SELECT id, account_id, COALESCE(email,''), COALESCE(username,''),
-		       COALESCE(plan,''), premium_pct, chat_pct,
-		       COALESCE(models_json,'{}'),
-		       captured_at, capture_method, capture_source
-		FROM copilot_snapshots ORDER BY captured_at DESC LIMIT 1`)
-
-	snap := &CopilotSnapshot{}
-	var capturedAt sql.NullString
-	var modelsJSON string
-	err := row.Scan(
-		&snap.ID, &snap.AccountID, &snap.Email, &snap.Username,
-		&snap.Plan, &snap.PremiumPct, &snap.ChatPct,
-		&modelsJSON,
-		&capturedAt, &snap.CaptureMethod, &snap.CaptureSource,
-	)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
+// LatestCopilotSnapshots returns the most recent Copilot snapshot for each account.
+func (s *Store) LatestCopilotSnapshots() ([]*CopilotSnapshot, error) {
+	rows, err := s.db.Query(`
+		SELECT c1.id, COALESCE(c1.account_id,0), COALESCE(c1.email,''), COALESCE(c1.username,''),
+		       COALESCE(c1.plan,''), c1.premium_pct, c1.chat_pct, COALESCE(c1.models_json,'{}'),
+		       c1.captured_at, c1.capture_method, c1.capture_source
+		FROM copilot_snapshots c1
+		INNER JOIN (
+			SELECT COALESCE(NULLIF(email, ''), CAST(account_id AS TEXT)) as grouping_key, MAX(captured_at) as max_captured_at
+			FROM copilot_snapshots
+			GROUP BY COALESCE(NULLIF(email, ''), CAST(account_id AS TEXT))
+		) c2 ON COALESCE(NULLIF(c1.email, ''), CAST(c1.account_id AS TEXT)) = c2.grouping_key AND c1.captured_at = c2.max_captured_at
+		ORDER BY c1.captured_at DESC`)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
-	if capturedAt.Valid {
-		snap.CapturedAt, _ = time.Parse(time.RFC3339, capturedAt.String)
+	var snaps []*CopilotSnapshot
+	for rows.Next() {
+		snap := &CopilotSnapshot{}
+		var capturedAt sql.NullString
+		var modelsJSON string
+		if err := rows.Scan(
+			&snap.ID, &snap.AccountID, &snap.Email, &snap.Username,
+			&snap.Plan, &snap.PremiumPct, &snap.ChatPct, &modelsJSON,
+			&capturedAt, &snap.CaptureMethod, &snap.CaptureSource,
+		); err != nil {
+			return nil, err
+		}
+		if capturedAt.Valid {
+			snap.CapturedAt, _ = time.Parse(time.RFC3339, capturedAt.String)
+			if snap.CapturedAt.IsZero() {
+				snap.CapturedAt, _ = time.Parse("2006-01-02 15:04:05", capturedAt.String)
+			}
+		}
+		parseCopilotModelsJSON(snap, modelsJSON)
+		snaps = append(snaps, snap)
 	}
-	parseCopilotModelsJSON(snap, modelsJSON)
 
-	return snap, nil
+	return snaps, rows.Err()
 }
 
 // parseCopilotModelsJSON restores extended fields from the stored JSON.
@@ -112,7 +122,7 @@ func parseCopilotModelsJSON(snap *CopilotSnapshot, raw string) {
 // RecentCopilotSnapshots returns the last N copilot snapshots.
 func (s *Store) RecentCopilotSnapshots(limit int) ([]*CopilotSnapshot, error) {
 	rows, err := s.db.Query(`
-		SELECT id, account_id, COALESCE(email,''), COALESCE(username,''),
+		SELECT id, COALESCE(account_id,0), COALESCE(email,''), COALESCE(username,''),
 		       COALESCE(plan,''), premium_pct, chat_pct,
 		       COALESCE(models_json,'{}'),
 		       captured_at, capture_method, capture_source

@@ -36,13 +36,13 @@ func (s *Server) handleCodexStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Latest snapshot
-	snap, err := s.store.LatestCodexSnapshot()
+	// Latest snapshots
+	snaps, err := s.store.LatestCodexSnapshots()
 	if err != nil {
-		s.logger.Error("Failed to get Codex snapshot", "error", err)
+		s.logger.Error("Failed to get Codex snapshots", "error", err)
 	}
-	if snap != nil {
-		result["snapshot"] = snap
+	if len(snaps) > 0 {
+		result["snapshots"] = snaps
 	}
 
 	writeJSON(w, result)

@@ -38,43 +38,50 @@ func (s *Store) InsertGeminiSnapshot(snap *GeminiSnapshot) (int64, error) {
 	return res.LastInsertId()
 }
 
-// LatestGeminiSnapshot returns the most recent Gemini snapshot.
-func (s *Store) LatestGeminiSnapshot() (*GeminiSnapshot, error) {
-	row := s.db.QueryRow(`
-		SELECT id, account_id, COALESCE(email,''), COALESCE(tier,''),
-		       overall_pct, COALESCE(models_json,'[]'), COALESCE(project_id,''),
-		       captured_at, capture_method, capture_source
-		FROM gemini_snapshots ORDER BY captured_at DESC LIMIT 1`)
-
-	snap := &GeminiSnapshot{}
-	var capturedAt sql.NullString
-	err := row.Scan(
-		&snap.ID, &snap.AccountID, &snap.Email, &snap.Tier,
-		&snap.OverallPct, &snap.ModelsJSON, &snap.ProjectID,
-		&capturedAt, &snap.CaptureMethod, &snap.CaptureSource,
-	)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
+// LatestGeminiSnapshots returns the most recent Gemini snapshot for each account.
+func (s *Store) LatestGeminiSnapshots() ([]*GeminiSnapshot, error) {
+	rows, err := s.db.Query(`
+		SELECT g1.id, COALESCE(g1.account_id,0), COALESCE(g1.email,''), COALESCE(g1.tier,''), g1.overall_pct,
+		       COALESCE(g1.models_json,'[]'), COALESCE(g1.project_id,''), g1.captured_at, g1.capture_method, g1.capture_source
+		FROM gemini_snapshots g1
+		INNER JOIN (
+			SELECT COALESCE(NULLIF(email, ''), CAST(account_id AS TEXT)) as grouping_key, MAX(captured_at) as max_captured_at
+			FROM gemini_snapshots
+			GROUP BY COALESCE(NULLIF(email, ''), CAST(account_id AS TEXT))
+		) g2 ON COALESCE(NULLIF(g1.email, ''), CAST(g1.account_id AS TEXT)) = g2.grouping_key AND g1.captured_at = g2.max_captured_at
+		ORDER BY g1.captured_at DESC`)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
-	if capturedAt.Valid {
-		snap.CapturedAt, _ = time.Parse(time.RFC3339, capturedAt.String)
-		if snap.CapturedAt.IsZero() {
-			// SQLite datetime format fallback
-			snap.CapturedAt, _ = time.Parse("2006-01-02 15:04:05", capturedAt.String)
+	var snaps []*GeminiSnapshot
+	for rows.Next() {
+		snap := &GeminiSnapshot{}
+		var capturedAt sql.NullString
+		if err := rows.Scan(
+			&snap.ID, &snap.AccountID, &snap.Email, &snap.Tier,
+			&snap.OverallPct, &snap.ModelsJSON, &snap.ProjectID,
+			&capturedAt, &snap.CaptureMethod, &snap.CaptureSource,
+		); err != nil {
+			return nil, err
 		}
+		if capturedAt.Valid {
+			snap.CapturedAt, _ = time.Parse(time.RFC3339, capturedAt.String)
+			if snap.CapturedAt.IsZero() {
+				snap.CapturedAt, _ = time.Parse("2006-01-02 15:04:05", capturedAt.String)
+			}
+		}
+		snaps = append(snaps, snap)
 	}
 
-	return snap, nil
+	return snaps, rows.Err()
 }
 
 // RecentGeminiSnapshots returns the last N Gemini snapshots.
 func (s *Store) RecentGeminiSnapshots(limit int) ([]*GeminiSnapshot, error) {
 	rows, err := s.db.Query(`
-		SELECT id, account_id, COALESCE(email,''), COALESCE(tier,''),
+		SELECT id, COALESCE(account_id,0), COALESCE(email,''), COALESCE(tier,''),
 		       overall_pct, COALESCE(models_json,'[]'), COALESCE(project_id,''),
 		       captured_at, capture_method, capture_source
 		FROM gemini_snapshots
@@ -111,7 +118,7 @@ func (s *Store) RecentGeminiSnapshots(limit int) ([]*GeminiSnapshot, error) {
 func (s *Store) RecentGeminiSnapshotsInWindow(window time.Duration) ([]*GeminiSnapshot, error) {
 	cutoff := time.Now().Add(-window).UTC().Format("2006-01-02 15:04:05")
 	rows, err := s.db.Query(`
-		SELECT id, account_id, COALESCE(email,''), COALESCE(tier,''),
+		SELECT id, COALESCE(account_id,0), COALESCE(email,''), COALESCE(tier,''),
 		       overall_pct, COALESCE(models_json,'[]'), COALESCE(project_id,''),
 		       captured_at, capture_method, capture_source
 		FROM gemini_snapshots

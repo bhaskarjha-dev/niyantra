@@ -12,11 +12,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 )
+
+const maxManifestBytes = 64 * 1024
 
 // Manifest represents a plugin.json manifest file.
 type Manifest struct {
@@ -33,7 +36,7 @@ type Manifest struct {
 
 // ConfigField describes a single configurable field in the plugin manifest.
 type ConfigField struct {
-	Type     string `json:"type"`              // string, int, bool
+	Type     string `json:"type"` // string, int, bool
 	Label    string `json:"label"`
 	Default  string `json:"default,omitempty"`
 	Required bool   `json:"required,omitempty"`
@@ -64,14 +67,14 @@ type CaptureResult struct {
 
 // CaptureData holds the captured usage metrics from a plugin.
 type CaptureData struct {
-	Provider     string            `json:"provider"`
-	Label        string            `json:"label"`
-	Email        string            `json:"email"`
-	UsagePct     float64           `json:"usage_pct"`
-	UsageDisplay string            `json:"usage_display"`
-	Plan         string            `json:"plan"`
-	Models       []PluginModel     `json:"models"`
-	Metadata     map[string]any    `json:"metadata"`
+	Provider     string         `json:"provider"`
+	Label        string         `json:"label"`
+	Email        string         `json:"email"`
+	UsagePct     float64        `json:"usage_pct"`
+	UsageDisplay string         `json:"usage_display"`
+	Plan         string         `json:"plan"`
+	Models       []PluginModel  `json:"models"`
+	Metadata     map[string]any `json:"metadata"`
 }
 
 // PluginModel represents a single model/resource tracked by a plugin.
@@ -107,6 +110,16 @@ func (m *Manifest) Validate() error {
 	}
 	if m.Timeout < 0 {
 		return errors.New("plugin manifest: timeout must be non-negative")
+	}
+	if m.Timeout > 300 {
+		return errors.New("plugin manifest: timeout must be 300 seconds or less")
+	}
+	for key, field := range m.Config {
+		switch field.Type {
+		case "", "string", "int", "bool":
+		default:
+			return fmt.Errorf("plugin manifest: config field %q has unsupported type %q", key, field.Type)
+		}
 	}
 	return nil
 }
@@ -169,9 +182,31 @@ func Discover(pluginsDir string) ([]*Plugin, []error) {
 
 // loadPlugin reads and validates a single plugin from its directory.
 func loadPlugin(pluginDir, manifestPath string) (*Plugin, error) {
-	data, err := os.ReadFile(manifestPath)
+	cleanPluginDir, err := canonicalDir(pluginDir)
+	if err != nil {
+		return nil, err
+	}
+	manifestInfo, err := os.Lstat(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("reading plugin.json: %w", err)
+	}
+	if manifestInfo.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("plugin.json must not be a symlink")
+	}
+	if manifestInfo.Size() > maxManifestBytes {
+		return nil, fmt.Errorf("plugin.json exceeds %d bytes", maxManifestBytes)
+	}
+	file, err := os.Open(manifestPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading plugin.json: %w", err)
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxManifestBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("reading plugin.json: %w", err)
+	}
+	if len(data) > maxManifestBytes {
+		return nil, fmt.Errorf("plugin.json exceeds %d bytes", maxManifestBytes)
 	}
 
 	var manifest Manifest
@@ -183,10 +218,17 @@ func loadPlugin(pluginDir, manifestPath string) (*Plugin, error) {
 		return nil, err
 	}
 
-	entryPath := filepath.Join(pluginDir, manifest.EntryPoint)
+	entryPath := filepath.Join(cleanPluginDir, manifest.EntryPoint)
+	cleanEntryPath, err := canonicalPath(entryPath)
+	if err != nil {
+		return nil, fmt.Errorf("entry point %q not found: %w", manifest.EntryPoint, err)
+	}
+	if !pathWithin(cleanEntryPath, cleanPluginDir) {
+		return nil, fmt.Errorf("entry point %q resolves outside the plugin directory", manifest.EntryPoint)
+	}
 
 	// Verify entry point exists
-	info, err := os.Stat(entryPath)
+	info, err := os.Stat(cleanEntryPath)
 	if err != nil {
 		return nil, fmt.Errorf("entry point %q not found: %w", manifest.EntryPoint, err)
 	}
@@ -203,9 +245,44 @@ func loadPlugin(pluginDir, manifestPath string) (*Plugin, error) {
 
 	return &Plugin{
 		Manifest:  manifest,
-		Dir:       pluginDir,
-		EntryPath: entryPath,
+		Dir:       cleanPluginDir,
+		EntryPath: cleanEntryPath,
 		Enabled:   false, // set by caller from config
 		Config:    make(map[string]string),
 	}, nil
+}
+
+func canonicalDir(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("plugin: resolve path %s: %w", path, err)
+	}
+	clean, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", fmt.Errorf("plugin: canonicalize dir %s: %w", path, err)
+	}
+	info, err := os.Stat(clean)
+	if err != nil {
+		return "", fmt.Errorf("plugin: stat dir %s: %w", path, err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("plugin: %s is not a directory", path)
+	}
+	return clean, nil
+}
+
+func canonicalPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(abs)
+}
+
+func pathWithin(child, parent string) bool {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (!strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel))
 }

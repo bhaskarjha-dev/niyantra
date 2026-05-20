@@ -1,7 +1,7 @@
 // Niyantra Dashboard — Snap Handler
 import { snapInProgress, setSnapInProgress } from '../core/state';
 import { showToast, updateTimestamp } from '../core/utils';
-import { triggerSnap } from '../core/api';
+import { triggerSnap, fetchStatus } from '../core/api';
 import { renderAccounts } from '../quotas/render';
 
 
@@ -77,7 +77,14 @@ export function snapSource(source: string): void {
   if (source === 'antigravity' || source === 'all') {
     promises.push(
       triggerSnap().then(function(data) {
-        return { source: 'Antigravity', data: data, label: data.email || 'Antigravity' };
+        var label = 'Antigravity';
+        if (data.captured && data.captured.length > 0) {
+          var emails = data.captured.map(function(c: any) { return c.email; });
+          label = 'Antigravity · ' + emails.join(', ');
+        } else if (data.email) {
+          label = 'Antigravity · ' + data.email;
+        }
+        return { source: 'Antigravity', data: data, label: label };
       }).catch(function(err) {
         return { source: 'Antigravity', error: err.message };
       })
@@ -141,20 +148,23 @@ export function snapSource(source: string): void {
 
   Promise.all(promises).then(function(results: any[]) {
     var msgs = [];
-    var antigravityData: any = null;
+    var success = false;
     for (var i = 0; i < results.length; i++) {
       var r = results[i];
       if (r.error) {
         msgs.push('❌ ' + r.source + ': ' + r.error);
       } else {
         msgs.push('✅ ' + r.label);
-        if (r.source === 'Antigravity') antigravityData = r.data;
+        success = true;
       }
     }
     showToast(msgs.join(' · '), msgs.some(function(m) { return m.startsWith('❌'); }) ? 'warning' : 'success');
-    if (antigravityData) {
-      renderAccounts(antigravityData);
-      updateTimestamp();
+    if (success) {
+      fetchStatus().then(function(data) {
+        document.dispatchEvent(new CustomEvent('niyantra:status-refreshed', { detail: { data: data } }));
+      }).catch(function(err) {
+        console.error('Failed to reload status after snap:', err);
+      });
     }
   }).finally(function() {
     (btn as HTMLButtonElement).innerHTML = orig;

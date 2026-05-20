@@ -8,7 +8,15 @@ http://localhost:9222
 
 ## Authentication
 
-Optional. If `--auth user:pass` is provided at startup, all endpoints require HTTP Basic Auth.
+All `/api/*` endpoints and HTTP `/mcp` require:
+
+```
+Authorization: Bearer <dashboard_api_token>
+```
+
+`niyantra serve` prints a tokenized first-open dashboard URL. The browser stores the token in `sessionStorage` and removes it from the address bar after load. Use `niyantra token show` to print the current token and `niyantra token rotate` to invalidate existing browser/API sessions.
+
+`/healthz` and static dashboard assets are unauthenticated. Optional HTTP Basic Auth via `--auth user:pass` can be layered on top, but it does not replace the dashboard bearer token.
 
 ---
 
@@ -22,12 +30,7 @@ Liveness/health check endpoint for monitoring and container orchestration. **No 
 
 ```json
 {
-  "status": "ok",
-  "version": "0.12.0",
-  "uptime": "2h15m30s",
-  "schemaVersion": 11,
-  "accounts": 2,
-  "snapshots": 47
+  "status": "ok"
 }
 ```
 
@@ -69,7 +72,11 @@ Returns the readiness state of all tracked accounts. **Zero network calls** — 
           "isReady": true,
           "color": "#D97757",
           "resetTime": "2026-04-17T04:24:00Z",
-          "timeUntilResetSec": 13800.5
+          "timeUntilResetSec": 13800.5,
+          "isEstimated": false,
+          "basis": "provider_snapshot",
+          "confidence": "medium",
+          "unavailableReason": ""
         },
         {
           "groupKey": "gemini_pro",
@@ -334,6 +341,10 @@ All errors use a consistent JSON envelope:
 ```
 
 HTTP status codes:
+- `401` - Missing or invalid dashboard bearer token
+- `410` - Endpoint intentionally disabled
+- `413` - Request body too large
+- `429` - Rate limit exceeded
 - `400` — Bad request (invalid parameters)
 - `404` — Not found (subscription ID doesn't exist)
 - `405` — Method not allowed
@@ -342,11 +353,17 @@ HTTP status codes:
 
 ## CORS
 
-Not needed. The dashboard is served from the same origin as the API.
+The dashboard is served from the same origin as the API. Cross-origin browser API/MCP requests are rejected by middleware; same-origin API calls still require `Authorization: Bearer <dashboard_api_token>`.
 
 ## Rate Limiting
 
-None. The tool is single-user by design.
+Mutation endpoints are protected by in-memory per-IP token buckets:
+
+| Tier | Endpoint class | Limit |
+|------|----------------|-------|
+| `snap` | Provider snapshot routes | 10/min |
+| `mutate` | Config, subscriptions, backups, notification tests, web push, alerts, pricing, account/snapshot mutation, plugin config, and plugin-run compatibility route | 30/min |
+| `import` | `POST /api/import/json` | 2/min |
 
 ---
 
@@ -354,7 +371,7 @@ None. The tool is single-user by design.
 
 ### `GET /api/config`
 
-Returns all server configuration entries, grouped by category.
+Returns all server configuration entries, grouped by category. Sensitive values return `"configured"` when present and `""` when absent; full secret values are never returned.
 
 **Response:** `200 OK`
 
@@ -406,6 +423,8 @@ Updates a config entry. Validates value against `value_type`. Logs `config_chang
 | `budget_monthly` | `0`+ (float) |
 | `currency` | `USD`, `EUR`, `GBP`, `INR`, `CAD`, `AUD` |
 | `retention_days` | `30`–`3650` (integer) |
+
+Sensitive keys such as `dashboard_api_token`, `copilot_pat`, `cursor_session_token`, `gemini_client_secret`, `smtp_user`, `smtp_pass`, `webhook_secret`, `webpush_vapid_private`, and plugin keys ending in `_api_key`, `_token`, `_secret`, `_password`, `_pat`, or `_credential` are stored through the secret-storage path and masked in API responses.
 
 ### `GET /api/activity`
 
@@ -981,6 +1000,10 @@ All errors use a consistent JSON envelope:
 ```
 
 HTTP status codes:
+- `401` - Missing or invalid dashboard bearer token
+- `410` - Endpoint intentionally disabled
+- `413` - Request body too large
+- `429` - Rate limit exceeded
 - `400` — Bad request (invalid parameters, invalid config value)
 - `404` — Not found (subscription ID doesn't exist)
 - `405` — Method not allowed
@@ -989,11 +1012,11 @@ HTTP status codes:
 
 ## CORS
 
-Not needed. The dashboard is served from the same origin as the API.
+The dashboard is served from the same origin as the API. Cross-origin browser API/MCP requests are rejected by middleware; same-origin API calls still require `Authorization: Bearer <dashboard_api_token>`.
 
 ## Rate Limiting
 
-None. The tool is single-user by design.
+Mutation endpoints use the same per-IP token bucket tiers documented earlier: `snap` 10/min, `mutate` 30/min, and `import` 2/min.
 
 ---
 
@@ -1076,7 +1099,7 @@ Add to Claude Desktop `claude_desktop_config.json`:
 | `budget_forecast` | none | Recurring subscription headroom versus configured budget |
 | `best_model` | `group` (string) | Recommend least-exhausted model in a quota group |
 | `analyze_spending` | none | Category breakdown, budget status, savings detection, insights |
-| `switch_recommendation` | none | Account switch advice (stay/switch/wait) with scores |
+| `switch_recommendation` | optional current account | Account rankings by default; switch/stay/wait guidance only when explicit current-account context is supplied |
 | `codex_status` | none | Codex CLI detection, plan, token expiry, latest snapshot |
 | `quota_forecast` | none | Antigravity TTX forecasts with per-group estimated cost and $/hr |
 | `token_usage_stats` | none | Observed Claude Code token analytics plus any persisted `token_usage` rows |
@@ -1132,7 +1155,7 @@ Legacy route. Returns `410 Gone`; full database backups must use the protected P
 
 ### `POST /api/backup/create`
 
-Runs a database integrity check and then downloads a full SQLite backup as an attachment.
+Runs a database integrity check and then downloads a SQLite backup as an attachment. Sensitive config values are redacted from the copied database, including `dashboard_api_token`, provider credentials, notification secrets, and plugin keys that match secret suffix patterns.
 
 **Response:** `200 OK` with `Content-Type: application/octet-stream`
 
@@ -1159,7 +1182,7 @@ Sends a test OS-native desktop notification.
 
 ### `GET /api/export/json`
 
-Redacted JSON export for sharing/import. Includes all accounts and subscriptions plus recent snapshot/activity history. Secret config values are masked, and full-fidelity backup remains available via `POST /api/backup/create`.
+Redacted JSON export for sharing/import. Includes all accounts and subscriptions plus recent snapshot/activity history. Secret config values are masked. Use `POST /api/backup/create` for a SQLite backup with sensitive config values redacted.
 
 **Response:** `200 OK` — JSON file download
 
@@ -1220,15 +1243,23 @@ Dismiss an alert by ID.
 
 ### `GET /api/advisor`
 
-Returns the switch advisor recommendation based on current account health.
+Returns account rankings by default. If `currentAccountId` is supplied, returns current-account guidance that may recommend staying, switching, or waiting.
+
+**Query parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `currentAccountId` | integer | no | Current account context. Without it, the response uses `mode: "ranking"` and `action: "rank"`. |
 
 **Response:** `200 OK`
 
 ```json
 {
-  "action": "stay",
-  "reason": "Best account is user@gmail.com with 87% remaining (score 72). No significant advantage in switching.",
+  "action": "rank",
+  "mode": "ranking",
+  "reason": "Best ranked account is user@gmail.com with 87% remaining (score 72). No current account was supplied, so no switch action is inferred.",
   "bestAccount": {
+    "accountId": 1,
     "email": "user@gmail.com",
     "score": 72,
     "remainingPct": 87,
@@ -1248,6 +1279,7 @@ Returns the switch advisor recommendation based on current account health.
 ```
 
 **Actions:**
+- `rank` - No current account supplied; rank accounts only
 - `stay` — Current account is best or comparable
 - `switch` — Another account has significantly better score (≥15 point gap)
 - `wait` — All accounts exhausted; shows shortest reset time
@@ -1852,28 +1884,15 @@ Returns the latest snapshot data for a specific plugin.
 
 #### `POST /api/plugins/{id}/run`
 
-Triggers a manual test execution of a plugin. The plugin's subprocess is invoked immediately with its current config, and the captured data is returned (but not persisted).
+This endpoint is a compatibility stub. Manual HTTP plugin execution is disabled and the server never spawns a plugin process from this route.
 
-**Response:** `200 OK`
+**Current response:** `410 Gone`
 
 ```json
 {
-  "status": "ok",
-  "data": {
-    "provider": "openrouter",
-    "label": "OpenRouter",
-    "usage_pct": 42.5,
-    "usage_display": "$4.25 / $10.00",
-    "plan": "api"
-  }
+  "error": "manual HTTP plugin execution is disabled; enabled plugins may run only through the local polling agent"
 }
 ```
-
-**Response (plugin reported error):** `200 OK` — `{ "status": "error", "error": "API key invalid" }`
-
-**Response (execution failure):** `502 Bad Gateway` — `{ "error": "process exited with status 1" }`
-
-**Response (plugin not found):** `404 Not Found` — `{ "error": "plugin not found" }`
 
 #### `PUT /api/plugins/{id}/config`
 
@@ -1901,7 +1920,7 @@ Updates configuration for a plugin. Supports setting arbitrary key-value pairs (
 
 Exposes all 13 MCP tools over HTTP using the MCP Streamable HTTP transport protocol. This endpoint is disabled by default and is only mounted when the dashboard starts with `--mcp-http` / `NIYANTRA_MCP_HTTP=true`.
 
-**Authentication:** If Niyantra basic auth is enabled, `/mcp` is protected by the same HTTP Basic Auth gate as the rest of the dashboard. For non-local binds, Niyantra requires basic auth before enabling HTTP MCP. The MCP SDK still handles transport-level session and content-type validation.
+**Authentication:** `/mcp` requires `Authorization: Bearer <dashboard_api_token>`. If Niyantra basic auth is enabled, `/mcp` is also protected by the same HTTP Basic Auth gate as the rest of the dashboard. For non-local binds, Niyantra requires basic auth before enabling HTTP MCP. The MCP SDK still handles transport-level session and content-type validation.
 
 **Protocol:** MCP JSON-RPC 2.0 over HTTP, with optional SSE streaming for server-to-client notifications.
 
@@ -1916,11 +1935,13 @@ Exposes all 13 MCP tools over HTTP using the MCP Streamable HTTP transport proto
 # Initialize session
 curl -X POST http://localhost:9222/mcp \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <dashboard_api_token>" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}'
 
 # List tools (use session ID from response)
 curl -X POST http://localhost:9222/mcp \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <dashboard_api_token>" \
   -H "Mcp-Session-Id: <session-id>" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
 ```
@@ -1935,7 +1956,7 @@ curl -X POST http://localhost:9222/mcp \
 | `budget_forecast` | Recurring subscription headroom versus configured budget |
 | `best_model` | Recommend optimal model by remaining quota |
 | `analyze_spending` | Subscription spending patterns and insights |
-| `switch_recommendation` | Which account to use right now |
+| `switch_recommendation` | Account ranking by default; switch/stay/wait guidance only with explicit current account context |
 | `codex_status` | Codex/ChatGPT detection and usage state |
 | `quota_forecast` | Antigravity time-to-exhaustion predictions with severity |
 | `token_usage_stats` | Observed Claude Code token analytics plus any persisted `token_usage` rows |

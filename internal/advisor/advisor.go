@@ -17,11 +17,13 @@ import (
 
 // Recommendation is the advisor's output.
 type Recommendation struct {
-	Action       string         `json:"action"` // "switch", "stay", "wait"
-	BestAccount  *AccountScore  `json:"bestAccount"`
-	Alternatives []AccountScore `json:"alternatives"`
-	Reason       string         `json:"reason"`
-	GeneratedAt  time.Time      `json:"generatedAt"`
+	Action           string         `json:"action"` // "switch", "stay", "wait"
+	Mode             string         `json:"mode"`   // "ranking" or "current_account"
+	CurrentAccountID int64          `json:"currentAccountId,omitempty"`
+	BestAccount      *AccountScore  `json:"bestAccount"`
+	Alternatives     []AccountScore `json:"alternatives"`
+	Reason           string         `json:"reason"`
+	GeneratedAt      time.Time      `json:"generatedAt"`
 }
 
 // AccountScore represents a scored account with breakdown factors.
@@ -51,12 +53,24 @@ const (
 // snapshots: latest snapshot per account (from store.LatestPerAccount)
 // summaries: per-model usage summaries keyed by account ID (nil if no intelligence)
 func Recommend(snapshots []*client.Snapshot, summariesByAccount map[int64][]*tracker.UsageSummary) *Recommendation {
+	return RecommendWithCurrent(snapshots, summariesByAccount, 0)
+}
+
+// RecommendWithCurrent produces switching guidance only when the caller supplies
+// the current account. Without that context, it returns ranked options.
+func RecommendWithCurrent(snapshots []*client.Snapshot, summariesByAccount map[int64][]*tracker.UsageSummary, currentAccountID int64) *Recommendation {
 	rec := &Recommendation{
-		GeneratedAt: time.Now().UTC(),
+		GeneratedAt:      time.Now().UTC(),
+		CurrentAccountID: currentAccountID,
+	}
+	if currentAccountID > 0 {
+		rec.Mode = "current_account"
+	} else {
+		rec.Mode = "ranking"
 	}
 
 	if len(snapshots) == 0 {
-		rec.Action = "stay"
+		rec.Action = "rank"
 		rec.Reason = "No accounts tracked yet. Capture a snapshot first."
 		return rec
 	}
@@ -76,7 +90,7 @@ func Recommend(snapshots []*client.Snapshot, summariesByAccount map[int64][]*tra
 	}
 
 	if len(scores) == 0 {
-		rec.Action = "stay"
+		rec.Action = "rank"
 		rec.Reason = "No scoreable accounts found."
 		return rec
 	}
@@ -97,6 +111,30 @@ func Recommend(snapshots []*client.Snapshot, summariesByAccount map[int64][]*tra
 		if i != bestIdx {
 			rec.Alternatives = append(rec.Alternatives, s)
 		}
+	}
+
+	// Without a caller-supplied current account, only rank accounts. Do not
+	// invent a "switch from" account from slice order or score ordering.
+	if currentAccountID <= 0 {
+		rec.Action = "rank"
+		rec.Reason = fmt.Sprintf("Best ranked account is %s with %.0f%% remaining (score %.0f). No current account was supplied, so no switch action is inferred.",
+			best.Email, best.RemainingPct, best.Score)
+		return rec
+	}
+
+	var current *AccountScore
+	for i := range scores {
+		if scores[i].AccountID == currentAccountID {
+			current = &scores[i]
+			break
+		}
+	}
+	if current == nil {
+		rec.Action = "rank"
+		rec.Mode = "ranking"
+		rec.Reason = fmt.Sprintf("Current account %d was not found. Best ranked account is %s with %.0f%% remaining.",
+			currentAccountID, best.Email, best.RemainingPct)
+		return rec
 	}
 
 	// Determine action
@@ -127,32 +165,23 @@ func Recommend(snapshots []*client.Snapshot, summariesByAccount map[int64][]*tra
 		return rec
 	}
 
-	// S1: Instead of assuming scores[0] is the "current" account (order is by
-	// readiness, not recency), compare best against the worst alternative.
-	// If the best is significantly better than the worst, recommend a switch.
 	if len(rec.Alternatives) > 0 {
-		worstAlt := rec.Alternatives[0]
-		for _, alt := range rec.Alternatives {
-			if alt.Score < worstAlt.Score {
-				worstAlt = alt
-			}
-		}
-		if best.Score-worstAlt.Score >= switchThreshold {
+		if best.AccountID != current.AccountID && best.Score-current.Score >= switchThreshold {
 			rec.Action = "switch"
 			ttxContext := ""
 			if best.TTXLabel != "" {
 				ttxContext = fmt.Sprintf(" TTX: %s.", best.TTXLabel)
 			}
-			rec.Reason = fmt.Sprintf("Switch to %s (%.0f%% remaining, score %.0f).%s %s scores %.0f.",
-				best.Email, best.RemainingPct, best.Score, ttxContext, worstAlt.Email, worstAlt.Score)
+			rec.Reason = fmt.Sprintf("Switch from %s to %s (%.0f%% remaining, score %.0f).%s Current account scores %.0f.",
+				current.Email, best.Email, best.RemainingPct, best.Score, ttxContext, current.Score)
 		} else {
 			rec.Action = "stay"
 			ttxContext := ""
 			if best.TTXLabel != "" {
 				ttxContext = fmt.Sprintf(" TTX: %s.", best.TTXLabel)
 			}
-			rec.Reason = fmt.Sprintf("Best account is %s with %.0f%% remaining (score %.0f).%s No significant advantage in switching.",
-				best.Email, best.RemainingPct, best.Score, ttxContext)
+			rec.Reason = fmt.Sprintf("Stay on %s. Best ranked account is %s with %.0f%% remaining (score %.0f).%s No significant advantage in switching.",
+				current.Email, best.Email, best.RemainingPct, best.Score, ttxContext)
 		}
 	} else {
 		rec.Action = "stay"

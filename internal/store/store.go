@@ -181,13 +181,6 @@ func (s *Store) Close() error {
 	return nil
 }
 
-// ExecRaw runs a raw SQL statement with the given args.
-// Returns any error; used for one-off administrative operations.
-func (s *Store) ExecRaw(query string, args ...any) error {
-	_, err := s.db.Exec(query, args...)
-	return err
-}
-
 // Path returns the database file path.
 func (s *Store) Path() string {
 	return s.path
@@ -203,6 +196,9 @@ func (s *Store) migrate() error {
 				id         INTEGER PRIMARY KEY AUTOINCREMENT,
 				email      TEXT    UNIQUE NOT NULL,
 				plan_name  TEXT    DEFAULT '',
+				plan_tier  TEXT    CHECK(plan_tier IN ('pro', 'ultra', 'flagship', 'enterprise', 'free')) DEFAULT 'pro',
+				overage_credits REAL DEFAULT 0.0,
+				has_claimed_bonus_2026 INTEGER DEFAULT 0,
 				created_at DATETIME DEFAULT (datetime('now')),
 				updated_at DATETIME DEFAULT (datetime('now'))
 			);
@@ -582,6 +578,9 @@ func (s *Store) migrate() error {
 				id                 INTEGER PRIMARY KEY AUTOINCREMENT,
 				email              TEXT    NOT NULL,
 				plan_name          TEXT    DEFAULT '',
+				plan_tier          TEXT    CHECK(plan_tier IN ('pro', 'ultra', 'flagship', 'enterprise', 'free')) DEFAULT 'pro',
+				overage_credits    REAL    DEFAULT 0.0,
+				has_claimed_bonus_2026 INTEGER DEFAULT 0,
 				provider           TEXT    NOT NULL DEFAULT 'antigravity',
 				notes              TEXT    DEFAULT '',
 				tags               TEXT    DEFAULT '',
@@ -597,8 +596,8 @@ func (s *Store) migrate() error {
 
 		// 2. Copy existing rows (all existing accounts are antigravity provider)
 		if _, err = tx.Exec(`
-			INSERT INTO accounts_new (id, email, plan_name, provider, notes, tags, pinned_group, credit_renewal_day, created_at, updated_at)
-			SELECT id, email, plan_name, 'antigravity', COALESCE(notes,''), COALESCE(tags,''), COALESCE(pinned_group,''), COALESCE(credit_renewal_day,0), created_at, updated_at
+			INSERT INTO accounts_new (id, email, plan_name, plan_tier, overage_credits, has_claimed_bonus_2026, provider, notes, tags, pinned_group, credit_renewal_day, created_at, updated_at)
+			SELECT id, email, plan_name, COALESCE(plan_tier, 'pro'), COALESCE(overage_credits, 0.0), COALESCE(has_claimed_bonus_2026, 0), 'antigravity', COALESCE(notes,''), COALESCE(tags,''), COALESCE(pinned_group,''), COALESCE(credit_renewal_day,0), created_at, updated_at
 			FROM accounts
 		`); err != nil {
 			return fmt.Errorf("store: v12 copy accounts: %w", err)
@@ -935,6 +934,15 @@ func (s *Store) migrate() error {
 		}
 
 		if err := s.setUserVersion(20); err != nil {
+			return err
+		}
+	}
+
+	if s.getUserVersion() < 21 {
+		if err := s.applyV21IntegrityMigration(); err != nil {
+			return err
+		}
+		if err := s.setUserVersion(21); err != nil {
 			return err
 		}
 	}

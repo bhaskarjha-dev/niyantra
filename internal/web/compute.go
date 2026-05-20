@@ -293,6 +293,11 @@ func (s *Server) computeCodexForecasts() map[string]interface{} {
 
 // computeSimpleRate computes a weighted-average rate from Claude snapshots.
 // Returns (rate in pct/hr, current remaining pct). Rate is 0 if no decrease detected.
+//
+// Reset handling: intervals where remaining INCREASES (indicating a quota reset
+// or correction) are SKIPPED entirely. Previously these intervals contributed
+// zero consumption over non-zero time, which artificially diluted the average
+// burn rate and produced falsely optimistic TTX predictions.
 func computeSimpleRate(snaps []store.ClaudeSnapshot, extractor func(store.ClaudeSnapshot) float64) (float64, float64) {
 	if len(snaps) < 2 {
 		return 0, -1
@@ -314,8 +319,10 @@ func computeSimpleRate(snaps []store.ClaudeSnapshot, extractor func(store.Claude
 		}
 
 		consumed := prev - curr // positive = usage
-		if consumed < 0 {
-			consumed = 0 // reset or correction
+		if consumed <= 0 {
+			// Remaining increased or stayed same — reset or idle.
+			// Skip this interval entirely to avoid diluting the rate.
+			continue
 		}
 
 		rate := consumed / dt.Hours()
@@ -333,6 +340,7 @@ func computeSimpleRate(snaps []store.ClaudeSnapshot, extractor func(store.Claude
 }
 
 // computeCodexRate computes a weighted-average rate from Codex snapshots.
+// Same reset-skip logic as computeSimpleRate — see its doc comment.
 func computeCodexRate(snaps []*store.CodexSnapshot, extractor func(*store.CodexSnapshot) float64) (float64, float64) {
 	if len(snaps) < 2 {
 		return 0, -1
@@ -354,8 +362,8 @@ func computeCodexRate(snaps []*store.CodexSnapshot, extractor func(*store.CodexS
 		}
 
 		consumed := prev - curr
-		if consumed < 0 {
-			consumed = 0
+		if consumed <= 0 {
+			continue // reset or idle — skip interval
 		}
 
 		rate := consumed / dt.Hours()

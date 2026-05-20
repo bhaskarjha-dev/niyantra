@@ -54,7 +54,7 @@ export function setupToggle(): void {
       return;
     }
 
-    // Handle Group-level Quick Adjust buttons (±5% on group columns)
+    // Handle Group-level Quick Adjust buttons (±20% or custom on group columns)
     var gadjBtn = (e.target as HTMLElement).closest('.gadj-btn');
     if (gadjBtn) {
       e.stopPropagation();
@@ -65,8 +65,21 @@ export function setupToggle(): void {
       var gModelIdsStr = gControls.getAttribute('data-group-model-ids')!;
       var gModelLabelsStr = gControls.getAttribute('data-group-model-labels')!;
       var gCurrentPct = parseFloat(gControls.getAttribute('data-current-pct')!);
-      var gDelta = parseFloat((gadjBtn as HTMLElement).getAttribute('data-delta')!);
-      var gNewPct = Math.max(0, Math.min(100, gCurrentPct + gDelta));
+      
+      var gNewPct: number;
+      if (gadjBtn.getAttribute('data-custom') === 'true') {
+        var input = prompt('Enter custom remaining quota percentage (0-100) for all models in this group:', Math.round(gCurrentPct).toString());
+        if (input === null) return; // user cancelled
+        var parsed = parseInt(input.trim(), 10);
+        if (isNaN(parsed) || parsed < 0 || parsed > 100) {
+          showToast('❌ Please enter a valid percentage between 0 and 100.', 'error');
+          return;
+        }
+        gNewPct = parsed;
+      } else {
+        var gDelta = parseFloat((gadjBtn as HTMLElement).getAttribute('data-delta')!);
+        gNewPct = Math.max(0, Math.min(100, gCurrentPct + gDelta));
+      }
 
       // Optimistic UI update on group cell
       var cell = gControls.closest('.quota-cell');
@@ -117,7 +130,7 @@ export function setupToggle(): void {
       return;
     }
 
-    // Handle Quick Adjust buttons (±5%, ±10%)
+    // Handle Quick Adjust buttons (±20% or custom)
     var adjBtn = (e.target as HTMLElement).closest('.adj-btn');
     if (adjBtn) {
       e.stopPropagation();
@@ -127,8 +140,21 @@ export function setupToggle(): void {
       var modelId = controls.getAttribute('data-model-id')!;
       var modelLabel = controls.getAttribute('data-model-label')!;
       var currentPct = parseFloat(controls.getAttribute('data-current-pct')!);
-      var delta = parseFloat((adjBtn as HTMLElement).getAttribute('data-delta')!);
-      var newPct = Math.max(0, Math.min(100, currentPct + delta));
+      
+      var newPct: number;
+      if (adjBtn.getAttribute('data-custom') === 'true') {
+        var input = prompt('Enter custom remaining quota percentage (0-100) for ' + (modelLabel || modelId) + ':', Math.round(currentPct).toString());
+        if (input === null) return; // user cancelled
+        var parsed = parseInt(input.trim(), 10);
+        if (isNaN(parsed) || parsed < 0 || parsed > 100) {
+          showToast('❌ Please enter a valid percentage between 0 and 100.', 'error');
+          return;
+        }
+        newPct = parsed;
+      } else {
+        var delta = parseFloat((adjBtn as HTMLElement).getAttribute('data-delta')!);
+        newPct = Math.max(0, Math.min(100, currentPct + delta));
+      }
 
       // Optimistic UI update
       var row = controls.closest('.model-row');

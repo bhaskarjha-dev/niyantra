@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/bhaskarjha-com/niyantra/internal/store"
 )
 
 type renamedFile struct {
@@ -31,6 +33,9 @@ func createDatabaseBackup(dbPath, backupPath string, allowPlaintextSecrets bool)
 
 	if err := db.VacuumInto(backupPath); err != nil {
 		return 0, err
+	}
+	if err := store.RedactSensitiveConfigFile(backupPath); err != nil {
+		return 0, fmt.Errorf("redact backup secrets: %w", err)
 	}
 
 	backupInfo, err := os.Stat(backupPath)

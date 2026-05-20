@@ -13,7 +13,7 @@
 | v1 | `accounts`, `snapshots` | Core quota tracking |
 | v2 | `subscriptions` | Manual subscription management |
 | v3 | `config`, `activity_log`, `data_sources` + snapshot provenance | Infrastructure: config, audit trail, multi-source |
-| v4 | `model_cycles` | Cycle intelligence — per-model reset detection and usage tracking |
+| v4 | `antigravity_reset_cycles` | Cycle intelligence - per-model reset detection and usage tracking |
 | v5 | `claude_snapshots` + config keys | Claude Code rate limits, notifications, bridge config |
 | v6 | `system_alerts` | System-level alerts with hybrid TTL, advisor integration |
 | v7 | `codex_snapshots`, `usage_sessions`, `usage_logs` | Codex/ChatGPT tracking, session timeline, manual usage logging |
@@ -21,13 +21,16 @@
 | v9 | `codex_snapshots.email` column | Multi-account Codex identity tracking via OIDC JWT |
 | v10 | `accounts.notes`, `accounts.tags`, `accounts.pinned_group` columns | Account notes, tags, and pinned model group (Phase 13 F1/F3) |
 | v11 | `accounts.credit_renewal_day` column | AI credit renewal tracking (Phase 13 F4) |
-| v12 | `cursor_snapshots`, `gemini_snapshots`, `copilot_snapshots` | 3 new provider tables (Phase 14) |
-| v13 | `token_usage_daily` | Claude deep token analytics (Phase 14) |
-| v14 | `config`: `heatmap_lookback_days` | Activity heatmap config (Phase 14) |
-| v15 | `config`: `copilot_pat`, `copilot_capture` | GitHub Copilot integration (Phase 15) |
+| v12 | `cursor_snapshots` | Cursor provider snapshots and config |
+| v13 | `gemini_snapshots` | Gemini CLI provider snapshots and config |
+| v14 | `token_usage` | Claude/token analytics aggregation |
+| v15 | `copilot_snapshots`, `config`: `copilot_pat`, `copilot_capture` | GitHub Copilot integration |
 | v16 | `config`: 8 SMTP keys | SMTP/Email notifications (Phase 16, F11) |
 | v17 | `config`: 4 webhook keys | Webhook notifications (Phase 16, F22) |
 | v18 | `webpush_subscriptions`, 3 config keys | WebPush notifications (Phase 16, F19) |
+| v19 | `plugin_snapshots` | Plugin snapshot storage and plugin config keys |
+| v20 | `codex_snapshots.owner_account_id` | Codex multi-account ownership |
+| v21 | FK-backed nullable references | Repairs invalid legacy references and rebuilds activity/subscription/provider/plugin snapshot tables with real foreign-key behavior |
 
 ---
 
@@ -39,14 +42,18 @@ Unique account identities, keyed by email address.
 
 ```sql
 CREATE TABLE IF NOT EXISTS accounts (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    email        TEXT    UNIQUE NOT NULL,
-    plan_name    TEXT    DEFAULT '',
-    notes        TEXT    DEFAULT '',  -- v10: user-defined note
-    tags         TEXT    DEFAULT '',  -- v10: comma-separated tags
-    pinned_group TEXT    DEFAULT '',  -- v10: pinned quota group key
-    created_at   DATETIME DEFAULT (datetime('now')),
-    updated_at   DATETIME DEFAULT (datetime('now'))
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    email                 TEXT    UNIQUE NOT NULL,
+    plan_name             TEXT    DEFAULT '',
+    plan_tier             TEXT    CHECK(plan_tier IN ('pro', 'ultra', 'flagship', 'enterprise', 'free')) DEFAULT 'pro',
+    overage_credits       REAL    DEFAULT 0.0,
+    has_claimed_bonus_2026 INTEGER DEFAULT 0,
+    notes                 TEXT    DEFAULT '',  -- v10: user-defined note
+    tags                  TEXT    DEFAULT '',  -- v10: comma-separated tags
+    pinned_group          TEXT    DEFAULT '',  -- v10: pinned quota group key
+    credit_renewal_day    INTEGER DEFAULT 0, -- v11: optional monthly renewal day
+    created_at            DATETIME DEFAULT (datetime('now')),
+    updated_at            DATETIME DEFAULT (datetime('now'))
 );
 ```
 
@@ -54,17 +61,21 @@ CREATE TABLE IF NOT EXISTS accounts (
 |--------|------|------------|-------------|
 | `id` | INTEGER | PK, AUTO | Internal account ID |
 | `email` | TEXT | UNIQUE, NOT NULL | Antigravity account email |
-| `plan_name` | TEXT | DEFAULT '' | Latest known plan (Free, Pro, Enterprise) |
+| `plan_name` | TEXT | DEFAULT '' | Latest known plan name |
+| `plan_tier` | TEXT | CHECK, DEFAULT 'pro' | Standard tier key (`'pro'`, `'ultra'`, `'flagship'`, `'enterprise'`, `'free'`) |
+| `overage_credits` | REAL | DEFAULT 0.0 | Dynamic credit pool balance for pay-as-you-go usage |
+| `has_claimed_bonus_2026` | INTEGER | DEFAULT 0 | Whether the Google I/O 2026 $100 bonus credit has been claimed |
 | `notes` | TEXT | DEFAULT '' | **v10:** Free-text note about this account |
 | `tags` | TEXT | DEFAULT '' | **v10:** Comma-separated tags (e.g., `"work,primary"`) |
 | `pinned_group` | TEXT | DEFAULT '' | **v10:** Pinned quota group key for quick view |
+| `credit_renewal_day` | INTEGER | DEFAULT 0 | **v11:** Optional monthly AI credit renewal day |
 | `created_at` | DATETIME | DEFAULT now | First seen timestamp |
 | `updated_at` | DATETIME | DEFAULT now | Last snapshot timestamp |
 
 **Lifecycle:**
 - Created via `GetOrCreateAccount(email)` on first snapshot
 - `plan_name` and `updated_at` are refreshed on each snapshot
-- Never deleted (historical record)
+- Can be deleted from the dashboard/API; owned local rows are deleted transactionally and v21 nullable relationships avoid sentinel `0` references
 
 ---
 
@@ -85,7 +96,7 @@ CREATE TABLE IF NOT EXISTS snapshots (
     raw_json        TEXT    DEFAULT '',
     capture_method  TEXT    NOT NULL DEFAULT 'manual',  -- v3: manual, auto
     capture_source  TEXT    NOT NULL DEFAULT 'cli',     -- v3: cli, ui, watch, parser, import, mcp
-    source_id       TEXT    NOT NULL DEFAULT 'antigravity', -- v3: FK → data_sources.id
+    source_id       TEXT    NOT NULL DEFAULT 'antigravity', -- v3: logical data_sources.id key
     FOREIGN KEY (account_id) REFERENCES accounts(id)
 );
 
@@ -109,7 +120,7 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_time
 | `raw_json` | TEXT | Full API response for debugging |
 | `capture_method` | TEXT | **v3:** `manual` or `auto` — was a human involved? |
 | `capture_source` | TEXT | **v3:** `cli`, `ui`, `watch`, `parser`, `import`, `mcp` — which channel? |
-| `source_id` | TEXT | **v3:** Which data source captured this (FK → data_sources.id) |
+| `source_id` | TEXT | **v3:** Which data source captured this (logical `data_sources.id` key) |
 
 **Provenance tagging rules:**
 
@@ -153,14 +164,16 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     url             TEXT    DEFAULT '',
     status_page_url TEXT    DEFAULT '',
     auto_tracked    INTEGER DEFAULT 0,
-    account_id      INTEGER DEFAULT 0,
+    account_id      INTEGER DEFAULT NULL,
     created_at      DATETIME DEFAULT (datetime('now')),
-    updated_at      DATETIME DEFAULT (datetime('now'))
+    updated_at      DATETIME DEFAULT (datetime('now')),
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_renewal ON subscriptions(next_renewal);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_category ON subscriptions(category);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_account ON subscriptions(account_id);
 ```
 
 | Column | Type | Description |
@@ -178,7 +191,7 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_category ON subscriptions(category)
 | `url` | TEXT | Dashboard/billing URL (one-click access) |
 | `status_page_url` | TEXT | Service status page URL |
 | `auto_tracked` | INTEGER | 1 if auto-created by `snap`, 0 if manual |
-| `account_id` | INTEGER | Links to `accounts.id` for auto-tracked entries |
+| `account_id` | INTEGER NULL | Nullable FK to `accounts.id` for auto-tracked entries; `NULL` for manual/unlinked subscriptions |
 
 ---
 
@@ -222,7 +235,9 @@ CREATE TABLE IF NOT EXISTS config (
 | `notify_enabled` | `false` | bool | integration | Desktop Notifications |
 | `notify_threshold` | `10` | int | integration | Notification Threshold (%) |
 
-**Why metadata?** Adding a new config key in Go (e.g., `mcp_port` in Phase 7) automatically renders the correct UI control (number input, toggle, dropdown) without JavaScript changes.
+Later migrations also seed provider toggles (`codex_capture`, `cursor_capture`, `gemini_capture`, `copilot_capture`), provider credentials (`cursor_session_token`, `gemini_client_id`, `gemini_client_secret`, `copilot_pat`), notification settings (`smtp_*`, `webhook_*`, `webpush_*`), `model_pricing`, and the generated `dashboard_api_token`. Sensitive keys are routed through the secret-storage path and are masked in API/export/backup surfaces.
+
+**Why metadata?** Adding a new config key in Go automatically renders the correct UI control (number input, toggle, dropdown) without JavaScript changes.
 
 ---
 
@@ -247,7 +262,7 @@ CREATE TABLE IF NOT EXISTS data_sources (
 |--------|------|-------------|
 | `id` | TEXT | PK — source identifier (e.g., `antigravity`, `claude_code`) |
 | `name` | TEXT | Human-readable name |
-| `source_type` | TEXT | `ls_poll`, `log_parse`, `api_poll`, `manual` |
+| `source_type` | TEXT | `ls_poll`, `log_parse`, `oauth_api`, `session_token_api`, `pat_api`, `plugin_exec`, `manual` |
 | `enabled` | INTEGER | 1 = active, 0 = disabled |
 | `config_json` | TEXT | Source-specific config (paths, intervals, API keys) |
 | `last_capture` | DATETIME | Timestamp of last successful capture |
@@ -260,7 +275,10 @@ CREATE TABLE IF NOT EXISTS data_sources (
 |----|------|------|---------|--------|
 | `antigravity` | Antigravity | ls_poll | 1 | `{}` |
 | `claude_code` | Claude Code | log_parse | 0 | `{"logPath":"~/.claude/projects"}` |
-| `codex` | Codex | log_parse | 0 | `{"logPath":"~/.codex"}` |
+| `codex` | Codex | log_parse / oauth_api | 0 | `{"logPath":"~/.codex"}` |
+| `cursor` | Cursor | session_token_api | 0 | `{}` |
+| `gemini` | Gemini CLI | oauth_api | 0 | `{}` |
+| `copilot` | GitHub Copilot | pat_api | 0 | `{}` |
 
 **Source types:**
 
@@ -268,7 +286,8 @@ CREATE TABLE IF NOT EXISTS data_sources (
 |------|---------------|-------------|
 | `ls_poll` | Connect RPC to local language server | Antigravity |
 | `log_parse` | Watch local JSONL files | Claude Code, Codex |
-| `api_poll` | HTTP requests to cloud APIs | OpenAI, Anthropic (future) |
+| `oauth_api` / `session_token_api` / `pat_api` | HTTP requests to provider APIs using configured credentials | Codex, Cursor, Gemini CLI, GitHub Copilot |
+| `plugin_exec` | Operator-trusted local subprocess polling protocol | User-installed plugins |
 | `manual` | User enters data via UI | Manual usage logging |
 
 ---
@@ -285,9 +304,9 @@ CREATE TABLE IF NOT EXISTS activity_log (
     source          TEXT     NOT NULL DEFAULT 'system',
     event_type      TEXT     NOT NULL,
     account_email   TEXT     DEFAULT '',
-    snapshot_id     INTEGER  DEFAULT 0,
+    snapshot_id     INTEGER  DEFAULT NULL,
     details         TEXT     DEFAULT '{}',
-    FOREIGN KEY (snapshot_id) REFERENCES snapshots(id)
+    FOREIGN KEY (snapshot_id) REFERENCES snapshots(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_activity_log_time ON activity_log(timestamp DESC);
@@ -302,7 +321,7 @@ CREATE INDEX IF NOT EXISTS idx_activity_log_type ON activity_log(event_type);
 | `source` | TEXT | `system`, `cli`, `ui`, `watch`, `parser`, `mcp` |
 | `event_type` | TEXT | Event name (see taxonomy below) |
 | `account_email` | TEXT | Associated account (if applicable) |
-| `snapshot_id` | INTEGER | Associated snapshot (if applicable) |
+| `snapshot_id` | INTEGER NULL | Nullable FK to `snapshots.id`; set to `NULL` when the snapshot is deleted |
 | `details` | TEXT | JSON blob with event-specific data |
 
 **Event taxonomy:**
@@ -522,7 +541,7 @@ Schema version is stored in SQLite's `user_version` pragma:
 
 ```sql
 PRAGMA user_version;       -- read current version
-PRAGMA user_version = 18;  -- current target (v18)
+PRAGMA user_version = 21;  -- current target (v21)
 ```
 
 Migrations are embedded in Go code and run on startup:
@@ -556,8 +575,8 @@ func (s *Store) migrate() error {
     }
 
     if version < 4 {
-        // v4: model_cycles for cycle intelligence
-        s.exec(createModelCyclesSQL)
+        // v4: antigravity_reset_cycles for cycle intelligence
+        s.exec(createAntigravityResetCyclesSQL)
         s.setUserVersion(4)
     }
 
@@ -605,7 +624,7 @@ func (s *Store) migrate() error {
 }
 ```
 
-**Backward compatibility:** All migrations are additive. Existing data is preserved. Existing snapshots get `capture_method='manual'` as the default, which is correct since all existing snapshots were manual captures.
+**Backward compatibility:** Early migrations are mostly additive, but v21 intentionally rebuilds selected tables to enforce foreign keys and repair invalid legacy references. Existing valid data is preserved; invalid `0` or dangling references are converted to `NULL` where the relationship is optional.
 
 ## Client-Side Storage (localStorage)
 
@@ -793,36 +812,32 @@ Adds per-provider snapshot tables for Cursor, Gemini CLI, and Copilot.
 
 ---
 
-## Schema v13 — Token Usage Daily (Phase 14)
+## Schema v14 - Token Usage Analytics
 
-Stores daily aggregated token usage from Claude Code JSONL session parsing.
+Stores daily aggregated token usage from Claude Code JSONL session parsing and any provider rows explicitly persisted into token usage.
 
-### `token_usage_daily`
+### `token_usage`
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | INTEGER PK | Auto-incrementing ID |
 | `date` | TEXT | Date string (YYYY-MM-DD) |
+| `provider` | TEXT | Source provider |
 | `model` | TEXT | Model name (normalized) |
 | `input_tokens` | INTEGER | Input tokens consumed |
 | `output_tokens` | INTEGER | Output tokens generated |
-| `cache_read_tokens` | INTEGER | Cache read tokens |
-| `cache_write_tokens` | INTEGER | Cache write tokens |
+| `cache_read` | INTEGER | Cache read tokens |
+| `cache_create` | INTEGER | Cache create/write tokens |
 | `estimated_cost` | REAL | Estimated cost in USD (model pricing) |
+| `turn_count` | INTEGER | Number of turns/events represented |
+| `session_count` | INTEGER | Number of sessions represented |
+| `source` | TEXT | Import/parser source |
 
 ---
 
-## Schema v14–v15 — Config Seeding
+## Schema v15 - GitHub Copilot Config
 
-These migrations add config keys only (no new tables).
-
-**v14 Config Keys:**
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `heatmap_lookback_days` | `365` | Activity heatmap lookback range |
-
-**v15 Config Keys:**
+Schema v15 creates `copilot_snapshots` and seeds Copilot capture settings.
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -893,3 +908,35 @@ CREATE TABLE IF NOT EXISTS webpush_subscriptions (
 | `webpush_enabled` | `false` | Enable WebPush delivery |
 | `webpush_vapid_public` | `""` | VAPID public key (auto-generated) |
 | `webpush_vapid_private` | `""` | VAPID private key (masked in API: returns `"configured"`) |
+
+---
+
+## Schema v19 - Plugin Snapshots
+
+Creates `plugin_snapshots` for data collected by operator-trusted local polling plugins. Plugin configuration lives in `config` under keys such as `plugin_<id>_<field>`, with secret-like suffixes routed through the same sensitive-config path as provider credentials.
+
+Current HTTP behavior: plugin status and config APIs remain available behind the dashboard bearer token and the `--enable-plugins` gate. `POST /api/plugins/{id}/run` is a compatibility stub that returns `410 Gone` and never executes a process.
+
+---
+
+## Schema v20 - Codex Owner Account Link
+
+Adds `codex_snapshots.owner_account_id` so Codex/ChatGPT snapshots can link to the normalized `accounts` table while preserving the provider account UUID in `codex_snapshots.account_id`.
+
+---
+
+## Schema v21 - Integrity Rebuild
+
+Schema v21 repairs unsafe legacy references and rebuilds selected tables with explicit nullable foreign-key behavior.
+
+| Table | Reference behavior |
+|-------|--------------------|
+| `activity_log.snapshot_id` | Nullable FK to `snapshots(id)` with `ON DELETE SET NULL` |
+| `subscriptions.account_id` | Nullable FK to `accounts(id)` with `ON DELETE SET NULL` |
+| `codex_snapshots.owner_account_id` | Nullable FK to `accounts(id)` with `ON DELETE SET NULL` |
+| `cursor_snapshots.account_id` | Nullable FK to `accounts(id)` with `ON DELETE SET NULL` |
+| `gemini_snapshots.account_id` | Nullable FK to `accounts(id)` with `ON DELETE SET NULL` |
+| `copilot_snapshots.account_id` | Nullable FK to `accounts(id)` with `ON DELETE SET NULL` |
+| `plugin_snapshots.data_source_id` | Nullable FK to `data_sources(id)` with `ON DELETE SET NULL` |
+
+Legacy `0` references and dangling IDs are converted to `NULL` during migration. Import paths must preserve the same invariant: optional relationships are nullable, not represented by sentinel IDs.

@@ -49,8 +49,23 @@ func (s *Server) deleteSubscriptionByID(w http.ResponseWriter, r *http.Request) 
 func (s *Server) listSubscriptions(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	category := r.URL.Query().Get("category")
+	limit := 500
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	offset := 0
+	if raw := r.URL.Query().Get("offset"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			offset = parsed
+		}
+	}
 
-	subs, err := s.store.ListSubscriptions(status, category)
+	subs, err := s.store.ListSubscriptionsPage(status, category, limit, offset)
 	if err != nil {
 		s.logger.Error("list subscriptions failed", "error", err)
 		jsonError(w, "database error", http.StatusInternalServerError)
@@ -89,6 +104,8 @@ func (s *Server) listSubscriptions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{
 		"subscriptions": items,
 		"count":         len(items),
+		"limit":         limit,
+		"offset":        offset,
 	})
 }
 

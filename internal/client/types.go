@@ -94,6 +94,7 @@ type UserTier struct {
 // CascadeModelConfigData wraps the model configs array.
 type CascadeModelConfigData struct {
 	ClientModelConfigs []ModelConfig `json:"clientModelConfigs"`
+	UnifiedPool        bool          `json:"unifiedPool"`
 }
 
 // UserStatus is the user status from the API.
@@ -123,6 +124,10 @@ type ModelQuota struct {
 	RemainingPercent  float64       `json:"remainingPercent"`
 	IsExhausted       bool          `json:"isExhausted"`
 	ResetTime         *time.Time    `json:"resetTime,omitempty"`
+	IsEstimated       bool          `json:"isEstimated,omitempty"`
+	Basis             string        `json:"basis,omitempty"`
+	Confidence        string        `json:"confidence,omitempty"`
+	UnavailableReason string        `json:"unavailableReason,omitempty"`
 	TimeUntilReset    time.Duration `json:"-"`
 }
 
@@ -275,10 +280,9 @@ func GroupForModel(modelID, label string) string {
 	}
 }
 
-// ApplyResetInference returns a model quota corrected for reset times that have
-// already passed. Provider snapshots are point-in-time observations; when a
-// model was exhausted and its reset timestamp is now in the past, downstream
-// status surfaces should not continue to route as if it is exhausted.
+// ApplyResetInference annotates stale reset timestamps without inventing fresh
+// availability. Provider snapshots are point-in-time observations; an elapsed
+// reset timestamp only means "needs a fresh provider read", not "100% remaining".
 func ApplyResetInference(m ModelQuota, now time.Time) ModelQuota {
 	if m.ResetTime == nil {
 		return m
@@ -289,10 +293,13 @@ func ApplyResetInference(m ModelQuota, now time.Time) ModelQuota {
 		m.TimeUntilReset = 0
 	}
 
-	if !m.ResetTime.After(now) && (m.IsExhausted || m.RemainingFraction <= 0) {
-		m.RemainingFraction = 1.0
-		m.RemainingPercent = 100
-		m.IsExhausted = false
+	if !m.ResetTime.After(now) {
+		m.IsEstimated = true
+		m.Basis = "reset_time_elapsed_unverified"
+		m.Confidence = "low"
+		if m.IsExhausted || m.RemainingFraction <= 0 {
+			m.UnavailableReason = "Provider reset time has elapsed, but no post-reset snapshot has confirmed renewed quota."
+		}
 	}
 
 	return m

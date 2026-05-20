@@ -146,10 +146,10 @@ func computeModelRate(modelID string, points []SnapshotPoint) *ModelRate {
 		consumed := prevFrac - currFrac // positive = usage occurred
 
 		if consumed <= 0 {
-			// Fraction increased or stayed same — no consumption in this interval.
-			// Could be a reset, correction, or idle period.
-			// Count as zero-rate data point to properly account for idle time.
-			deltas = append(deltas, delta{rate: 0, index: i - 1})
+			// Fraction increased or stayed same — likely a reset or correction.
+			// SKIP this interval entirely instead of counting as zero-rate:
+			// a zero-rate from reset is categorically different from idle, and
+			// including it dilutes the burn rate producing falsely optimistic TTX.
 			continue
 		}
 

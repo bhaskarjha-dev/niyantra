@@ -114,6 +114,69 @@ func TestAPIAllowsNoOriginGET(t *testing.T) {
 	}
 }
 
+func TestTokenAuthProtectsAPIAndMCP(t *testing.T) {
+	srv := &Server{port: 9222, dashboardToken: "test-token"}
+	called := false
+	handler := srv.tokenAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for _, path := range []string{"/api/status", "/mcp", "/mcp/session"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%s: expected 401 without token, got %d", path, rec.Code)
+		}
+	}
+	if called {
+		t.Fatal("protected handler should not be called without token")
+	}
+}
+
+func TestTokenAuthAllowsValidBearer(t *testing.T) {
+	srv := &Server{port: 9222, dashboardToken: "test-token"}
+	called := false
+	handler := srv.tokenAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !called {
+		t.Fatal("protected handler should be called with a valid token")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 with token, got %d", rec.Code)
+	}
+}
+
+func TestTokenAuthAllowsStaticAndHealthzWithoutBearer(t *testing.T) {
+	srv := &Server{port: 9222, dashboardToken: "test-token"}
+	called := 0
+	handler := srv.tokenAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called++
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for _, path := range []string{"/", "/app.js", "/healthz"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: expected 200 without token, got %d", path, rec.Code)
+		}
+	}
+	if called != 3 {
+		t.Fatalf("handler calls = %d, want 3", called)
+	}
+}
+
 // TestAPIPreflightBlocksCrossOrigin verifies that cross-origin API preflights
 // fail closed instead of returning a generic 204.
 func TestAPIPreflightBlocksCrossOrigin(t *testing.T) {
@@ -222,6 +285,24 @@ func TestBodySizeLimit(t *testing.T) {
 	// The middleware passes through (it doesn't limit body size itself),
 	// but verifying the securityMiddleware doesn't crash on large bodies.
 	// The actual limit is enforced in each handler via io.LimitReader.
+}
+
+func TestBodySizeLimitRejectsOversizedAPIRequest(t *testing.T) {
+	srv := &Server{port: 9222}
+	handler := srv.securityMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("handler should not be called for oversized body")
+	}))
+
+	body := bytes.Repeat([]byte("x"), int(defaultAPIBodyLimitBytes)+1)
+	req := httptest.NewRequest(http.MethodPost, "/api/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d (%s)", rec.Code, rec.Body.String())
+	}
 }
 
 // TestBindAddressComposition verifies the address string uses bind + port.

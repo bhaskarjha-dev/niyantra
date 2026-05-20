@@ -3,6 +3,20 @@
 All notable changes to Niyantra are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions map to feature milestones, not semver.
 
+## [Unreleased]
+
+### Security
+- Dashboard API token is now mandatory for all `/api/*` and HTTP `/mcp` requests. `niyantra serve` prints a tokenized first-open URL, and `niyantra token show|rotate` manages the token.
+- Dashboard and CLI backups now redact sensitive config values from the copied SQLite database, including the dashboard token, provider credentials, notification secrets, and plugin secret-like keys.
+- Manual HTTP plugin execution is removed from the product surface. `POST /api/plugins/{id}/run` now returns `410 Gone` and never spawns a process.
+- Plugin discovery rejects oversized manifests, manifest symlinks, and entry points resolving outside the plugin directory.
+
+### Fixed
+- Schema v21 repairs legacy sentinel/dangling references and rebuilds affected tables with nullable FK-backed relationships.
+- Advisor output ranks accounts when no current account is supplied and only gives switch guidance with explicit current-account context.
+- Reset-time elapsed no longer converts exhausted quotas into observed availability; estimated/unknown data is labeled with quality metadata.
+- Missing model pricing now produces unavailable cost output instead of false zero-dollar spend.
+
 ## [0.29.0]
 
 ### Added
@@ -25,7 +39,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - **Beautiful empty states (F3-UX)** — preview cards with sample data for Quotas, Subscriptions, and Overview tabs. Replaces blank screens for new users with actionable CTAs.
 - **Usage streak hero card (F4-UX)** — prominent display of current streak, total snapshots, active days, and best streak. Rendered above the activity heatmap (replaces duplicate stats bar).
 - **Reset countdown chips (F6-UX)** — inline countdown timers for providers with quota resets within 24h. Auto-refreshes every 60s.
-- **Onboarding checklist (F7-UX)** — 5-step persistent checklist with auto-detection (snapshot, subscription, budget, notifications, overview tab). Progress bar, confetti on completion, localStorage persistence. Dismiss button.
+
 
 ### Fixed
 - **Token Usage Analytics CSS** — added complete missing stylesheet for KPI cards, range selector, model distribution bars, daily burn chart, and breakdown chips. Previously had no CSS at all (pre-existing bug).
@@ -35,7 +49,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Changed
 - Overview content order: Safe to Spend hero → Countdown → Advisor → Cost KPI → Token Analytics → Git Costs → Heatmap → Provider Health → Insights
-- CSS entry point: 4 new stylesheets (ux-features, sparklines, onboarding, token-analytics)
+- CSS entry point: 3 new stylesheets (ux-features, sparklines, token-analytics)
 - Provider model breakdown: upgraded from flexbox to CSS Grid layout with larger font (13px) and taller progress bars (7px)
 
 ## [0.27.0]
@@ -47,7 +61,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - **Full import parity** — `POST /api/import/json` now imports all 7 provider snapshot types (Antigravity + Claude + Codex + Cursor + Gemini + Copilot + Plugin) with ±500ms dedup per provider. `ImportResult` extended with per-provider counters.
 - **Parallel polling** — auto-capture agent now runs all 7 providers concurrently via `sync.WaitGroup` with semaphore(4) concurrency limiter. Poll cycle time reduced from O(sum) to O(max). Per-provider elapsed time logged at debug level.
 - **Notification TTL reset** — `ResetGuard()` and `ResetAllGuards()` methods on the notification engine. Quick Adjust now calls `ResetAllGuards()` after successful adjustment, re-arming all quota alerts immediately.
-- **Plugin test observability** — plugin test runs (`POST /api/plugins/{id}/run`) now log structured activity events via `LogInfo()` for both success and failure, including duration, provider, usage data, and persistence status.
+- **Plugin configuration observability** — plugin configuration changes now log structured activity events. Manual HTTP plugin execution was later removed; current builds return `410 Gone` for `POST /api/plugins/{id}/run`.
 - **28 new tests** — 16 import tests, 5 config validation tests, 5 rate limiter tests, 2 notification guard reset tests.
 
 ### Security
@@ -77,7 +91,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   - `GET /api/webpush/vapid-key`, `POST /api/webpush/subscribe`, `DELETE /api/webpush/unsubscribe`, `GET /api/webpush/status`, `POST /api/webpush/test`
   - 14 tests in `webpush_test.go`
 - **Webhook notifications (F22)** — multi-service webhook delivery with 4 adapters (Discord, Telegram, Slack, Generic/ntfy). Auto-format payloads per service. Severity-based color coding.
-  - `webhook_enabled`, `webhook_service`, `webhook_url`, `webhook_secret` config keys (schema v17)
+  - `webhook_enabled`, `webhook_type`, `webhook_url`, `webhook_secret` config keys (schema v17)
   - `POST /api/notify/test-webhook`
   - 12 tests in `webhook_test.go`
 - **SMTP/Email notifications (F11)** — pure Go SMTP client supporting plain, STARTTLS, and TLS encryption. HTML-formatted quota alert emails.
@@ -100,7 +114,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
   - `copilot_snapshots` table (schema v12)
   - `copilot_capture`, `copilot_pat` config keys (schema v15)
   - `GET /api/copilot/status`, `POST /api/copilot/snap`
-- **Streamable HTTP MCP (F14)** — expose all 11 MCP tools over `POST /mcp` endpoint. SSE streaming, session management via `Mcp-Session-Id` header. Enables remote agent access.
+- **Streamable HTTP MCP (F14)** — expose MCP tools over `POST /mcp` endpoint. SSE streaming, session management via `Mcp-Session-Id` header. Current builds expose 13 tools and require dashboard bearer auth.
 
 ## [0.24.0]
 
@@ -108,7 +122,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - **Git commit correlation (F16)** — AI cost per commit. Correlates git log timestamps with Claude Code JSONL sessions (±30 min window). Branch-level cost aggregation. `git_commit_costs` MCP tool.
   - `GET /api/git-costs`, `GET /api/git-costs/branches`
 - **Token usage analytics (F13)** — multi-provider token intelligence. Claude JSONL session parser with per-turn input/output/cache token counting. Model-aware cost estimation using configured pricing. Daily aggregation.
-  - `token_usage_daily` table (schema v13)
+  - `token_usage` table (schema v14)
   - `GET /api/token-usage`, `POST /api/token-usage/parse`
   - `token_usage` MCP tool
 

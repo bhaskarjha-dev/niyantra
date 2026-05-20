@@ -1,7 +1,7 @@
 // Niyantra Dashboard — Overview Tab Renderer
 import { serverConfig, latestQuotaData } from '../core/state';
-import { esc, formatTimeAgo, formatDurationSec } from '../core/utils';
-import { downloadBackup, fetchOverview, fetchSubscriptions, fetchUsage } from '../core/api';
+import { esc, formatTimeAgo, formatDurationSec, showToast } from '../core/utils';
+import { downloadAPIFile, downloadBackup, fetchOverview, fetchSubscriptions, fetchUsage, claimOverageBonus, fetchStatus } from '../core/api';
 import { openBudgetModal } from './budget';
 import { renderServerInsights, loadAdvisorCard } from './insights';
 import { loadCostKPI } from './cost';
@@ -100,8 +100,8 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
     '<p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">' +
     'Download a redacted JSON report or a full database backup.</p>' +
     '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-    '<a class="btn-add" href="/api/export/csv" download style="text-decoration:none;display:inline-flex;padding:6px 12px;font-size:12px">📥 CSV</a>' +
-    '<a class="btn-add" href="/api/export/json" download style="text-decoration:none;display:inline-flex;padding:6px 12px;font-size:12px">📦 Redacted JSON</a>' +
+    '<button class="btn-add" id="download-csv-btn" style="padding:6px 12px;font-size:12px">📥 CSV</button>' +
+    '<button class="btn-add" id="download-json-btn" style="padding:6px 12px;font-size:12px">📦 Redacted JSON</button>' +
     '<button class="btn-add" id="download-backup-btn" style="padding:6px 12px;font-size:12px">💾 DB Backup</button>' +
     '<button class="btn-add" id="generate-report-btn" style="padding:6px 12px;font-size:12px">📊 Monthly Report</button>' +
     '</div></div>';
@@ -204,9 +204,49 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
   var gitCostsHTML = '<div id="git-costs-container" class="overview-card full-width"></div>';
   var heatmapHTML = '<div id="heatmap-container" class="overview-card full-width"></div>';
 
-  el.innerHTML = safeToSpendHTML + countdownHTML + advisorHTML + costKPIHTML + tokenAnalyticsHTML + gitCostsHTML + heatmapHTML + providerHTML + insightsHTML + claudeHTML + spendHTML + calendarHTML + linksHTML + exportHTML;
+  var eligibleAccount = null;
+  if (latestQuotaData && latestQuotaData.accounts) {
+    eligibleAccount = latestQuotaData.accounts.find(function(acc: any) {
+      return acc.planTier && acc.planTier.toLowerCase() === 'ultra' && acc.hasClaimedBonus2026 === 0;
+    });
+  }
+  var bannerHTML = '';
+  if (eligibleAccount) {
+    bannerHTML = '<div class="io-alert-card" data-account-id="' + eligibleAccount.accountId + '">' +
+      '<div class="io-alert-content">' +
+      '<div class="io-alert-title">✨ Google I/O 2026 Promotional Bonus</div>' +
+      '<div class="io-alert-desc">Exclusive for Ultra members: Claim your $100 Overage Credit Bonus before it expires on <strong>May 25, 2026</strong>.</div>' +
+      '</div>' +
+      '<button class="io-claim-btn" data-claim-account-id="' + eligibleAccount.accountId + '">Claim $100 Bonus</button>' +
+      '</div>';
+  }
+
+  el.innerHTML = bannerHTML + safeToSpendHTML + countdownHTML + advisorHTML + costKPIHTML + tokenAnalyticsHTML + gitCostsHTML + heatmapHTML + providerHTML + insightsHTML + claudeHTML + spendHTML + calendarHTML + linksHTML + exportHTML;
 
   wireSafeToSpendButtons(openBudgetModal);
+
+  var claimBtn = el.querySelector('.io-claim-btn');
+  if (claimBtn) {
+    claimBtn.addEventListener('click', function(e) {
+      var btn = e.currentTarget as HTMLButtonElement;
+      var accId = parseInt(btn.getAttribute('data-claim-account-id') || '0', 10);
+      if (accId > 0) {
+        btn.disabled = true;
+        btn.textContent = 'Claiming...';
+        claimOverageBonus(accId).then(function() {
+          showToast('✨ $100 Overage Bonus credit added!', 'success');
+          fetchStatus().then(function(freshData) {
+            document.dispatchEvent(new CustomEvent('niyantra:status-refreshed', { detail: { data: freshData } }));
+            document.dispatchEvent(new CustomEvent('niyantra:overview-refresh'));
+          }).catch(function() {});
+        }).catch(function(err) {
+          btn.disabled = false;
+          btn.textContent = 'Claim $100 Bonus';
+          showToast('❌ ' + (err.message || 'Claim failed'), 'error');
+        });
+      }
+    });
+  }
 
   var reportBtn = document.getElementById('generate-report-btn');
   if (reportBtn) {
@@ -217,6 +257,22 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
     backupBtn.addEventListener('click', function() {
       downloadBackup().catch(function(err) {
         alert(err.message || 'Backup failed');
+      });
+    });
+  }
+  var csvBtn = document.getElementById('download-csv-btn');
+  if (csvBtn) {
+    csvBtn.addEventListener('click', function() {
+      downloadAPIFile('/api/export/csv', 'niyantra-export.csv').catch(function(err) {
+        alert(err.message || 'CSV export failed');
+      });
+    });
+  }
+  var jsonBtn = document.getElementById('download-json-btn');
+  if (jsonBtn) {
+    jsonBtn.addEventListener('click', function() {
+      downloadAPIFile('/api/export/json', 'niyantra-export.json').catch(function(err) {
+        alert(err.message || 'JSON export failed');
       });
     });
   }

@@ -17,7 +17,7 @@ xcopy examples\plugins\openrouter-usage %USERPROFILE%\.niyantra\plugins\openrout
 1. Open Niyantra → Settings → Plugins
 2. Enter your OpenRouter API key (from [keys page](https://openrouter.ai/settings/keys))
 3. Toggle the plugin **ON**
-4. Click **▶ Test Run** to verify
+4. Let the polling agent capture it. Manual HTTP plugin execution is disabled; `POST /api/plugins/{id}/run` returns `410 Gone`.
 
 ## How It Works
 

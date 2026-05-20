@@ -53,13 +53,13 @@ func testPricing() []ModelPricing {
 
 func TestEstimateGroupCost_ClaudeGPT(t *testing.T) {
 	rate := GroupRate{
-		GroupKey:   "claude_gpt",
+		GroupKey:  "claude_gpt",
 		BurnRate:  0.10, // 10%/hr
 		Remaining: 0.60, // 40% consumed
 		HasData:   true,
 	}
 	ceiling := GroupCeiling{
-		GroupKey:            "claude_gpt",
+		GroupKey:           "claude_gpt",
 		DisplayName:        "Claude + GPT",
 		TokensPerCycle:     5_000_000,
 		CycleDurationHours: 5,
@@ -109,7 +109,7 @@ func TestEstimateGroupCost_ClaudeGPT(t *testing.T) {
 func TestEstimateGroupCost_NoData(t *testing.T) {
 	rate := GroupRate{
 		GroupKey: "claude_gpt",
-		HasData: false,
+		HasData:  false,
 	}
 	ceiling := GroupCeiling{
 		TokensPerCycle: 5_000_000,
@@ -125,15 +125,37 @@ func TestEstimateGroupCost_NoData(t *testing.T) {
 	}
 }
 
+func TestEstimateGroupCost_NoGroupPricingUnavailable(t *testing.T) {
+	rate := GroupRate{
+		GroupKey:  "unpriced_group",
+		BurnRate:  0.1,
+		Remaining: 0.5,
+		HasData:   true,
+	}
+	ceiling := GroupCeiling{
+		GroupKey:       "unpriced_group",
+		DisplayName:    "Unpriced",
+		TokensPerCycle: 1_000_000,
+	}
+
+	est := EstimateGroupCost(rate, ceiling, testPricing(), func(string) string { return "other" })
+	if est.EstCost != 0 || est.CostPerHour != 0 {
+		t.Fatalf("unpriced group cost = %.2f/hr %.2f, want unavailable zeroes", est.EstCost, est.CostPerHour)
+	}
+	if est.CostLabel != "—" || est.HourlyLabel != "—" {
+		t.Fatalf("labels = %q/%q, want unavailable dashes", est.CostLabel, est.HourlyLabel)
+	}
+}
+
 func TestEstimateGroupCost_FullRemaining(t *testing.T) {
 	rate := GroupRate{
-		GroupKey:   "claude_gpt",
+		GroupKey:  "claude_gpt",
 		BurnRate:  0.05,
 		Remaining: 1.0, // nothing consumed
 		HasData:   true,
 	}
 	ceiling := GroupCeiling{
-		GroupKey:        "claude_gpt",
+		GroupKey:       "claude_gpt",
 		DisplayName:    "Claude + GPT",
 		TokensPerCycle: 5_000_000,
 	}
@@ -154,13 +176,13 @@ func TestEstimateGroupCost_FullRemaining(t *testing.T) {
 
 func TestEstimateGroupCost_GeminiFlash(t *testing.T) {
 	rate := GroupRate{
-		GroupKey:   "gemini_flash",
+		GroupKey:  "gemini_flash",
 		BurnRate:  0.20,
 		Remaining: 0.30, // 70% consumed
 		HasData:   true,
 	}
 	ceiling := GroupCeiling{
-		GroupKey:            "gemini_flash",
+		GroupKey:           "gemini_flash",
 		DisplayName:        "Gemini Flash",
 		TokensPerCycle:     10_000_000,
 		CycleDurationHours: 5,

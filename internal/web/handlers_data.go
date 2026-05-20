@@ -112,6 +112,30 @@ func (s *Server) handleAccountMeta(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleAccountClaimBonus handles POST /api/accounts/{id}/claim-bonus.
+// It sets has_claimed_bonus_2026 = 1 and adds 100.0 to overage_credits.
+func (s *Server) handleAccountClaimBonus(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	accountID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || accountID <= 0 {
+		jsonError(w, "invalid account ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.store.ClaimOverageBonus(accountID); err != nil {
+		jsonError(w, "failed to claim bonus credit", http.StatusInternalServerError)
+		return
+	}
+
+	s.store.LogInfo("ui", "account_claim_bonus", "", map[string]interface{}{
+		"accountId": accountID,
+	})
+
+	writeJSON(w, map[string]interface{}{
+		"message": "google io 2026 bonus claimed",
+	})
+}
+
 // handleAccountDelete performs a full cascade delete of an account and all its data.
 func (s *Server) handleAccountDelete(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
@@ -373,22 +397,26 @@ func (s *Server) handleHeatmap(w http.ResponseWriter, r *http.Request) {
 
 	activeDays := len(data)
 
-	// Compute current streak and longest streak by walking dates
+	// Compute current streak and longest streak by walking dates.
+	// Start from yesterday if today has no activity yet.
 	now := time.Now().UTC()
 	streak := 0
 	longestStreak := 0
 	currentStreak := 0
 
-	for i := 0; i < days; i++ {
+	startOffset := 0
+	todayStr := now.Format("2006-01-02")
+	if !dayMap[todayStr] {
+		startOffset = 1 // today has no activity — begin streak from yesterday
+	}
+
+	for i := startOffset; i < days; i++ {
 		d := now.AddDate(0, 0, -i).Format("2006-01-02")
 		if dayMap[d] {
 			currentStreak++
 			if currentStreak > longestStreak {
 				longestStreak = currentStreak
 			}
-		} else if i == 0 {
-			// Today has no activity — skip and try from yesterday
-			continue
 		} else {
 			// First gap ends the current streak
 			if streak == 0 {

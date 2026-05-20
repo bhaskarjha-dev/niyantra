@@ -203,9 +203,8 @@ func TestFormatStaleness(t *testing.T) {
 	}
 }
 
-// TestStaleSnapshotInfersReset verifies that a snapshot from 10 days ago
-// with 0% remaining and reset time in the past shows RemainingPercent=100
-// and a time-ago staleness label. This is the C3 regression test.
+// TestStaleSnapshotMarksElapsedResetUnverified verifies that an elapsed reset
+// timestamp does not invent renewed quota without a fresh provider snapshot.
 func TestStaleSnapshotInfersReset(t *testing.T) {
 	pastReset := time.Now().Add(-10 * 24 * time.Hour).Add(5 * time.Hour) // 10 days ago + 5h
 	snap := &client.Snapshot{
@@ -238,11 +237,14 @@ func TestStaleSnapshotInfersReset(t *testing.T) {
 	if len(ar.Models) != 1 {
 		t.Fatalf("expected 1 model, got %d", len(ar.Models))
 	}
-	if ar.Models[0].RemainingPercent != 100 {
-		t.Errorf("stale model remaining = %f, want 100 (inferred reset)", ar.Models[0].RemainingPercent)
+	if ar.Models[0].RemainingPercent != 0 {
+		t.Errorf("stale model remaining = %f, want 0 until a fresh provider snapshot confirms reset", ar.Models[0].RemainingPercent)
 	}
-	if ar.Models[0].IsExhausted {
-		t.Error("stale model should NOT be marked exhausted after inferred reset")
+	if !ar.Models[0].IsExhausted {
+		t.Error("stale model should remain exhausted until renewed quota is observed")
+	}
+	if !ar.Models[0].IsEstimated || ar.Models[0].Basis != "reset_time_elapsed_unverified" {
+		t.Fatalf("elapsed reset should be marked estimated/unverified, got %+v", ar.Models[0])
 	}
 }
 
@@ -287,7 +289,7 @@ func TestFreshSnapshotUnchanged(t *testing.T) {
 	}
 }
 
-func TestResetPassedInfersRefillBeforeStalenessThreshold(t *testing.T) {
+func TestResetPassedDoesNotInferRefillBeforeStalenessThreshold(t *testing.T) {
 	now := time.Now()
 	pastReset := now.Add(-1 * time.Hour)
 	snap := &client.Snapshot{
@@ -311,14 +313,14 @@ func TestResetPassedInfersRefillBeforeStalenessThreshold(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 account, got %d", len(result))
 	}
-	if got := result[0].Models[0].RemainingPercent; got != 100 {
-		t.Fatalf("remaining = %.0f, want 100 after reset inference", got)
+	if got := result[0].Models[0].RemainingPercent; got != 0 {
+		t.Fatalf("remaining = %.0f, want 0 until reset is observed", got)
 	}
-	if result[0].Models[0].IsExhausted {
-		t.Fatal("model should not stay exhausted after reset inference")
+	if !result[0].Models[0].IsExhausted {
+		t.Fatal("model should stay exhausted until a fresh provider snapshot confirms reset")
 	}
-	if !result[0].IsReady {
-		t.Fatal("account should be ready after inferred refill")
+	if !result[0].Models[0].IsEstimated {
+		t.Fatal("model should flag elapsed reset as an unverified estimate")
 	}
 }
 

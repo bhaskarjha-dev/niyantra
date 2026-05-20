@@ -100,6 +100,7 @@ func IsSensitiveConfigKey(key string) bool {
 	switch key {
 	case "copilot_pat",
 		"cursor_session_token",
+		DashboardTokenConfigKey,
 		"gemini_client_secret",
 		"smtp_pass",
 		"smtp_user",

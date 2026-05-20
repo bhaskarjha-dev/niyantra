@@ -62,6 +62,8 @@ func main() {
 		cmdStatus(logger, *dbPath, *insecurePlaintextSecrets)
 	case "serve":
 		cmdServe(logger, *dbPath, *port, *auth, *bind, *allowRemote, *behindHTTPSProxy, *httpMCP, *enablePlugins, *insecurePlaintextSecrets)
+	case "token":
+		cmdToken(logger, *dbPath, fs.Args(), *insecurePlaintextSecrets)
 	case "mcp":
 		cmdMCP(logger, *dbPath, *insecurePlaintextSecrets)
 	case "backup":
@@ -96,7 +98,7 @@ func cmdSnap(logger *slog.Logger, dbPath string, allowPlaintextSecrets bool) {
 	c := client.New(logger)
 	fmt.Print("⏳ Detecting Antigravity language server... ")
 
-	resp, err := c.FetchQuotas(ctx)
+	resps, err := c.FetchQuotas(ctx)
 	if err != nil {
 		fmt.Println("❌")
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -104,15 +106,7 @@ func cmdSnap(logger *slog.Logger, dbPath string, allowPlaintextSecrets bool) {
 	}
 	fmt.Println("✅")
 
-	// 2. Convert to snapshot
-	snap := resp.ToSnapshot(time.Now().UTC())
-
-	// Tag provenance: captured via CLI
-	snap.CaptureMethod = "manual"
-	snap.CaptureSource = "cli"
-	snap.SourceID = "antigravity"
-
-	// 3. Store
+	// 2. Open store
 	db, err := openStore(dbPath, allowPlaintextSecrets)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
@@ -120,48 +114,58 @@ func cmdSnap(logger *slog.Logger, dbPath string, allowPlaintextSecrets bool) {
 	}
 	defer db.Close()
 
-	accountID, err := db.GetOrCreateAccount(snap.Email, snap.PlanName, "antigravity")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating account: %v\n", err)
-		os.Exit(1)
-	}
-	snap.AccountID = accountID
+	for _, resp := range resps {
+		// 3. Convert to snapshot
+		snap := resp.ToSnapshot(time.Now().UTC())
 
-	snapID, err := db.InsertSnapshot(snap)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error storing snapshot: %v\n", err)
-		os.Exit(1)
-	}
+		// Tag provenance: captured via CLI
+		snap.CaptureMethod = "manual"
+		snap.CaptureSource = "cli"
+		snap.SourceID = "antigravity"
 
-	// Log successful snap
-	db.LogInfoSnap("cli", "snap", snap.Email, snapID, map[string]interface{}{
-		"plan": snap.PlanName, "method": "manual", "source": "cli",
-	})
+		accountID, err := db.GetOrCreateAccount(snap.Email, snap.PlanName, "antigravity")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating account for %s: %v\n", snap.Email, err)
+			continue
+		}
+		snap.AccountID = accountID
+
+		snapID, err := db.InsertSnapshot(snap)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error storing snapshot for %s: %v\n", snap.Email, err)
+			continue
+		}
+
+		// Log successful snap
+		db.LogInfoSnap("cli", "snap", snap.Email, snapID, map[string]interface{}{
+			"plan": snap.PlanName, "method": "manual", "source": "cli",
+		})
+
+		// 4. Display result
+		groups := client.GroupModels(snap.Models)
+
+		fmt.Println()
+		fmt.Printf("  📸 Snapshot #%d captured\n", snapID)
+		fmt.Printf("  📧 %s (%s)\n", snap.Email, snap.PlanName)
+		fmt.Println()
+
+		for _, g := range groups {
+			pct := g.RemainingFraction * 100
+			status := "✅"
+			if g.IsExhausted || pct == 0 {
+				status = "❌"
+			} else if pct < 20 {
+				status = "⚠️"
+			}
+
+			resetStr := ""
+			if g.TimeUntilReset > 0 {
+				resetStr = fmt.Sprintf("  ↻ %s", formatDuration(g.TimeUntilReset))
+			}
+			fmt.Printf("  %s %-16s %5.1f%%%s\n", status, g.DisplayName+":", pct, resetStr)
+		}
+	}
 	db.UpdateSourceCapture("antigravity")
-
-	// 4. Display result
-	groups := client.GroupModels(snap.Models)
-
-	fmt.Println()
-	fmt.Printf("  📸 Snapshot #%d captured\n", snapID)
-	fmt.Printf("  📧 %s (%s)\n", snap.Email, snap.PlanName)
-	fmt.Println()
-
-	for _, g := range groups {
-		pct := g.RemainingFraction * 100
-		status := "✅"
-		if g.IsExhausted || pct == 0 {
-			status = "❌"
-		} else if pct < 20 {
-			status = "⚠️"
-		}
-
-		resetStr := ""
-		if g.TimeUntilReset > 0 {
-			resetStr = fmt.Sprintf("  ↻ %s", formatDuration(g.TimeUntilReset))
-		}
-		fmt.Printf("  %s %-16s %5.1f%%%s\n", status, g.DisplayName+":", pct, resetStr)
-	}
 	fmt.Println()
 }
 
@@ -189,7 +193,7 @@ func cmdStatus(logger *slog.Logger, dbPath string, allowPlaintextSecrets bool) {
 
 	fmt.Println()
 	fmt.Println("  ╔══════════════════════════════════════════════════════════════╗")
-	fmt.Println("  ║  NIYANTRA — Multi-Account Readiness                         ║")
+	fmt.Println("  ║  NIYANTRA — Multi-Account Readiness                          ║")
 	fmt.Println("  ╠══════════════════════════════════════════════════════════════╣")
 
 	for i, acc := range accounts {
@@ -198,8 +202,8 @@ func cmdStatus(logger *slog.Logger, dbPath string, allowPlaintextSecrets bool) {
 			status = "⚠️"
 		}
 
-		fmt.Printf("  ║  %-40s %-12s %s  ║\n",
-			truncate(acc.Email, 40),
+		fmt.Printf("  ║  %-43s %-12s %s  ║\n",
+			truncate(acc.Email, 43),
 			acc.StalenessLabel,
 			status,
 		)
@@ -222,12 +226,11 @@ func cmdStatus(logger *slog.Logger, dbPath string, allowPlaintextSecrets bool) {
 				resetStr = fmt.Sprintf("  ↻ %s", formatDuration(time.Duration(g.TimeUntilResetSec*float64(time.Second))))
 			}
 
-			fmt.Printf("  ║    %s %-14s %5.1f%%%s%s  ║\n",
+			fmt.Printf("  ║    %s %-14s %5.1f%%%s  ║\n",
 				indicator,
 				g.DisplayName+":",
 				pct,
-				resetStr,
-				strings.Repeat(" ", maxInt(0, 30-len(resetStr)-6)),
+				fmt.Sprintf("%-33s", resetStr),
 			)
 		}
 
@@ -260,9 +263,15 @@ func cmdServe(logger *slog.Logger, dbPath string, port int, auth string, bind st
 	}
 	defer db.Close()
 
+	dashboardToken, tokenCreated, err := db.EnsureDashboardToken()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating dashboard token: %v\n", err)
+		os.Exit(1)
+	}
+
 	c := client.New(logger)
 
-	srv := web.NewServer(logger, db, c, port, auth, version, bind, httpMCP, enablePlugins)
+	srv := web.NewServer(logger, db, c, port, auth, dashboardToken, version, bind, httpMCP, enablePlugins)
 	defer srv.Shutdown()
 
 	autoCapture := db.GetConfigBool("auto_capture")
@@ -278,24 +287,35 @@ func cmdServe(logger *slog.Logger, dbPath string, port int, auth string, bind st
 		"autoCapture": autoCapture, "pollInterval": pollInterval,
 	})
 
+	dashboardURL := displayDashboardAddress(bind, port)
+
 	fmt.Println()
 	fmt.Println("  ╔══════════════════════════════════════╗")
-	fmt.Printf("  ║  Niyantra %-27s ║\n", version)
+	fmt.Printf("  ║  Niyantra %-26s ║\n", version)
 	fmt.Println("  ╠══════════════════════════════════════╣")
-	fmt.Printf("  ║  Dashboard: %-26s ║\n", truncate(displayDashboardAddress(bind, port), 26))
-	fmt.Printf("  ║  Database:  %-26s ║\n", truncate(dbPath, 26))
-	fmt.Printf("  ║  Mode:      %-26s ║\n", mode)
+	fmt.Printf("  ║  Database:  %-24s ║\n", truncate(dbPath, 24))
+	fmt.Printf("  ║  Mode:      %-24s ║\n", mode)
 	if autoCapture {
-		fmt.Printf("  ║  Polling:   every %-20s ║\n", fmt.Sprintf("%ds", pollInterval))
+		fmt.Printf("  ║  Polling:   every %-18s ║\n", fmt.Sprintf("%ds", pollInterval))
 	}
 	if authEnabled {
-		fmt.Println("  ║  Auth:      enabled                  ║")
+		fmt.Printf("  ║  Auth:      %-24s ║\n", "enabled")
 	}
 	fmt.Println("  ╚══════════════════════════════════════╝")
 
 	if httpMCP {
-		fmt.Println("  HTTP MCP: enabled")
+		fmt.Println("\n  [HTTP MCP Enabled]")
 	}
+	if tokenCreated {
+		fmt.Println("\n  [New API Token Generated]")
+	}
+
+	fmt.Println()
+	fmt.Println("  Server is ready! Access your dashboard:")
+	fmt.Println("  ➜  " + dashboardURL + "?token=" + dashboardToken)
+	fmt.Println()
+	fmt.Println("  API Integration:")
+	fmt.Println("  ➜  Authorization: Bearer <token>")
 
 	// Security warning: explicit non-local binds expose the dashboard to any
 	// client that can reach the listener. Docker users should prefer host
@@ -307,6 +327,8 @@ func cmdServe(logger *slog.Logger, dbPath string, port int, auth string, bind st
 		fmt.Println("  Prefer localhost-only publishing, or use --auth with --behind-https-proxy behind TLS.")
 	}
 
+	fmt.Println()
+	fmt.Println("  Press Ctrl+C to gracefully stop the server.")
 	fmt.Println()
 
 	// Handle shutdown signals
@@ -327,6 +349,40 @@ func cmdServe(logger *slog.Logger, dbPath string, port int, auth string, bind st
 			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
 			os.Exit(1)
 		}
+	}
+}
+
+func cmdToken(logger *slog.Logger, dbPath string, args []string, allowPlaintextSecrets bool) {
+	action := "show"
+	if len(args) > 0 {
+		action = args[0]
+	}
+
+	db, err := openStore(dbPath, allowPlaintextSecrets)
+	if err != nil {
+		logger.Error("failed to open database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	switch action {
+	case "show":
+		token, _, err := db.EnsureDashboardToken()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Token unavailable: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(token)
+	case "rotate":
+		token, err := db.RotateDashboardToken()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Token rotation failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(token)
+	default:
+		fmt.Fprintln(os.Stderr, "Usage: niyantra token [show|rotate]")
+		os.Exit(1)
 	}
 }
 
@@ -578,6 +634,7 @@ Commands:
   snap       Capture current account's quota (1 API call)
   status     Show all accounts' readiness (0 network calls)
   serve      Start the web dashboard
+  token      Show or rotate the dashboard API token
   mcp        Start MCP server (stdio) for AI agent integration
   demo       Seed database with sample data for evaluation
   backup     Create a database backup
@@ -634,14 +691,10 @@ func truncate(s string, max int) string {
 	if len(s) <= max {
 		return s
 	}
-	return s[:max-1] + "…"
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
+	if max <= 3 {
+		return s[:max]
 	}
-	return b
+	return s[:max-3] + "..."
 }
 
 // envString returns the value of an environment variable, or fallback if unset.

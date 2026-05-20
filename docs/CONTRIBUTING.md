@@ -24,11 +24,13 @@ go run ./cmd/niyantra demo
 go run ./cmd/niyantra serve
 ```
 
+`serve` prints a URL containing `?token=...`; open that URL first. Static files and `/healthz` are public, but dashboard data fetches require the generated bearer token.
+
 ### Requirements
 
 - **Go 1.25+** — the only build dependency for the backend
 - **Node.js 18+** — for TypeScript type-checking and esbuild bundling (frontend only)
-- No CGo, no C compiler needed (`modernc.org/sqlite` is pure Go)
+- Normal builds do not require CGo or a C compiler (`modernc.org/sqlite` is pure Go); `go test -race` does require CGO and a C compiler.
 
 ## Run Locally
 
@@ -41,7 +43,7 @@ go run ./cmd/niyantra serve  # Windows
 
 # Or with real data (Antigravity must be running)
 ./niyantra snap
-./niyantra serve   # http://localhost:9222
+./niyantra serve   # open the printed http://localhost:9222?token=... URL
 ```
 
 ## Make Targets
@@ -51,7 +53,7 @@ go run ./cmd/niyantra serve  # Windows
 | `make build` | Build binary with version injection |
 | `make run` | Build + launch dashboard |
 | `make demo` | Seed sample data + launch dashboard |
-| `make test` | Run all tests with race detection |
+| `make test` | Run tests; race detection requires CGO and a C compiler |
 | `make vet` | Run Go vet |
 | `make js` | Bundle frontend TypeScript → `app.js` (dev) |
 | `make js-prod` | Bundle + minify for production |
@@ -64,7 +66,7 @@ go run ./cmd/niyantra serve  # Windows
 ## Project Layout
 
 ```
-cmd/niyantra/main.go              ← CLI entrypoint (snap, status, serve, mcp, demo, backup, restore)
+cmd/niyantra/main.go              ← CLI entrypoint (snap, status, serve, token, mcp, demo, backup, restore)
 
 internal/
   client/                          ← Antigravity language server detection + API call
@@ -76,8 +78,8 @@ internal/
     types.go                          API response structs
     helpers.go                        Model grouping logic (claude_gpt / gemini_pro / gemini_flash)
 
-  store/                           ← SQLite persistence (schema v18, 18 tables, 23 Go files)
-    store.go                          Open, migrate schema (v1→v18), close
+  store/                           ← SQLite persistence (schema v21, 18 persistent tables)
+    store.go                          Open, migrate schema (v1→v21), close
     snapshots.go                      InsertSnapshot, LatestPerAccount, History
     accounts.go                       GetOrCreateAccount (upsert by email)
     subscriptions.go                  Subscription CRUD, 26 presets
@@ -144,14 +146,14 @@ internal/
   mcpserver/                       ← MCP stdio + Streamable HTTP server
     mcpserver.go                      13 tools: quota, models, usage, budget, best_model, spending, switch, codex, forecast, token_usage_stats, git_commit_costs, copilot_status, plugin_status
 
-  web/                             ← Modular HTTP server (17 Go files)
+  web/                             ← Modular HTTP server
     server.go                         Server struct, lifecycle, route table
-    middleware.go                     Auth + CORS middleware
+    middleware.go                     Bearer auth, optional Basic auth, CORS/security headers, body limits
     helpers.go                        JSON response utilities
     compute.go                        Forecast/cost engines (pure logic, no HTTP)
     handlers_quota.go                 status, snap, history, usage endpoints
     handlers_config.go                config, activity, mode, onConfigChanged
-    handlers_ops.go                   healthz, Claude, backup, notify, export, alerts, advisor, webpush
+    handlers_ops.go                   healthz, Claude, backup, notify, export/import, alerts, advisor, webpush
     handlers_codex.go                 Codex, sessions, usage logs endpoints
     handlers_data.go                  accounts, snapshots, pricing endpoints
     handlers_forecast.go              cost + TTX forecast endpoints
@@ -180,9 +182,9 @@ internal/
 ### Frontend Build Pipeline
 
 ```
-TypeScript sources (30 .ts files, strict mode)
-        ↓ esbuild --bundle --format=iife --minify
-    static/app.js (~119 KB, single IIFE)
+TypeScript sources (40 .ts files, strict mode)
+        ↓ esbuild --bundle --format=iife
+    static/app.js (generated single IIFE)
         ↓ go:embed
     Go binary (self-contained)
 ```
@@ -253,7 +255,7 @@ make build
 make vet
 ```
 
-Current coverage: 148 tests across 13 files in 10 packages (`advisor`, `claude`, `costtrack`, `forecast`, `mcpserver`, `notify`, `readiness`, `store`, `tracker`, `web`).
+Current coverage: 286 tests across 33 files in 14 packages (`cmd/niyantra`, `advisor`, `claude`, `client`, `costtrack`, `forecast`, `gitcorr`, `mcpserver`, `notify`, `plugin`, `readiness`, `store`, `tracker`, `web`).
 
 ## Common Issues
 

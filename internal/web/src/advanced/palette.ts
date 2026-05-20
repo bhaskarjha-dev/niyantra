@@ -6,7 +6,7 @@ import { handleCodexSnap } from './codex';
 import { openModal } from '../subscriptions';
 import { openBudgetModal } from '../overview/budget';
 import { updateChartTheme } from '../charts/history';
-import { downloadBackup } from '../core/api';
+import { downloadAPIFile, downloadBackup } from '../core/api';
 
 
 export var PALETTE_COMMANDS = [
@@ -20,8 +20,8 @@ export var PALETTE_COMMANDS = [
     var el = document.getElementById('s-auto-capture');
     if (el) { (el as HTMLInputElement).checked = !(el as HTMLInputElement).checked; el.dispatchEvent(new Event('change')); }
   }},
-  { name: 'Export CSV',                       icon: '📥', action: function() { window.location.href = '/api/export/csv'; } },
-  { name: 'Export JSON',                      icon: '📦', action: function() { window.location.href = '/api/export/json'; } },
+  { name: 'Export CSV',                       icon: '📥', action: function() { downloadAPIFile('/api/export/csv', 'niyantra-export.csv').catch(function(err) { alert(err.message || 'CSV export failed'); }); } },
+  { name: 'Export JSON',                      icon: '📦', action: function() { downloadAPIFile('/api/export/json', 'niyantra-export.json').catch(function(err) { alert(err.message || 'JSON export failed'); }); } },
   { name: 'Download Backup',                  icon: '💾', action: function() { downloadBackup().catch(function(err) { alert(err.message || 'Backup failed'); }); } },
   { name: 'Search Subscriptions', key: '/',   icon: '🔍', action: function() {
     switchToTab('subscriptions');

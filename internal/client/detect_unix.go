@@ -10,16 +10,15 @@ import (
 	"strings"
 )
 
-// detectProcess finds the language server on macOS / Linux by scanning
+// detectProcesses finds all language servers on macOS / Linux by scanning
 // the process table for Antigravity-related command lines.
-func (c *Client) detectProcess(ctx context.Context) (*processInfo, error) {
+func (c *Client) detectProcesses(ctx context.Context) ([]*processInfo, error) {
 	out, err := exec.CommandContext(ctx, "ps", "aux").Output()
 	if err != nil {
 		return nil, ErrProcessNotFound
 	}
 
-	var best *processInfo
-	topRank := -1
+	var procs []*processInfo
 
 	for _, line := range strings.Split(string(out), "\n") {
 		if !containsFold(line, "antigravity") {
@@ -53,16 +52,15 @@ func (c *Client) detectProcess(ctx context.Context) (*processInfo, error) {
 			continue
 		}
 
-		if r := rankCandidate(p); r > topRank {
-			best = p
-			topRank = r
+		if rankCandidate(p) >= 10 {
+			procs = append(procs, p)
 		}
 	}
 
-	if best == nil {
+	if len(procs) == 0 {
 		return nil, ErrProcessNotFound
 	}
-	return best, nil
+	return procs, nil
 }
 
 // parsePSLine extracts process info from a single "ps aux" output line.

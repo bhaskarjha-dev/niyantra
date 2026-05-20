@@ -204,6 +204,8 @@ func (m *MCPServer) handleSwitchRecommendation(_ context.Context, _ *mcp.CallToo
 		out.Message = fmt.Sprintf("⚡ Recommendation: SWITCH to %s for better quota availability.", rec.BestAccount.Email)
 	case "wait":
 		out.Message = "⏳ Recommendation: WAIT — quota resets are imminent."
+	case "rank":
+		out.Message = fmt.Sprintf("Best ranked account: %s. No current account was supplied, so no switch action is inferred.", rec.BestAccount.Email)
 	default:
 		out.Message = fmt.Sprintf("✅ Recommendation: STAY on current account (%s).", rec.BestAccount.Email)
 	}
@@ -228,8 +230,10 @@ func (m *MCPServer) handleCodexStatus(_ context.Context, _ *mcp.CallToolRequest,
 		}
 	}
 
-	snap, _ := m.store.LatestCodexSnapshot()
-	if snap != nil {
+	snaps, _ := m.store.LatestCodexSnapshots()
+	var snap *store.CodexSnapshot
+	if len(snaps) > 0 {
+		snap = snaps[0]
 		out.Snapshot = snap
 	}
 
@@ -260,8 +264,10 @@ func (m *MCPServer) handleCopilotStatus(_ context.Context, _ *mcp.CallToolReques
 		CaptureEnabled: m.store.GetConfigBool("copilot_capture"),
 	}
 
-	snap, _ := m.store.LatestCopilotSnapshot()
-	if snap != nil {
+	snaps, _ := m.store.LatestCopilotSnapshots()
+	var snap *store.CopilotSnapshot
+	if len(snaps) > 0 {
+		snap = snaps[0]
 		out.Snapshot = snap
 	}
 

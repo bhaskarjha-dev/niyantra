@@ -24,12 +24,12 @@ func (s *Server) handleCursorStatus(w http.ResponseWriter, r *http.Request) {
 		result["source"] = creds.Source
 	}
 
-	snap, err := s.store.LatestCursorSnapshot()
+	snaps, err := s.store.LatestCursorSnapshots()
 	if err != nil {
-		s.logger.Error("Failed to get Cursor snapshot", "error", err)
+		s.logger.Error("Failed to get Cursor snapshots", "error", err)
 	}
-	if snap != nil {
-		result["snapshot"] = snap
+	if len(snaps) > 0 {
+		result["snapshots"] = snaps
 	}
 
 	writeJSON(w, result)

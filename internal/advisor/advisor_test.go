@@ -9,8 +9,8 @@ import (
 
 func TestRecommend_NoSnapshots(t *testing.T) {
 	rec := Recommend(nil, nil)
-	if rec.Action != "stay" {
-		t.Errorf("action = %q, want %q", rec.Action, "stay")
+	if rec.Action != "rank" {
+		t.Errorf("action = %q, want %q", rec.Action, "rank")
 	}
 	if rec.BestAccount != nil {
 		t.Error("expected no best account for empty input")
@@ -32,8 +32,8 @@ func TestRecommend_SingleAccount(t *testing.T) {
 	}
 
 	rec := Recommend([]*client.Snapshot{snap}, nil)
-	if rec.Action != "stay" {
-		t.Errorf("action = %q, want %q (single account should always stay)", rec.Action, "stay")
+	if rec.Action != "rank" {
+		t.Errorf("action = %q, want %q without current-account context", rec.Action, "rank")
 	}
 	if rec.BestAccount == nil {
 		t.Fatal("expected best account to be set")
@@ -71,8 +71,7 @@ func TestRecommend_SwitchWhenBetterAccountExists(t *testing.T) {
 		},
 	}
 
-	// Current (depleted) is first — should recommend switching to fresh
-	rec := Recommend([]*client.Snapshot{current, better}, nil)
+	rec := RecommendWithCurrent([]*client.Snapshot{current, better}, nil, current.AccountID)
 	if rec.Action != "switch" {
 		t.Errorf("action = %q, want %q (large score gap should trigger switch)", rec.Action, "switch")
 	}
@@ -81,6 +80,35 @@ func TestRecommend_SwitchWhenBetterAccountExists(t *testing.T) {
 	}
 	if rec.BestAccount.Email != "fresh@example.com" {
 		t.Errorf("best = %q, want %q", rec.BestAccount.Email, "fresh@example.com")
+	}
+}
+
+func TestRecommendWithoutCurrentOnlyRanks(t *testing.T) {
+	now := time.Now()
+	resetTime := now.Add(3 * time.Hour)
+	depleted := &client.Snapshot{
+		AccountID:  1,
+		Email:      "depleted@example.com",
+		CapturedAt: now,
+		Models: []client.ModelQuota{
+			{Label: "Claude Sonnet", RemainingFraction: 0.05, RemainingPercent: 5, ResetTime: &resetTime},
+		},
+	}
+	fresh := &client.Snapshot{
+		AccountID:  2,
+		Email:      "fresh@example.com",
+		CapturedAt: now,
+		Models: []client.ModelQuota{
+			{Label: "Claude Sonnet", RemainingFraction: 0.95, RemainingPercent: 95, ResetTime: &resetTime},
+		},
+	}
+
+	rec := Recommend([]*client.Snapshot{depleted, fresh}, nil)
+	if rec.Action != "rank" {
+		t.Fatalf("action = %q, want rank without current account", rec.Action)
+	}
+	if rec.Mode != "ranking" {
+		t.Fatalf("mode = %q, want ranking", rec.Mode)
 	}
 }
 
@@ -105,7 +133,7 @@ func TestRecommend_StayWhenCurrentIsBest(t *testing.T) {
 		},
 	}
 
-	rec := Recommend([]*client.Snapshot{current, other}, nil)
+	rec := RecommendWithCurrent([]*client.Snapshot{current, other}, nil, current.AccountID)
 	if rec.Action != "stay" {
 		t.Errorf("action = %q, want %q (current is best or close)", rec.Action, "stay")
 	}
@@ -137,7 +165,7 @@ func TestRecommend_AllExhaustedProducesValidResult(t *testing.T) {
 	rec := Recommend([]*client.Snapshot{snap1, snap2}, nil)
 
 	// When all accounts are exhausted, advisor should still produce a valid recommendation
-	validActions := map[string]bool{"stay": true, "wait": true, "switch": true}
+	validActions := map[string]bool{"stay": true, "wait": true, "switch": true, "rank": true}
 	if !validActions[rec.Action] {
 		t.Errorf("action = %q, expected one of stay/wait/switch", rec.Action)
 	}

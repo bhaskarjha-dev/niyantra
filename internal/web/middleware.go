@@ -8,6 +8,12 @@ import (
 	"strings"
 )
 
+const (
+	defaultAPIBodyLimitBytes    int64 = 1 << 20
+	pluginConfigBodyLimitBytes  int64 = 64 << 10
+	importRestoreBodyLimitBytes int64 = 50 << 20
+)
+
 func isUnsafeMethod(method string) bool {
 	switch method {
 	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
@@ -19,6 +25,50 @@ func isUnsafeMethod(method string) bool {
 
 func hasRequestBody(r *http.Request) bool {
 	return r.ContentLength > 0 || len(r.TransferEncoding) > 0
+}
+
+func requiresDashboardToken(path string) bool {
+	return strings.HasPrefix(path, "/api/") || path == "/mcp" || strings.HasPrefix(path, "/mcp/")
+}
+
+func requestBodyLimit(path string) int64 {
+	switch {
+	case path == "/api/import/json":
+		return importRestoreBodyLimitBytes
+	case strings.HasPrefix(path, "/api/plugins/") && strings.HasSuffix(path, "/config"):
+		return pluginConfigBodyLimitBytes
+	default:
+		return defaultAPIBodyLimitBytes
+	}
+}
+
+// tokenAuth protects all data/API surfaces with a generated bearer token.
+// /healthz and static assets remain unauthenticated.
+func (s *Server) tokenAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !requiresDashboardToken(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if s.dashboardToken == "" {
+			jsonError(w, "dashboard token is not configured", http.StatusUnauthorized)
+			return
+		}
+		const prefix = "Bearer "
+		auth := strings.TrimSpace(r.Header.Get("Authorization"))
+		if !strings.HasPrefix(auth, prefix) {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="Niyantra"`)
+			jsonError(w, "missing dashboard bearer token", http.StatusUnauthorized)
+			return
+		}
+		token := strings.TrimSpace(strings.TrimPrefix(auth, prefix))
+		if token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(s.dashboardToken)) != 1 {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="Niyantra"`)
+			jsonError(w, "invalid dashboard bearer token", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // basicAuth wraps a handler with HTTP basic authentication.
@@ -146,6 +196,14 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 		// Skip for /mcp — the MCP SDK handler manages its own content negotiation.
 		if isUnsafeMethod(r.Method) {
 			if strings.HasPrefix(r.URL.Path, "/api/") {
+				limit := requestBodyLimit(r.URL.Path)
+				if hasRequestBody(r) && r.ContentLength > limit {
+					jsonError(w, "request body too large", http.StatusRequestEntityTooLarge)
+					return
+				}
+				if hasRequestBody(r) {
+					r.Body = http.MaxBytesReader(w, r.Body, limit)
+				}
 				ct := r.Header.Get("Content-Type")
 				if hasRequestBody(r) && !strings.HasPrefix(ct, "application/json") {
 					w.Header().Set("Content-Type", "application/json")

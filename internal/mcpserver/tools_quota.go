@@ -151,6 +151,58 @@ func (m *MCPServer) handleQuotaStatus(_ context.Context, _ *mcp.CallToolRequest,
 		out.Accounts = append(out.Accounts, a)
 	}
 
+	// S8: Include multi-provider snapshots so AI agents get a complete picture.
+	// Claude Code
+	if claudeSnap, err := m.store.LatestClaudeSnapshot(); err == nil && claudeSnap != nil {
+		staleness := time.Since(claudeSnap.CapturedAt)
+		remaining5h := 100 - claudeSnap.FiveHourPct
+		a := AccountSummary{
+			Provider:  "claude_code",
+			Email:     "claude-code",
+			IsReady:   remaining5h > 10,
+			Staleness: formatMCPStaleness(staleness),
+			Groups: []GroupSummary{{
+				Name:        "5-Hour Window",
+				GroupKey:     "claude_5h",
+				Remaining:   int(math.Round(remaining5h)),
+				IsExhausted: remaining5h <= 0,
+			}},
+		}
+		if claudeSnap.SevenDayPct != nil {
+			remaining7d := 100 - *claudeSnap.SevenDayPct
+			a.Groups = append(a.Groups, GroupSummary{
+				Name:        "7-Day Window",
+				GroupKey:     "claude_7d",
+				Remaining:   int(math.Round(remaining7d)),
+				IsExhausted: remaining7d <= 0,
+			})
+		}
+		out.Accounts = append(out.Accounts, a)
+	}
+
+	// Codex
+	if codexSnaps, err := m.store.LatestCodexSnapshots(); err == nil && len(codexSnaps) > 0 {
+		codexSnap := codexSnaps[0]
+		staleness := time.Since(codexSnap.CapturedAt)
+		remaining5h := 100 - codexSnap.FiveHourPct
+		a := AccountSummary{
+			Provider:  "codex",
+			Email:     codexSnap.Email,
+			IsReady:   remaining5h > 10,
+			Staleness: formatMCPStaleness(staleness),
+			Groups: []GroupSummary{{
+				Name:        "5-Hour Window",
+				GroupKey:    "codex_5h",
+				Remaining:   int(math.Round(remaining5h)),
+				IsExhausted: remaining5h <= 0,
+			}},
+		}
+		if a.Email == "" {
+			a.Email = "codex"
+		}
+		out.Accounts = append(out.Accounts, a)
+	}
+
 	// F8: Compute estimated costs for each account
 	costByAccount := m.computeMCPCosts(snapshots)
 	if costByAccount != nil {

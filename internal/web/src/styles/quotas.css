@@ -115,7 +115,7 @@
 
 .account-row {
   display: grid;
-  grid-template-columns: 1fr 100px 100px 100px 80px 70px 70px;
+  grid-template-columns: 1fr 110px 110px 110px 90px 85px 85px;
   gap: 12px;
   padding: 16px 20px;
   align-items: center;
@@ -334,6 +334,7 @@
   font-size: 13px;
   padding: 2px 8px;
   border-radius: 100px;
+  white-space: nowrap;
 }
 
 .credit-amount.good { background: var(--green-bg); color: var(--green); }
@@ -857,5 +858,28 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
+}
+
+/* ── Quota Row Manage Account Badge ── */
+.manage-account-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: all var(--transition);
+}
+
+.account-row:hover .manage-account-badge {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-glow);
 }
 

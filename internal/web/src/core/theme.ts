@@ -33,6 +33,10 @@ export function initTabs(): void {
       if (tab) switchToTab(tab);
     });
   });
+
+  // Restore saved tab or default to 'quotas'
+  var savedTab = localStorage.getItem('niyantra-active-tab') || 'quotas';
+  switchToTab(savedTab);
 }
 
 export function switchToTab(tabName: string): void {
@@ -52,6 +56,9 @@ export function switchToTab(tabName: string): void {
   });
   var panel = document.getElementById('panel-' + tabName);
   if (panel) panel.classList.add('active');
+
+  // Save selected tab to localStorage
+  localStorage.setItem('niyantra-active-tab', tabName);
 
   // Dispatch custom event so domain modules can react to tab activation
   document.dispatchEvent(new CustomEvent('niyantra:tab-change', { detail: { tab: tabName } }));

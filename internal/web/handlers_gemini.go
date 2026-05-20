@@ -24,12 +24,12 @@ func (s *Server) handleGeminiStatus(w http.ResponseWriter, r *http.Request) {
 		result["hasRefreshToken"] = creds.RefreshToken != ""
 	}
 
-	snap, err := s.store.LatestGeminiSnapshot()
+	snaps, err := s.store.LatestGeminiSnapshots()
 	if err != nil {
-		s.logger.Error("Failed to get Gemini snapshot", "error", err)
+		s.logger.Error("Failed to get Gemini snapshots", "error", err)
 	}
-	if snap != nil {
-		result["snapshot"] = snap
+	if len(snaps) > 0 {
+		result["snapshots"] = snaps
 	}
 
 	writeJSON(w, result)

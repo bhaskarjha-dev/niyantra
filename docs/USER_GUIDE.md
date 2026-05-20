@@ -10,7 +10,7 @@ A complete guide to using every Niyantra feature.
 - [Subscription Manager](#subscription-manager)
 - [Budget & Forecasting](#budget--forecasting)
 - [Auto-Capture](#auto-capture)
-- [Switch Advisor](#switch-advisor)
+- [Advisor](#advisor)
 - [MCP Server (AI Agent Integration)](#mcp-server)
 - [Codex/ChatGPT Integration](#codexchatgpt-integration)
 - [Claude Code](#claude-code)
@@ -33,20 +33,22 @@ No setup required. Explore all features immediately:
 
 ```bash
 niyantra demo     # Seeds 2 accounts, 24 snapshots, 5 subscriptions
-niyantra serve    # Open http://localhost:9222
+niyantra serve    # Prints the tokenized dashboard URL
 ```
 
 ### First Run (with real data)
 
-1. Make sure Antigravity IDE is running with a project open
+Niyantra supports all three tools in the **Antigravity v2.0 suite** (Antigravity 2.0 Main, Antigravity IDE, and Antigravity CLI).
+
+1. Make sure either **Antigravity 2.0 Main** or **Antigravity IDE** is running (with a project open in the IDE case). If neither is active, Niyantra will automatically fall back to **CLI Solo Mode** by reading the cached OAuth token from `~/.gemini/oauth_creds.json`.
 2. Run your first snapshot:
 
 ```bash
-niyantra snap     # Captures your account's quota (1 API call to localhost)
-niyantra serve    # Dashboard at http://localhost:9222
+niyantra snap     # Captures quotas for all active accounts concurrently
+niyantra serve    # Prints http://localhost:9222?token=...
 ```
 
-You should see your account appear in the Quotas tab with per-model progress bars.
+`niyantra serve` prints a URL that includes `?token=...`. Open that URL first; the browser stores the dashboard token in session storage and removes it from the address bar. You should then see your account appear in the Quotas tab with per-model progress bars.
 
 ---
 
@@ -62,7 +64,7 @@ Each snapshot records:
 
 ### Models Tracked
 
-Antigravity exposes per-model quotas. Niyantra groups them into 3 logical pools:
+The Antigravity v2.0 suite exposes per-model quotas. Niyantra groups them into 3 logical pools:
 
 | Group | Models | Color |
 |-------|--------|-------|
@@ -80,8 +82,8 @@ niyantra snap --debug      # Verbose output (useful for troubleshooting detectio
 ```
 
 Or use the dashboard's **split-button snap**:
-- **Snap Now** (primary button) — captures the current Antigravity account
-- **▾ Snap All Sources** (dropdown) — captures Antigravity + Codex + Claude in one click
+- **Snap Now** captures the current Antigravity account.
+- **Snap All Sources** captures enabled providers in one click.
 
 ### Status Check (offline)
 
@@ -111,18 +113,18 @@ Adjustments are saved to the database immediately and recalculate group-level ag
 
 ## Dashboard
 
-Launch with `niyantra serve` and open `http://localhost:9222`.
+Launch with `niyantra serve` and open the printed `http://localhost:9222?token=...` URL first. The token is required for all dashboard API requests.
 
 ### Quotas Tab
 
 The default view showing all tracked accounts organized by **provider sections**.
 
 **Provider Sections**: Accounts are grouped into collapsible sections:
-- **Antigravity** — quota snapshots from the Antigravity Language Server
+- **Antigravity** — quota snapshots from all active **Antigravity 2.0 Main** and **Antigravity IDE** RPC language servers (deduplicated by account email).
 - **Codex / ChatGPT** — multi-window quota data from OpenAI OAuth API
 - **Claude Code** — rate limit data from the statusline bridge + deep JSONL token analytics
 - **Cursor** — request counts and USD credit balance
-- **Gemini CLI** — rate limit tracking via GCP APIs
+- **Gemini / Antigravity CLI** — rate limit tracking via GCP APIs using the local `~/.gemini/oauth_creds.json` credential file (acts as our solo fallback mode).
 - **Copilot** — GitHub billing data
 
 Each section has its own header with provider color coding and can be collapsed/expanded.
@@ -186,11 +188,11 @@ The intelligence hub combining data from all sources.
 - Remaining recurring budget headroom
 - Explicit note that observed usage spend is not available yet
 
-**Switch Advisor:**
-- Recommends which account to use right now
-- Actions: "switch" (use a different account), "stay" (current is best), "wait" (all exhausted, reset coming soon)
+**Advisor:**
+- Ranks accounts by readiness when no current account is supplied
+- Gives "switch", "stay", or "wait" guidance only when a current account is explicit
 - Shows score breakdown: remaining% (60% weight), burn rate (20%), reset time (20%)
-- Detects "All Ready" state and shows "Stay" recommendation when overall health > 80%
+- Avoids inventing a current account from list order
 
 **Provider Status Signals:**
 - Per-provider status summary (Antigravity, Codex, Claude, Cursor, Gemini, Copilot)
@@ -207,7 +209,7 @@ The intelligence hub combining data from all sources.
 - Per-platform dashboard links (deduplicated) for one-click access to provider billing pages
 
 **Shareable Report (F16):**
-- Click **📊 Monthly Report** in the Export card to generate a 1200×630px PNG
+- Click **Monthly Report** in the Export card to generate a 1200x630px PNG
 - Includes total spend, top category, provider count, activity trend bars, and streak stats
 - DPR-aware rendering for Retina displays
 
@@ -253,9 +255,9 @@ The intelligence hub combining data from all sources.
 - WebPush: subscribe/unsubscribe, status badge, test button
 
 **Data Management:**
-- Backup: Download a copy of your database
-- Restore: Upload a backup file
-- JSON Export: Download all data as JSON
+- Backup: Download a SQLite backup with sensitive config values redacted
+- Restore: Upload a backup file and validate it before replacement
+- JSON Export: Download a redacted sharing/import file
 - JSON Import: Upload and merge data from another Niyantra instance
 
 **Account Management** (via Quotas tab):
@@ -321,8 +323,8 @@ Niyantra currently compares your configured monthly budget against recurring sub
 
 ### How It Works
 
-When enabled, Niyantra polls all configured data sources at your configured interval. Each poll:
-1. Fetches quota data via one HTTP call (with `*float64` protobuf handling for precise quota values)
+When enabled, Niyantra polls all configured data sources at your configured interval. Each Antigravity poll uses one local language-server call; enabled remote providers make their own HTTPS calls and local parsers read local files. Each poll:
+1. Fetches provider data with provider-specific timeouts and `*float64` protobuf handling where applicable
 2. Stores the snapshot with provenance tag `capture_method: auto`
 3. Detects reset cycles (when quotas jump back up)
 4. Updates session tracking
@@ -334,14 +336,14 @@ When enabled, Niyantra polls all configured data sources at your configured inte
 
 - **Zero-daemon by default**: Auto-capture only runs when explicitly enabled AND `niyantra serve` is running
 - **No background service**: Stops when you close the dashboard
-- **One call per poll**: Each poll makes exactly 1 HTTP call to localhost
+- **Bounded provider work**: Antigravity uses one localhost call per capture; enabled Codex, Cursor, Gemini, and Copilot polling make separate opt-in HTTPS calls
 - **Exponential backoff**: If detection fails, wait time increases to avoid hammering the process list
 
 ---
 
-## Switch Advisor
+## Advisor
 
-The switch advisor helps you choose which Antigravity account to use when you have multiple accounts.
+The advisor helps compare tracked accounts. Without a current account, it ranks available accounts only. With an explicit current account, it can recommend staying, switching, or waiting.
 
 ### How Scoring Works
 
@@ -355,13 +357,14 @@ Each account gets a score (0-100) based on three factors:
 
 ### Actions
 
+- **"rank"**: No current account was supplied. The response lists the best-ranked account and alternatives, but does not claim you should switch.
 - **"switch"**: Another account scores significantly higher. Switch to it.
 - **"stay"**: Current account is best (or close enough). Keep using it.
 - **"wait"**: All accounts are exhausted, but one resets soon. Wait for it.
 
 ### Accessing
 
-- **Dashboard**: Overview tab shows the advisor recommendation
+- **Dashboard**: Overview tab shows advisor rankings or current-account guidance
 - **CLI**: Data is shown in status output
 - **MCP**: AI agents can call `switch_recommendation` tool
 
@@ -391,7 +394,7 @@ Add to your MCP client config:
 
 **Streamable HTTP Transport** (opt-in):
 
-Start the dashboard with `niyantra serve --mcp-http` to mount `POST /mcp`. For non-local binds, startup also requires `--allow-remote`, `--auth user:pass`, and `--behind-https-proxy` so credentials are not sent over plaintext HTTP. The transport supports SSE streaming and session management via `Mcp-Session-Id` header.
+Start the dashboard with `niyantra serve --mcp-http` to mount `POST /mcp`. HTTP MCP requires `Authorization: Bearer <dashboard_api_token>`. For non-local binds, startup also requires `--allow-remote`, `--auth user:pass`, and `--behind-https-proxy` so Basic auth is not sent over plaintext HTTP. The transport supports SSE streaming and session management via `Mcp-Session-Id` header.
 
 ### Available Tools (13)
 
@@ -471,13 +474,13 @@ Niyantra tracks Cursor usage via the `cursor.com/api/usage` endpoint.
 
 ---
 
-## Gemini CLI Integration
+## Gemini / Antigravity CLI Integration
 
-Niyantra tracks Gemini CLI usage via GCP APIs.
+Niyantra tracks the **Antigravity CLI** (and legacy Gemini CLI) usage via direct Google Cloud Code PA API polling. This is particularly useful in **CLI Solo Mode** (where no persistent Antigravity Main/IDE server processes are running locally).
 
-1. Detects OAuth credentials from `~/.config/gemini/`
+1. Detects OAuth credentials from `~/.gemini/oauth_creds.json`
 2. Enable in **Settings** tab > Gemini CLI section
-3. Uses 2-step API (loadCodeAssist + retrieveUserQuota) for rate limit data
+3. Uses Google's Developer Assistance API endpoints (loadCodeAssist + retrieveUserQuota) to query user limits directly with automatic credentials refresh.
 
 ---
 
@@ -574,7 +577,7 @@ niyantra backup --db ~/.niyantra/niyantra.db # Specify database
 
 Or use the **Settings** tab > Download Backup button.
 
-Backups are saved as `niyantra-backup-YYYYMMDD-HHMMSS.db` in the current directory.
+Backups are saved as `niyantra-backup-YYYYMMDD-HHMMSS.db` in the current directory. Sensitive config values are redacted from the copied SQLite file, including the dashboard API token, provider credentials, notification secrets, and plugin keys that match secret suffix patterns. Restoring a backup can therefore require re-entering credentials or rotating/reopening the dashboard token.
 
 ### Restore
 
@@ -587,6 +590,8 @@ The restore command validates the schema before replacing your database.
 ### JSON Export
 
 **Settings** tab > Export JSON — downloads all data (accounts, subscriptions, snapshots, config, activity log) as a single JSON file.
+
+Current JSON export behavior redacts sensitive config values and limits history. Treat it as a sharing/import file, not a credentials backup.
 
 ### JSON Import
 
@@ -622,7 +627,7 @@ To permanently delete a tracked account and all its data:
 3. Click **Remove Account**
 4. Confirm in the dialog
 
-This cascade-deletes the account, all snapshots, reset cycles, and codex snapshots. The next time you `snap` with this email, it will be re-created as a fresh account.
+This deletes the account and rows explicitly owned by that local account ID, including Antigravity snapshots, reset cycles, account-linked subscriptions, and account-linked Codex/Cursor/Gemini/Copilot snapshots. Optional v21 relationships use nullable foreign keys, so unowned provider-native history is preserved rather than forced through fake `0` IDs. The next time you `snap` with this email, it will be re-created as a fresh account.
 
 ---
 
@@ -636,6 +641,8 @@ niyantra status                  # Show all accounts (no network)
 niyantra serve                   # Launch dashboard
 niyantra serve --port 8080       # Custom port
 niyantra serve --auth admin:pass # Password-protect dashboard
+niyantra token show              # Print dashboard API token
+niyantra token rotate            # Rotate dashboard API token
 niyantra mcp                     # Start MCP server (stdio)
 niyantra demo                    # Seed sample data
 niyantra backup                  # Backup database
@@ -651,6 +658,8 @@ niyantra version                 # Print version
 | `--debug` | false | Enable verbose logging |
 | `--port` | 9222 | Dashboard port (serve only) |
 | `--auth` | (none) | HTTP basic auth as `user:pass` (serve only) |
+
+When `niyantra serve` starts, it prints a URL containing `?token=...`. Open that URL first. The browser stores the token in session storage and removes it from the address bar. Direct calls to `/api/*` or HTTP `/mcp` require `Authorization: Bearer <dashboard_api_token>`; `/healthz` remains unauthenticated for health probes.
 
 ---
 

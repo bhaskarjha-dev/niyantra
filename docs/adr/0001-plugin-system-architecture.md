@@ -2,7 +2,7 @@
 
 | Field        | Value                                      |
 | ------------ | ------------------------------------------ |
-| **Status**   | Accepted                                   |
+| **Status**   | Accepted; amended 2026-05-19              |
 | **Date**     | 2026-05-17                                 |
 | **Authors**  | Bhaskar Jha                                |
 | **Feature**  | F18 Plugin System (Phase 16)               |
@@ -20,7 +20,7 @@ As the AI tool landscape expands rapidly, users want to track additional service
 - **Pure Go, no CGo** — cross-compilation must remain trivial (`GOOS=X GOARCH=Y go build`)
 - **Local-first** — all intelligence runs on user's machine
 - **Windows + Linux + macOS** — must work on all three platforms
-- **Minimal dependency footprint** — currently only 2 direct deps (MCP SDK + SQLite)
+- **Minimal dependency footprint** — keep plugin support on the existing dependency budget; current runtime dependencies are SQLite, MCP SDK, and OS keyring support
 - **Target users** — developers who write Python, Bash, Node scripts (not Lua, Go, or Rust)
 - **Use case** — periodic data capture (every 30s–5min), not real-time streaming
 
@@ -29,6 +29,8 @@ As the AI tool landscape expands rapidly, users want to track additional service
 **We will implement a Telegraf-inspired subprocess exec plugin system using Go's standard library (`os/exec` + `encoding/json`) with zero new external dependencies.**
 
 Plugins are external executables discovered from `~/.niyantra/plugins/*/plugin.json`. On each poll cycle, Niyantra spawns the plugin as a subprocess, sends a JSON request via stdin, and reads a JSON response from stdout. The plugin process exits after each invocation (short-lived, not a daemon).
+
+Amendment: plugins are an operator-trusted local polling capability only. Manual HTTP execution was removed from the product surface. `POST /api/plugins/{id}/run` is retained only as a compatibility stub that returns `410 Gone` and never spawns a process.
 
 ## Alternatives Considered
 
@@ -140,7 +142,7 @@ Telegraf (InfluxData's metrics collection agent) provides two models for externa
 
 We adopt the **`exec` model** (short-lived subprocess) because:
 - Simpler lifecycle management (no daemon health monitoring)
-- Process isolation is automatic (each invocation is a fresh process)
+- Process lifecycle isolation is automatic (each invocation is a fresh process)
 - No state leaks between invocations
 - Timeout enforcement via `exec.CommandContext` is trivial
 
@@ -186,10 +188,11 @@ We adopt the **`exec` model** (short-lived subprocess) because:
 
 | Threat | Mitigation |
 |--------|-----------|
-| Malicious plugin code | Process isolation via `os/exec` — plugin cannot access Niyantra memory |
+| Malicious plugin code | Subprocess isolation via `os/exec` prevents in-process memory access, but the plugin still has the OS user's permissions; do not run untrusted plugins |
 | Infinite loop / hang | `exec.CommandContext` enforces configurable timeout (default 30s) |
 | Secrets exposure | Secret-looking config keys use the same keychain-backed config path as other secrets; API responses only report `configured` |
 | Path traversal | Entry point path validated to be within plugin directory |
+| Manifest poisoning | Oversized manifests, manifest symlinks, unsupported field types, and entry points resolving outside the plugin directory are rejected |
 | Untrusted output | JSON parsed into strict Go structs; unknown fields ignored |
 | Resource exhaustion | Plugins run sequentially, have timeout enforcement, and stdout/stderr are capped |
 | Package-manager execution | TypeScript entry points are rejected by default; compile to JavaScript or a native executable instead of invoking `npx ts-node` |
@@ -200,7 +203,7 @@ We adopt the **`exec` model** (short-lived subprocess) because:
 
 - **Zero new dependencies** — binary size unchanged, go.mod unchanged
 - **Any language** — users write plugins in Python, Bash, Node, Go, Rust, or any executable
-- **Process isolation** — plugin crash cannot crash Niyantra
+- **Subprocess boundary** — plugin crash should not crash Niyantra, but this is not a security sandbox
 - **Cross-platform** — `os/exec` works on Windows, Linux, and macOS
 - **Low barrier** — writing a plugin is "write a script that reads JSON from stdin and writes JSON to stdout"
 - **Fits existing architecture** — plugs into agent polling loop, data_sources table, and notification engine
@@ -209,11 +212,12 @@ We adopt the **`exec` model** (short-lived subprocess) because:
 ### Negative
 
 - **Process startup overhead** — spawning a new process per poll cycle (every 30s–5min). Acceptable for our use case; Telegraf's `exec` plugin works this same way at 10s intervals.
-- **No sandboxing** — plugins can do anything the OS user can do (read files, make network calls, etc.). Treat them as trusted local scripts, not as untrusted marketplace extensions.
+- **No sandboxing** — plugins can do anything the OS user can do (read files, make network calls, etc.). Treat them as operator-trusted local scripts, not as untrusted marketplace extensions.
 - **No plugin registry/marketplace** — users must manually create plugin directories. A future feature could add a community plugin index.
 
 ### Neutral
 
+- HTTP run remains as a compatibility API stub only. It returns `410 Gone` and never executes plugin code.
 - Plugin configuration is stored in Niyantra's SQLite config table (not in the plugin directory), ensuring persistence across plugin updates.
 - Plugin snapshots are stored in a dedicated `plugin_snapshots` table, separate from built-in provider tables.
 

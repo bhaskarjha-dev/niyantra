@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/bhaskarjha-com/niyantra/internal/plugin"
 )
@@ -87,63 +86,7 @@ func (s *Server) handlePluginStatus(w http.ResponseWriter, r *http.Request) {
 // handlePluginRun manually triggers a plugin capture and returns the result.
 // POST /api/plugins/{id}/run
 func (s *Server) handlePluginRun(w http.ResponseWriter, r *http.Request) {
-	pluginID := r.PathValue("id")
-	if pluginID == "" {
-		jsonError(w, "plugin id required", http.StatusBadRequest)
-		return
-	}
-
-	target, errs := s.findConfiguredPlugin(pluginID)
-	for _, err := range errs {
-		s.logger.Warn("Plugin discovery error", "error", err)
-	}
-	if target == nil {
-		jsonError(w, "plugin not found", http.StatusNotFound)
-		return
-	}
-	if missing := missingRequiredPluginConfig(target, nil); len(missing) > 0 {
-		jsonError(w, fmt.Sprintf("missing required plugin config: %s", strings.Join(missing, ", ")), http.StatusBadRequest)
-		return
-	}
-
-	runStart := time.Now()
-	result, err := target.Run(r.Context(), s.logger)
-	elapsed := time.Since(runStart)
-	if err != nil {
-		s.store.LogInfo("ui", "plugin_test_run", "", map[string]any{
-			"pluginId":    pluginID,
-			"success":     false,
-			"error":       err.Error(),
-			"duration_ms": elapsed.Milliseconds(),
-		})
-		jsonError(w, err.Error(), http.StatusBadGateway)
-		return
-	}
-
-	s.store.LogInfo("ui", "plugin_test_run", "", map[string]any{
-		"pluginId":     pluginID,
-		"provider":     result.Data.Provider,
-		"usagePct":     result.Data.UsagePct,
-		"usageDisplay": result.Data.UsageDisplay,
-		"planType":     result.Data.Plan,
-		"success":      result.Status == "ok",
-		"pluginStatus": result.Status,
-		"duration_ms":  elapsed.Milliseconds(),
-	})
-
-	if result.Status != "ok" {
-		writeJSON(w, map[string]any{
-			"status": result.Status,
-			"error":  result.Error,
-		})
-		return
-	}
-
-	writeJSON(w, map[string]any{
-		"status":     "ok",
-		"data":       result.Data,
-		"durationMs": elapsed.Milliseconds(),
-	})
+	jsonError(w, "manual HTTP plugin execution is disabled; enabled plugins may run only through the local polling agent", http.StatusGone)
 }
 
 // handlePluginConfig saves plugin configuration values.

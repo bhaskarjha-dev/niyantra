@@ -17,12 +17,13 @@ func (s *Server) handleCopilotStatus(w http.ResponseWriter, r *http.Request) {
 		"captureEnabled": s.store.GetConfigBool("copilot_capture"),
 	}
 
-	snap, err := s.store.LatestCopilotSnapshot()
+	// Latest snapshots
+	snaps, err := s.store.LatestCopilotSnapshots()
 	if err != nil {
-		s.logger.Error("Failed to get Copilot snapshot", "error", err)
+		s.logger.Error("Failed to get Copilot snapshots", "error", err)
 	}
-	if snap != nil {
-		result["snapshot"] = snap
+	if len(snaps) > 0 {
+		result["snapshots"] = snaps
 	}
 
 	writeJSON(w, result)

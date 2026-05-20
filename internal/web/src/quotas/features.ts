@@ -36,7 +36,7 @@ export function pinGroup(accountId: number | string, groupKey: string): void {
 
 export function unpinGroup(accountId: number | string): void {
   updateAccountMeta(accountId, { pinnedGroup: '' }).then(function() {
-    showToast('☆ Unpinned — will show first group', 'info');
+    showToast('☆ Unpinned — no group will be starred by default', 'info');
     refreshGrid();
   });
 }

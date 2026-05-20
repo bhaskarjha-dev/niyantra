@@ -15,6 +15,7 @@ func TestIsSensitiveKey(t *testing.T) {
 		// Every key in the sensitiveConfigKeys map must be tested.
 		{"copilot_pat", true},
 		{"cursor_session_token", true},
+		{"dashboard_api_token", true},
 		{"gemini_client_secret", true},
 		{"smtp_pass", true},
 		{"smtp_user", true},
@@ -102,6 +103,7 @@ func TestMaskConfigEntries(t *testing.T) {
 	entries := []*store.ConfigEntry{
 		{Key: "copilot_pat", Value: "ghp_abc123xyz"},
 		{Key: "cursor_session_token", Value: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9"},
+		{Key: "dashboard_api_token", Value: "dash_secret"},
 		{Key: "gemini_client_secret", Value: "GOCSPX-secret-value"},
 		{Key: "smtp_pass", Value: "my-smtp-password"},
 		{Key: "smtp_user", Value: "user@gmail.com"},
@@ -120,6 +122,7 @@ func TestMaskConfigEntries(t *testing.T) {
 	expected := map[string]string{
 		"copilot_pat":           "configured",
 		"cursor_session_token":  "configured",
+		"dashboard_api_token":   "configured",
 		"gemini_client_secret":  "configured",
 		"smtp_pass":             "configured",
 		"smtp_user":             "configured",
@@ -195,6 +198,7 @@ func TestAllRealConfigKeysClassified(t *testing.T) {
 		{"copilot_pat", true},
 		{"cursor_capture", false},
 		{"cursor_session_token", true},
+		{"dashboard_api_token", true},
 		{"gemini_capture", false},
 		{"gemini_client_id", false},
 		{"gemini_client_secret", true},

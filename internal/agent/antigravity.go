@@ -29,7 +29,7 @@ func (a *PollingAgent) pollAntigravity(ctx context.Context) {
 	a.mu.Unlock()
 
 	// Attempt to fetch quotas
-	resp, err := a.client.FetchQuotas(ctx)
+	resps, err := a.client.FetchQuotas(ctx)
 	if err != nil {
 		if ctx.Err() != nil {
 			return // shutdown, not a failure
@@ -60,65 +60,71 @@ func (a *PollingAgent) pollAntigravity(ctx context.Context) {
 	a.lastPollOK = true
 	a.mu.Unlock()
 
-	snap := resp.ToSnapshot(time.Now().UTC())
+	var allModels []client.ModelQuota
 
-	// Tag provenance: auto-capture via server polling
-	snap.CaptureMethod = "auto"
-	snap.CaptureSource = "server"
-	snap.SourceID = "antigravity"
+	for _, resp := range resps {
+		snap := resp.ToSnapshot(time.Now().UTC())
 
-	accountID, err := a.store.GetOrCreateAccount(snap.Email, snap.PlanName, "antigravity")
-	if err != nil {
-		a.logger.Error("Auto-capture: account error", "error", err, "email", snap.Email)
-		return
+		// Tag provenance: auto-capture via server polling
+		snap.CaptureMethod = "auto"
+		snap.CaptureSource = "server"
+		snap.SourceID = "antigravity"
+
+		accountID, err := a.store.GetOrCreateAccount(snap.Email, snap.PlanName, "antigravity")
+		if err != nil {
+			a.logger.Error("Auto-capture: account error", "error", err, "email", snap.Email)
+			continue
+		}
+		snap.AccountID = accountID
+
+		snapID, err := a.store.InsertSnapshot(snap)
+		if err != nil {
+			a.logger.Error("Auto-capture: insert error", "error", err)
+			continue
+		}
+
+		// Log successful snap
+		a.store.LogInfoSnap("server", "snap", snap.Email, snapID, map[string]interface{}{
+			"plan": snap.PlanName, "method": "auto", "source": "server",
+		})
+
+		// Auto-link subscription if needed
+		a.autoLink(*snap, accountID)
+
+		// Feed tracker for cycle detection
+		if a.tracker != nil {
+			if err := a.tracker.Process(snap, accountID); err != nil {
+				a.logger.Warn("Tracker error", "error", err)
+			}
+		}
+
+		// Check notification thresholds for each model
+		if a.notifier != nil {
+			for _, m := range snap.Models {
+				a.notifier.CheckQuota(m.ModelID, m.RemainingPercent)
+			}
+		}
+
+		allModels = append(allModels, snap.Models...)
+
+		a.logger.Info("Auto-capture complete",
+			"email", snap.Email,
+			"plan", snap.PlanName,
+			"snapshotId", snapID,
+		)
 	}
-	snap.AccountID = accountID
-
-	snapID, err := a.store.InsertSnapshot(snap)
-	if err != nil {
-		a.logger.Error("Auto-capture: insert error", "error", err)
-		return
-	}
-
-	// Log successful snap
-	a.store.LogInfoSnap("server", "snap", snap.Email, snapID, map[string]interface{}{
-		"plan": snap.PlanName, "method": "auto", "source": "server",
-	})
 
 	// Update data source bookkeeping
 	a.store.UpdateSourceCapture("antigravity")
 
-	// Auto-link subscription if needed
-	a.autoLink(*snap, accountID)
-
-	// Feed tracker for cycle detection
-	if a.tracker != nil {
-		if err := a.tracker.Process(snap, accountID); err != nil {
-			a.logger.Warn("Tracker error", "error", err)
-		}
-	}
-
-	// Check notification thresholds for each model
-	if a.notifier != nil {
-		for _, m := range snap.Models {
-			a.notifier.CheckQuota(m.ModelID, m.RemainingPercent)
-		}
-	}
-
 	// Feed session manager with model remaining fractions
-	if a.antigravitySM != nil {
+	if a.antigravitySM != nil && len(allModels) > 0 {
 		var vals []float64
-		for _, m := range snap.Models {
+		for _, m := range allModels {
 			vals = append(vals, m.RemainingFraction)
 		}
 		a.antigravitySM.ReportPoll(vals)
 	}
-
-	a.logger.Info("Auto-capture complete",
-		"email", snap.Email,
-		"plan", snap.PlanName,
-		"snapshotId", snapID,
-	)
 }
 
 // autoLink creates a subscription record if one doesn't exist for this account.

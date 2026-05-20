@@ -20,38 +20,40 @@ import (
 
 // Server is the Niyantra HTTP server.
 type Server struct {
-	logger        *slog.Logger
-	store         *store.Store
-	client        *client.Client
-	tracker       *tracker.Tracker
-	notifier      *notify.Engine
-	port          int
-	bind          string // bind address (default: "127.0.0.1")
-	auth          string // "user:pass" or ""
-	httpMCP       bool
-	enablePlugins bool   // opt-in gate for F18 plugin system
-	agentMgr      *agent.Manager
-	httpServer    *http.Server
-	startTime     time.Time // set in NewServer for /healthz uptime
-	Version       string    // injected at startup (e.g. "0.12.0")
+	logger         *slog.Logger
+	store          *store.Store
+	client         *client.Client
+	tracker        *tracker.Tracker
+	notifier       *notify.Engine
+	port           int
+	bind           string // bind address (default: "127.0.0.1")
+	auth           string // "user:pass" or ""
+	dashboardToken string
+	httpMCP        bool
+	enablePlugins  bool // opt-in gate for F18 plugin system
+	agentMgr       *agent.Manager
+	httpServer     *http.Server
+	startTime      time.Time // set in NewServer for /healthz uptime
+	Version        string    // injected at startup (e.g. "0.12.0")
 }
 
 // NewServer creates a new Niyantra web server.
-func NewServer(logger *slog.Logger, s *store.Store, c *client.Client, port int, auth string, version string, bind string, httpMCP bool, enablePlugins bool) *Server {
+func NewServer(logger *slog.Logger, s *store.Store, c *client.Client, port int, auth string, dashboardToken string, version string, bind string, httpMCP bool, enablePlugins bool) *Server {
 	srv := &Server{
-		logger:        logger,
-		store:         s,
-		client:        c,
-		tracker:       newTrackerWithBaseline(s, logger),
-		notifier:      notify.NewEngine(logger),
-		port:          port,
-		bind:          bind,
-		auth:          auth,
-		httpMCP:       httpMCP,
-		enablePlugins: enablePlugins,
-		agentMgr:      agent.NewManager(logger),
-		startTime:     time.Now(),
-		Version:       version,
+		logger:         logger,
+		store:          s,
+		client:         c,
+		tracker:        newTrackerWithBaseline(s, logger),
+		notifier:       notify.NewEngine(logger),
+		port:           port,
+		bind:           bind,
+		auth:           auth,
+		dashboardToken: dashboardToken,
+		httpMCP:        httpMCP,
+		enablePlugins:  enablePlugins,
+		agentMgr:       agent.NewManager(logger),
+		startTime:      time.Now(),
+		Version:        version,
 	}
 
 	// Configure notification engine from stored settings
@@ -115,6 +117,15 @@ func NewServer(logger *slog.Logger, s *store.Store, c *client.Client, port int, 
 	// Auto-start polling agent if config says so
 	if s.GetConfigBool("auto_capture") {
 		srv.startPollingAgent()
+	}
+
+	// Enforce activity log retention on startup (N14).
+	// The retention_days config key was seeded in schema v3 but never enforced.
+	retentionDays := s.GetConfigInt("retention_days", 365)
+	if pruned, err := s.EnforceRetention(retentionDays); err != nil {
+		logger.Warn("Retention enforcement failed", "error", err)
+	} else if pruned > 0 {
+		logger.Info("Retention enforcement pruned old activity logs", "deleted", pruned, "retentionDays", retentionDays)
 	}
 
 	return srv
@@ -190,6 +201,9 @@ func (s *Server) ListenAndServe() error {
 	rl.setLimit("snap", 10)   // 10 snap requests/min — prevents upstream API abuse
 	rl.setLimit("mutate", 30) // 30 config/write requests/min
 	rl.setLimit("import", 2)  // 2 import requests/min — 50MB body limit
+	mutate := func(next http.HandlerFunc) http.HandlerFunc { return rl.rateMiddleware("mutate", next) }
+	snap := func(next http.HandlerFunc) http.HandlerFunc { return rl.rateMiddleware("snap", next) }
+	importLimit := func(next http.HandlerFunc) http.HandlerFunc { return rl.rateMiddleware("import", next) }
 
 	// Operational endpoints (no auth required — registered on inner mux)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
@@ -197,22 +211,22 @@ func (s *Server) ListenAndServe() error {
 
 	// Quota API routes (auto-tracked)
 	mux.HandleFunc("GET /api/status", s.handleStatus)
-	mux.HandleFunc("POST /api/snap", rl.rateMiddleware("snap", s.handleSnap))
+	mux.HandleFunc("POST /api/snap", snap(s.handleSnap))
 	mux.HandleFunc("GET /api/history", s.handleHistory)
 
 	// Subscription API routes (manual tracking)
 	mux.HandleFunc("GET /api/subscriptions", s.listSubscriptions)
-	mux.HandleFunc("POST /api/subscriptions", s.createSubscription)
+	mux.HandleFunc("POST /api/subscriptions", mutate(s.createSubscription))
 	mux.HandleFunc("GET /api/subscriptions/{id}", s.getSubscriptionByID)
-	mux.HandleFunc("PUT /api/subscriptions/{id}", s.updateSubscriptionByID)
-	mux.HandleFunc("DELETE /api/subscriptions/{id}", s.deleteSubscriptionByID)
+	mux.HandleFunc("PUT /api/subscriptions/{id}", mutate(s.updateSubscriptionByID))
+	mux.HandleFunc("DELETE /api/subscriptions/{id}", mutate(s.deleteSubscriptionByID))
 	mux.HandleFunc("GET /api/overview", s.handleOverview)
 	mux.HandleFunc("GET /api/presets", s.handlePresets)
 	mux.HandleFunc("GET /api/export/csv", s.handleExportCSV)
 
 	// Config & infrastructure routes (v3)
 	mux.HandleFunc("GET /api/config", s.handleConfigGet)
-	mux.HandleFunc("PUT /api/config", rl.rateMiddleware("mutate", s.handleConfigPut))
+	mux.HandleFunc("PUT /api/config", mutate(s.handleConfigPut))
 	mux.HandleFunc("GET /api/activity", s.handleActivity)
 	mux.HandleFunc("GET /api/mode", s.handleMode)
 	mux.HandleFunc("GET /api/usage", s.handleUsage)
@@ -221,48 +235,48 @@ func (s *Server) ListenAndServe() error {
 	mux.HandleFunc("GET /api/claude/status", s.handleClaudeStatus)
 	mux.HandleFunc("GET /api/claude/usage", s.handleClaudeUsage)
 	mux.HandleFunc("GET /api/backup", s.handleBackupDeprecated)
-	mux.HandleFunc("POST /api/backup/create", rl.rateMiddleware("mutate", s.handleBackupCreate))
-	mux.HandleFunc("POST /api/notify/test", s.handleNotifyTest)
-	mux.HandleFunc("POST /api/notify/test-email", s.handleNotifyTestEmail)
-	mux.HandleFunc("POST /api/notify/test-webhook", s.handleNotifyTestWebhook)
-	mux.HandleFunc("POST /api/notify/test-webpush", s.handleNotifyTestWebPush)
+	mux.HandleFunc("POST /api/backup/create", mutate(s.handleBackupCreate))
+	mux.HandleFunc("POST /api/notify/test", mutate(s.handleNotifyTest))
+	mux.HandleFunc("POST /api/notify/test-email", mutate(s.handleNotifyTestEmail))
+	mux.HandleFunc("POST /api/notify/test-webhook", mutate(s.handleNotifyTestWebhook))
+	mux.HandleFunc("POST /api/notify/test-webpush", mutate(s.handleNotifyTestWebPush))
 
 	// F19: WebPush routes
 	mux.HandleFunc("GET /api/webpush/vapid-key", s.handleWebPushVAPIDKey)
-	mux.HandleFunc("POST /api/webpush/subscribe", s.handleWebPushSubscribe)
-	mux.HandleFunc("DELETE /api/webpush/unsubscribe", s.handleWebPushUnsubscribe)
+	mux.HandleFunc("POST /api/webpush/subscribe", mutate(s.handleWebPushSubscribe))
+	mux.HandleFunc("DELETE /api/webpush/unsubscribe", mutate(s.handleWebPushUnsubscribe))
 	mux.HandleFunc("GET /api/webpush/status", s.handleWebPushStatus)
 
 	// Phase 10 routes
 	mux.HandleFunc("GET /api/export/json", s.handleExportJSON)
 	mux.HandleFunc("GET /api/alerts", s.handleAlerts)
-	mux.HandleFunc("POST /api/alerts/dismiss", s.handleDismissAlert)
+	mux.HandleFunc("POST /api/alerts/dismiss", mutate(s.handleDismissAlert))
 	mux.HandleFunc("GET /api/advisor", s.handleAdvisor)
 
 	// Phase 11 routes
 	mux.HandleFunc("GET /api/codex/status", s.handleCodexStatus)
-	mux.HandleFunc("POST /api/codex/snap", s.handleCodexSnap)
+	mux.HandleFunc("POST /api/codex/snap", snap(s.handleCodexSnap))
 	mux.HandleFunc("GET /api/sessions", s.handleSessions)
 	mux.HandleFunc("GET /api/usage-logs", s.handleUsageLogsGet)
-	mux.HandleFunc("POST /api/usage-logs", s.handleUsageLogsPost)
-	mux.HandleFunc("DELETE /api/usage-logs/{id}", s.handleUsageLogByID)
-	mux.HandleFunc("POST /api/import/json", rl.rateMiddleware("import", s.handleImportJSON))
+	mux.HandleFunc("POST /api/usage-logs", mutate(s.handleUsageLogsPost))
+	mux.HandleFunc("DELETE /api/usage-logs/{id}", mutate(s.handleUsageLogByID))
+	mux.HandleFunc("POST /api/import/json", importLimit(s.handleImportJSON))
 
 	// Phase 14 routes: Cursor provider
 	mux.HandleFunc("GET /api/cursor/status", s.handleCursorStatus)
-	mux.HandleFunc("POST /api/cursor/snap", rl.rateMiddleware("snap", s.handleCursorSnap))
+	mux.HandleFunc("POST /api/cursor/snap", snap(s.handleCursorSnap))
 
 	// Phase 14 routes: Gemini CLI provider (F15b)
 	mux.HandleFunc("GET /api/gemini/status", s.handleGeminiStatus)
-	mux.HandleFunc("POST /api/gemini/snap", rl.rateMiddleware("snap", s.handleGeminiSnap))
+	mux.HandleFunc("POST /api/gemini/snap", snap(s.handleGeminiSnap))
 
 	// Phase 15 routes: GitHub Copilot provider (F15c)
 	mux.HandleFunc("GET /api/copilot/status", s.handleCopilotStatus)
-	mux.HandleFunc("POST /api/copilot/snap", rl.rateMiddleware("snap", s.handleCopilotSnap))
+	mux.HandleFunc("POST /api/copilot/snap", snap(s.handleCopilotSnap))
 
 	// Phase 13 routes
 	mux.HandleFunc("GET /api/config/pricing", s.handleModelPricingGet)
-	mux.HandleFunc("PUT /api/config/pricing", s.handleModelPricingPut)
+	mux.HandleFunc("PUT /api/config/pricing", mutate(s.handleModelPricingPut))
 
 	// Phase 14 routes
 	mux.HandleFunc("GET /api/forecast", s.handleForecast)
@@ -287,12 +301,13 @@ func (s *Server) ListenAndServe() error {
 	// Data management routes
 	mux.HandleFunc("GET /api/accounts", s.handleAccounts)
 	mux.HandleFunc("GET /api/accounts/{id}", s.handleAccountGet)
-	mux.HandleFunc("PATCH /api/accounts/{id}/meta", s.handleAccountMeta)
-	mux.HandleFunc("DELETE /api/accounts/{id}", s.handleAccountDelete)
-	mux.HandleFunc("DELETE /api/accounts/{id}/snapshots", s.handleAccountClearSnapshots)
-	mux.HandleFunc("DELETE /api/snapshots/{id}", s.handleSnapshotByID)
-	mux.HandleFunc("PATCH /api/snap/adjust", s.handleSnapAdjust)
-	mux.HandleFunc("POST /api/snap/adjust", s.handleSnapAdjust)
+	mux.HandleFunc("PATCH /api/accounts/{id}/meta", mutate(s.handleAccountMeta))
+	mux.HandleFunc("POST /api/accounts/{id}/claim-bonus", mutate(s.handleAccountClaimBonus))
+	mux.HandleFunc("DELETE /api/accounts/{id}", mutate(s.handleAccountDelete))
+	mux.HandleFunc("DELETE /api/accounts/{id}/snapshots", mutate(s.handleAccountClearSnapshots))
+	mux.HandleFunc("DELETE /api/snapshots/{id}", mutate(s.handleSnapshotByID))
+	mux.HandleFunc("PATCH /api/snap/adjust", mutate(s.handleSnapAdjust))
+	mux.HandleFunc("POST /api/snap/adjust", mutate(s.handleSnapAdjust))
 
 	// Phase 16 routes: Plugin System (F18)
 	// Gated behind --enable-plugins / NIYANTRA_ENABLE_PLUGINS because plugins
@@ -300,8 +315,8 @@ func (s *Server) ListenAndServe() error {
 	if s.enablePlugins {
 		mux.HandleFunc("GET /api/plugins", s.handlePlugins)
 		mux.HandleFunc("GET /api/plugins/{id}/status", s.handlePluginStatus)
-		mux.HandleFunc("POST /api/plugins/{id}/run", s.handlePluginRun)
-		mux.HandleFunc("PUT /api/plugins/{id}/config", s.handlePluginConfig)
+		mux.HandleFunc("POST /api/plugins/{id}/run", mutate(s.handlePluginRun))
+		mux.HandleFunc("PUT /api/plugins/{id}/config", mutate(s.handlePluginConfig))
 	} else {
 		pluginsDisabled := func(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "plugin system is disabled; start with --enable-plugins or NIYANTRA_ENABLE_PLUGINS=true", http.StatusForbidden)
@@ -320,6 +335,7 @@ func (s *Server) ListenAndServe() error {
 	mux.Handle("/", http.FileServer(http.FS(staticFS)))
 
 	var handler http.Handler = mux
+	handler = s.tokenAuth(handler)
 	handler = s.securityMiddleware(handler)
 	if s.auth != "" {
 		handler = s.basicAuth(handler)

@@ -1,6 +1,30 @@
 package store
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
+
+// PlanTierFromName maps a descriptive plan name to standard tier keys.
+func PlanTierFromName(planName string) string {
+	name := strings.ToLower(planName)
+	if strings.Contains(name, "enterprise") {
+		return "enterprise"
+	}
+	if strings.Contains(name, "flagship") {
+		return "flagship"
+	}
+	if strings.Contains(name, "ultra") {
+		return "ultra"
+	}
+	if strings.Contains(name, "pro") {
+		return "pro"
+	}
+	if strings.Contains(name, "free") {
+		return "free"
+	}
+	return "pro" // default fallback
+}
 
 // GetOrCreateAccount returns the account ID for the given email and provider,
 // creating a new account if one doesn't exist.
@@ -10,14 +34,17 @@ func (s *Store) GetOrCreateAccount(email, planName, provider string) (int64, err
 		provider = "antigravity"
 	}
 
-	// Upsert: insert or update plan_name and updated_at on conflict
+	tier := PlanTierFromName(planName)
+
+	// Upsert: insert or update plan_name, plan_tier and updated_at on conflict
 	_, err := s.db.Exec(`
-		INSERT INTO accounts (email, plan_name, provider)
-		VALUES (?, ?, ?)
+		INSERT INTO accounts (email, plan_name, plan_tier, provider)
+		VALUES (?, ?, ?, ?)
 		ON CONFLICT(email, provider) DO UPDATE SET
 			plan_name = excluded.plan_name,
+			plan_tier = excluded.plan_tier,
 			updated_at = datetime('now')
-	`, email, planName, provider)
+	`, email, planName, tier, provider)
 	if err != nil {
 		return 0, fmt.Errorf("store: upsert account: %w", err)
 	}
@@ -40,21 +67,24 @@ func (s *Store) AccountCount() int {
 
 // Account represents a tracked account (any provider).
 type Account struct {
-	ID               int64  `json:"id"`
-	Email            string `json:"email"`
-	PlanName         string `json:"planName"`
-	Provider         string `json:"provider"`
-	Notes            string `json:"notes"`
-	Tags             string `json:"tags"`             // comma-separated: "work,primary"
-	PinnedGroup      string `json:"pinnedGroup"`      // for F3: pinned quota group key
-	CreditRenewalDay int    `json:"creditRenewalDay"` // day of month (1-31) when AI credits refresh
-	CreatedAt        string `json:"createdAt"`
-	UpdatedAt        string `json:"updatedAt"`
+	ID                  int64   `json:"id"`
+	Email               string  `json:"email"`
+	PlanName            string  `json:"planName"`
+	PlanTier            string  `json:"planTier"`
+	OverageCredits      float64 `json:"overageCredits"`
+	HasClaimedBonus2026 int     `json:"hasClaimedBonus2026"`
+	Provider            string  `json:"provider"`
+	Notes               string  `json:"notes"`
+	Tags                string  `json:"tags"`             // comma-separated: "work,primary"
+	PinnedGroup         string  `json:"pinnedGroup"`      // for F3: pinned quota group key
+	CreditRenewalDay    int     `json:"creditRenewalDay"` // day of month (1-31) when AI credits refresh
+	CreatedAt           string  `json:"createdAt"`
+	UpdatedAt           string  `json:"updatedAt"`
 }
 
 // AllAccounts returns all tracked accounts.
 func (s *Store) AllAccounts() ([]*Account, error) {
-	rows, err := s.db.Query(`SELECT id, email, plan_name, COALESCE(provider,'antigravity'), COALESCE(notes,''), COALESCE(tags,''), COALESCE(pinned_group,''), COALESCE(credit_renewal_day,0), created_at, updated_at FROM accounts ORDER BY provider, email`)
+	rows, err := s.db.Query(`SELECT id, email, plan_name, COALESCE(plan_tier,'pro'), COALESCE(overage_credits,0.0), COALESCE(has_claimed_bonus_2026,0), COALESCE(provider,'antigravity'), COALESCE(notes,''), COALESCE(tags,''), COALESCE(pinned_group,''), COALESCE(credit_renewal_day,0), created_at, updated_at FROM accounts ORDER BY provider, email`)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +93,7 @@ func (s *Store) AllAccounts() ([]*Account, error) {
 	var accounts []*Account
 	for rows.Next() {
 		a := &Account{}
-		if err := rows.Scan(&a.ID, &a.Email, &a.PlanName, &a.Provider, &a.Notes, &a.Tags, &a.PinnedGroup, &a.CreditRenewalDay, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Email, &a.PlanName, &a.PlanTier, &a.OverageCredits, &a.HasClaimedBonus2026, &a.Provider, &a.Notes, &a.Tags, &a.PinnedGroup, &a.CreditRenewalDay, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			continue
 		}
 		accounts = append(accounts, a)
@@ -75,11 +105,11 @@ func (s *Store) AllAccounts() ([]*Account, error) {
 func (s *Store) GetAccountByID(id int64) (*Account, error) {
 	a := &Account{}
 	err := s.db.QueryRow(
-		`SELECT id, email, plan_name, COALESCE(provider,'antigravity'),
+		`SELECT id, email, plan_name, COALESCE(plan_tier,'pro'), COALESCE(overage_credits,0.0), COALESCE(has_claimed_bonus_2026,0), COALESCE(provider,'antigravity'),
 			COALESCE(notes,''), COALESCE(tags,''), COALESCE(pinned_group,''),
 			COALESCE(credit_renewal_day,0), created_at, updated_at
 		FROM accounts WHERE id = ?`, id,
-	).Scan(&a.ID, &a.Email, &a.PlanName, &a.Provider, &a.Notes, &a.Tags,
+	).Scan(&a.ID, &a.Email, &a.PlanName, &a.PlanTier, &a.OverageCredits, &a.HasClaimedBonus2026, &a.Provider, &a.Notes, &a.Tags,
 		&a.PinnedGroup, &a.CreditRenewalDay, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("store: account %d: %w", id, err)
@@ -149,11 +179,38 @@ func (s *Store) DeleteAccount(accountID int64) (int64, error) {
 
 // DeleteAccountSnapshots removes all snapshots for a specific account but keeps the account itself.
 func (s *Store) DeleteAccountSnapshots(accountID int64) (int64, error) {
-	result, err := s.db.Exec("DELETE FROM snapshots WHERE account_id = ?", accountID)
+	tx, err := s.db.Begin()
 	if err != nil {
-		return 0, fmt.Errorf("store: delete snapshots for account %d: %w", accountID, err)
+		return 0, fmt.Errorf("store: begin delete snapshots for account %d: %w", accountID, err)
 	}
-	return result.RowsAffected()
+	defer tx.Rollback()
+
+	var totalDeleted int64
+	steps := []struct {
+		name  string
+		query string
+	}{
+		{"activity_log", `DELETE FROM activity_log WHERE snapshot_id IN (SELECT id FROM snapshots WHERE account_id = ?)`},
+		{"snapshots", `DELETE FROM snapshots WHERE account_id = ?`},
+		{"codex_snapshots", `DELETE FROM codex_snapshots WHERE owner_account_id = ?`},
+		{"cursor_snapshots", `DELETE FROM cursor_snapshots WHERE account_id = ?`},
+		{"gemini_snapshots", `DELETE FROM gemini_snapshots WHERE account_id = ?`},
+		{"copilot_snapshots", `DELETE FROM copilot_snapshots WHERE account_id = ?`},
+	}
+
+	for _, step := range steps {
+		result, err := tx.Exec(step.query, accountID)
+		if err != nil {
+			return totalDeleted, fmt.Errorf("store: delete snapshots %s for account %d: %w", step.name, accountID, err)
+		}
+		n, _ := result.RowsAffected()
+		totalDeleted += n
+	}
+
+	if err := tx.Commit(); err != nil {
+		return totalDeleted, fmt.Errorf("store: commit delete snapshots for account %d: %w", accountID, err)
+	}
+	return totalDeleted, nil
 }
 
 // DeleteSnapshot removes a single snapshot by ID.
@@ -168,3 +225,16 @@ func (s *Store) DeleteSnapshot(snapshotID int64) error {
 	}
 	return nil
 }
+
+// ClaimOverageBonus sets has_claimed_bonus_2026 = 1 and adds 100.0 to overage_credits.
+func (s *Store) ClaimOverageBonus(accountID int64) error {
+	_, err := s.db.Exec(`
+		UPDATE accounts
+		SET has_claimed_bonus_2026 = 1,
+			overage_credits = COALESCE(overage_credits, 0.0) + 100.0,
+			updated_at = datetime('now')
+		WHERE id = ?
+	`, accountID)
+	return err
+}
+

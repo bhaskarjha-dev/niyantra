@@ -52,7 +52,7 @@ func (s *Store) InsertSubscription(sub *Subscription) (int64, error) {
 		sub.TokenLimit, sub.CreditLimit, sub.RequestLimit, sub.LimitPeriod, sub.LimitNote,
 		sub.NextRenewal, sub.StartedAt, sub.TrialEndsAt,
 		sub.Notes, sub.URL, sub.StatusPageURL,
-		boolToInt(sub.AutoTracked), sub.AccountID,
+		boolToInt(sub.AutoTracked), nullableAccountID(sub.AccountID),
 	)
 	if err != nil {
 		return 0, fmt.Errorf("store: insert subscription: %w", err)
@@ -78,7 +78,7 @@ func (s *Store) UpdateSubscription(sub *Subscription) error {
 		sub.TokenLimit, sub.CreditLimit, sub.RequestLimit, sub.LimitPeriod, sub.LimitNote,
 		sub.NextRenewal, sub.StartedAt, sub.TrialEndsAt,
 		sub.Notes, sub.URL, sub.StatusPageURL,
-		boolToInt(sub.AutoTracked), sub.AccountID,
+		boolToInt(sub.AutoTracked), nullableAccountID(sub.AccountID),
 		sub.ID,
 	)
 	if err != nil {
@@ -104,7 +104,7 @@ func (s *Store) GetSubscription(id int64) (*Subscription, error) {
 			token_limit, credit_limit, request_limit, limit_period, limit_note,
 			next_renewal, started_at, trial_ends_at,
 			notes, url, status_page_url,
-			auto_tracked, account_id, created_at, updated_at
+			auto_tracked, COALESCE(account_id,0), created_at, updated_at
 		FROM subscriptions WHERE id = ?
 	`, id)
 
@@ -126,7 +126,7 @@ func (s *Store) ListSubscriptions(status, category string) ([]*Subscription, err
 			token_limit, credit_limit, request_limit, limit_period, limit_note,
 			next_renewal, started_at, trial_ends_at,
 			notes, url, status_page_url,
-			auto_tracked, account_id, created_at, updated_at
+			auto_tracked, COALESCE(account_id,0), created_at, updated_at
 		FROM subscriptions WHERE 1=1
 	`
 	var args []interface{}
@@ -158,6 +158,57 @@ func (s *Store) ListSubscriptions(status, category string) ([]*Subscription, err
 	return subs, nil
 }
 
+// ListSubscriptionsPage returns a bounded page of subscriptions.
+func (s *Store) ListSubscriptionsPage(status, category string, limit, offset int) ([]*Subscription, error) {
+	if limit <= 0 {
+		limit = 500
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	query := `
+		SELECT id, platform, category, icon_key, email, plan_name, status,
+			cost_amount, cost_currency, billing_cycle,
+			token_limit, credit_limit, request_limit, limit_period, limit_note,
+			next_renewal, started_at, trial_ends_at,
+			notes, url, status_page_url,
+			auto_tracked, COALESCE(account_id,0), created_at, updated_at
+		FROM subscriptions WHERE 1=1
+	`
+	var args []interface{}
+
+	if status != "" {
+		query += " AND status = ?"
+		args = append(args, status)
+	}
+	if category != "" {
+		query += " AND category = ?"
+		args = append(args, category)
+	}
+	query += " ORDER BY category, platform LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("store: list subscriptions page: %w", err)
+	}
+	defer rows.Close()
+
+	var subs []*Subscription
+	for rows.Next() {
+		sub, err := scanSubscriptionRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		subs = append(subs, sub)
+	}
+	return subs, rows.Err()
+}
+
 // FindSubscriptionByAccountID finds a subscription linked to an auto-tracked account.
 func (s *Store) FindSubscriptionByAccountID(accountID int64) (*Subscription, error) {
 	row := s.db.QueryRow(`
@@ -166,7 +217,7 @@ func (s *Store) FindSubscriptionByAccountID(accountID int64) (*Subscription, err
 			token_limit, credit_limit, request_limit, limit_period, limit_note,
 			next_renewal, started_at, trial_ends_at,
 			notes, url, status_page_url,
-			auto_tracked, account_id, created_at, updated_at
+			auto_tracked, COALESCE(account_id,0), created_at, updated_at
 		FROM subscriptions WHERE auto_tracked = 1 AND account_id = ?
 	`, accountID)
 
@@ -240,7 +291,7 @@ func (s *Store) UpcomingRenewals(limit int) ([]*Subscription, error) {
 			token_limit, credit_limit, request_limit, limit_period, limit_note,
 			next_renewal, started_at, trial_ends_at,
 			notes, url, status_page_url,
-			auto_tracked, account_id, created_at, updated_at
+			auto_tracked, COALESCE(account_id,0), created_at, updated_at
 		FROM subscriptions
 		WHERE next_renewal != '' AND next_renewal >= ? AND status IN ('active', 'trial')
 		ORDER BY next_renewal ASC

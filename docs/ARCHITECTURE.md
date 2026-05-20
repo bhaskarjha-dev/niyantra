@@ -1,26 +1,26 @@
 # Architecture: Niyantra
 
-> **Updated:** v0.29.0 · Schema v20 · 20 tables · 55+ REST endpoints · 432 tests
+> **Updated:** 2026-05-19 · Schema v21 · 18 persistent tables · token-protected REST/MCP surfaces
 
 ## System Overview
 
 ```
 User Interfaces
-  CLI (snap/status/serve/mcp/demo/backup/restore)
+  CLI (snap/status/serve/token/mcp/demo/backup/restore)
   Dashboard (4 tabs, embedded web app, PWA)
   MCP Server (13 tools, stdio + Streamable HTTP)
           |
 Application Layer
   agent/        - polling loop + session management
-  client/       - LS detection + quota fetch (Connect RPC)
+  client/       - LS detection + multi-account concurrent quota fetch (Connect RPC) + direct API fallback
   codex/        - OAuth + Codex API polling + OIDC JWT parsing
   claude/       - deep session parser + statusline bridge + settings patch
   cursor/       - session token auth + HTTP API polling
   gemini/       - OAuth + GCP billing/quota APIs
   copilot/      - GitHub PAT + Copilot billing endpoints
-  advisor/      - switch recommendation engine
+  advisor/      - ranking + current-account recommendation engine
   tracker/      - cycle detection + intelligence + sessions
-  readiness/    - pure readiness computation (reset-time-corrected)
+  readiness/    - pure readiness computation with data-quality annotations
   notify/       - quad-channel notifications (OS + SMTP + Webhook + WebPush) + digest batching
   forecast/     - cost + TTX forecasting + anomaly detection (Z-score)
   costtrack/    - blended model pricing + cost calculation
@@ -28,8 +28,8 @@ Application Layer
   gitcorr/      - git commit ↔ token usage cost correlation
           |
 Storage Layer
-  store/  - SQLite v20 (20 tables, 24 Go files)
-  config  - typed key-value settings (74+ config keys)
+  store/  - SQLite v21 (18 persistent tables)
+  config  - typed key-value settings with sensitive-value indirection
   Pure Go: modernc.org/sqlite (no CGo)
 ```
 
@@ -37,12 +37,12 @@ Storage Layer
 
 ```
 cmd/niyantra/main.go
-  +-- client       (detect Antigravity LS, fetch quotas via Connect RPC)
-  +-- store        (SQLite, all persistence — 20 tables, 24 files)
-  +-- web          (HTTP server + dashboard — 19 Go files, 34 TS modules)
+  +-- client       (detect Antigravity LS servers, fetch quotas via Connect RPC, direct Google PA API fallback)
+  +-- store        (SQLite, all persistence, schema v21)
+  +-- web          (HTTP server + dashboard — 22 Go files, 40 TS modules)
   |    +-- agent        (polling loop, backoff, graceful shutdown)
   |    +-- tracker      (cycles + sessions)
-  |    +-- advisor      (switch engine)
+  |    +-- advisor      (ranking/current-account recommendation engine)
   |    +-- codex        (ChatGPT integration)
   |    +-- claude       (deep JSONL parser + statusline bridge)
   |    +-- cursor       (Cursor Pro quota polling)
@@ -53,15 +53,22 @@ cmd/niyantra/main.go
   |    +-- forecast     (TTX + cost forecasting + anomaly detection)
   |    +-- tokenusage   (Claude JSONL token analytics)
   |    +-- gitcorr      (git commit cost correlation)
-  |    +-- plugin       (plugin discovery, manifest validation, subprocess exec)
-  +-- mcpserver    (12 MCP tools over stdio + Streamable HTTP)
+  |    +-- plugin       (operator-trusted local plugin discovery, manifest validation, polling exec)
+  +-- mcpserver    (13 MCP tools over stdio + Streamable HTTP)
   |    +-- store, tracker, advisor, codex, readiness, forecast
   +-- readiness    (pure computation, zero I/O)
 ```
 
-## 1. internal/client/ — Antigravity Language Server Client
+## 1. internal/client/ — Antigravity Language Server Client (Antigravity v2.0)
 
-Detects the running Antigravity language server and fetches quota data via Connect RPC.
+Detects running Antigravity language servers concurrently, queries active accounts in parallel, deduplicates by account email, and provides a direct Google Partner Assist (PA) API fallback in 'CLI Solo Mode'.
+
+### Key Antigravity v2.0 Architecture Upgrades:
+- **Multi-Account Concurrent Capturing**: Interrogates all active local language server endpoints concurrently using Go routines with a semaphore-controlled limit to prevent socket exhaustion.
+- **Connect RPC Client Logic**: Handles standard local protobuf Connect RPC APIs over HTTP to securely retrieve tokenized session statuses.
+- **Tiered Process Priority Heuristic**: Filters and ranks discovered local processes to distinguish true Language Server instances (RPC Servers, Rank >= 10) from lightweight terminal CLI or auxiliary processes (Rank < 10) by inspecting startup arguments, port allocations, and process paths.
+- **Direct GCP PA API Solo Mode Fallback**: In CLI Solo Mode (no active local LS discovered), it parses oauth credentials dynamically from `~/.gemini/oauth_creds.json`, executes an automatic background token refresh flow via Google OAuth endpoints, and directly queries the Google Cloud Code Partner Assist APIs (`loadCodeAssist` and `retrieveUserQuota`).
+- **Protobuf Semantics & Safe Aggregates**: Correctly handles protobuf pointer semantics (`*float64` `remainingFraction`) to distinguish between actual 0% (exhausted) and null/missing quotas.
 
 Detection strategy (platform-specific):
 
@@ -71,11 +78,13 @@ Detection strategy (platform-specific):
 | macOS/Linux | ps aux grep | - | - |
 
 Detection flow:
-1. Find Antigravity language server process
-2. Extract CSRF token from process arguments (parseFlag)
-3. Discover port from --port flag or via lsof/ss/netstat (tryPort)
-4. Validate endpoint via verifyEndpoint — HTTP GET to Connect RPC health
-5. Fetch quota data via FetchQuotas — single HTTP POST to GetUserStatus
+1. Find all Antigravity processes and rank them using a tiered priority heuristic. Ignored processes (e.g. lightweight terminal CLI client) rank < 10. True RPC servers rank >= 10.
+2. For each ranked process, extract its CSRF token from process arguments.
+3. Discover listening TCP ports from --port flag or via lsof/ss/netstat.
+4. Validate active endpoints via verifyEndpoint.
+5. Query all active language servers concurrently via HTTP POST to GetUserStatus, pruning dead sockets dynamically and deduplicating by account email.
+6. If no active local servers are running, fall back to CLI Solo Mode: read cached browser OAuth credentials from ~/.gemini/oauth_creds.json, perform automatic token refresh, and directly query Google's Cloud Code Developer Assistance API endpoints (loadCodeAssist and retrieveUserQuota).
+7. UI integration maintains absolute state parity: the dashboard reloads the entire `/api/status` state upon capture completion rather than passing partial Antigravity snapshots. This prevents the disappearing-providers UI bug and preserves multi-account toast indicators across switches.
 
 Key types:
 - Snapshot — captured quota data with provenance fields
@@ -109,7 +118,7 @@ Uses modernc.org/sqlite (pure Go, no CGo) for true single-binary cross-compilati
 | v10 | `accounts.notes`, `tags`, `pinned_group` | Account metadata (Phase 13) |
 | v11 | `accounts.credit_renewal_day` | AI credit renewal tracking (Phase 13) |
 | v12 | `cursor_snapshots`, `gemini_snapshots`, `copilot_snapshots` | 3 new providers (Phase 14) |
-| v13 | `token_usage_daily` | Claude deep token analytics (Phase 14) |
+| v13 | `token_usage` | Claude deep token analytics (Phase 14) |
 | v14 | `config`: `heatmap_lookback_days` | Activity heatmap config (Phase 14) |
 | v15 | `config`: `copilot_pat`, `copilot_capture` | GitHub Copilot integration (Phase 15) |
 | v16 | `config`: 8 SMTP keys | SMTP/Email notifications (Phase 16, F11) |
@@ -117,8 +126,9 @@ Uses modernc.org/sqlite (pure Go, no CGo) for true single-binary cross-compilati
 | v18 | `webpush_subscriptions`, 3 config keys | WebPush notifications (Phase 16, F19) |
 | v19 | `plugin_snapshots` table, plugin config keys | Plugin system (Phase 16, F18) |
 | v20 | `codex_snapshots.owner_account_id` column | Codex multi-account ownership (Phase 16) |
+| v21 | FK-backed nullable references and legacy repair | Rebuilds unsafe activity/subscription/provider/plugin tables with intentional `ON DELETE SET NULL` behavior |
 
-### Tables (20 — Current)
+### Tables (18 persistent tables - Current)
 
 - `accounts` — identity (email, plan, notes, tags, pinned_group, credit_renewal_day)
 - `snapshots` — quota captures with provenance (account, models, ai_credits)
@@ -135,8 +145,7 @@ Uses modernc.org/sqlite (pure Go, no CGo) for true single-binary cross-compilati
 - `cursor_snapshots` — Cursor quota snapshots (requests/USD credits)
 - `gemini_snapshots` — Gemini CLI quota snapshots
 - `copilot_snapshots` — GitHub Copilot usage snapshots
-- `token_usage_daily` — Claude Code per-day token analytics
-- `git_commit_costs` — (virtual, via query) git ↔ session correlation
+- `token_usage` — Claude Code token analytics
 - `webpush_subscriptions` — browser push subscription storage
 - `plugin_snapshots` — plugin-captured data snapshots
 
@@ -182,12 +191,12 @@ Provides alert delivery for quota warnings via 4 independent channels:
 
 Serves a 4-tab dashboard with embedded static assets and a REST API.
 
-### File Structure (19 Go files)
+### File Structure (22 Go files)
 
 | File | Responsibility |
 |------|----------------|
 | `server.go` | Server struct, lifecycle, route table |
-| `middleware.go` | basicAuth, securityMiddleware (CORS + Content-Type) |
+| `middleware.go` | bearer token auth, optional basicAuth, security headers, CORS, content-type and body-size limits |
 | `helpers.go` | writeJSON, jsonError response helpers |
 | `compute.go` | Forecast/cost compute engines (no HTTP) |
 | `handlers_quota.go` | status, snap, history, usage |
@@ -200,13 +209,13 @@ Serves a 4-tab dashboard with embedded static assets and a REST API.
 | `handlers_cursor.go` | Cursor status/snap endpoints |
 | `handlers_gemini.go` | Gemini status/snap endpoints |
 | `handlers_copilot.go` | Copilot status/snap endpoints |
-| `handlers_plugins.go` | Plugin discovery, execution, config |
+| `handlers_plugins.go` | Plugin discovery, status, config, and disabled HTTP run compatibility stub |
 | `handlers_quota.go` | Status + heatmap API data |
 | `embed_prod.go` / `embed_dev.go` | Build-tag-switched static FS |
 
-### Endpoints (60 REST)
+### Endpoints
 
-60 REST API endpoints organized by domain. Full documentation in `docs/API_SPEC.md`.
+REST API endpoints are organized by domain. All `/api/*` endpoints require the generated dashboard bearer token except `/healthz`, which stays public for liveness checks. Full documentation lives in `docs/API_SPEC.md`.
 
 Stack: Go embed.FS + TypeScript (strict mode, 34 modules) bundled via esbuild into a single IIFE. Chart.js bundled locally from embedded assets.
 
@@ -214,14 +223,14 @@ Stack: Go embed.FS + TypeScript (strict mode, 34 modules) bundled via esbuild in
 
 | Provider | Package | Auth | Method |
 |----------|---------|------|--------|
-| Antigravity | `client/` | CSRF token from process args | Connect RPC to local LS |
+| Antigravity | `client/` | CSRF token / Direct OAuth | Connect RPC to active local LS servers + Direct API fallback |
 | Codex/ChatGPT | `codex/` | OAuth from `~/.codex/auth.json` | HTTPS to OpenAI API |
 | Claude Code | `claude/` | None (local files) | JSONL session parsing + statusline bridge |
 | Cursor | `cursor/` | Session token from `~/.cursor-server/` | HTTPS to cursor.com API |
-| Gemini CLI | `gemini/` | OAuth from `~/.config/gemini/` | HTTPS to GCP APIs |
+| Gemini CLI | `gemini/` | OAuth from `~/.gemini/` | HTTPS to GCP APIs (Fallback) |
 | GitHub Copilot | `copilot/` | GitHub PAT | HTTPS to GitHub billing API |
 | Manual | `store/` | N/A | User input via subscription form |
-| Plugins | `plugin/` | Plugin-specific (API keys in config) | Subprocess exec with JSON protocol |
+| Plugins | `plugin/` | Plugin-specific (API keys in config) | Trusted local polling subprocess with JSON protocol; HTTP manual execution returns `410 Gone` |
 
 ## Data Flow
 
@@ -314,15 +323,17 @@ Return anomalies with severity (warning: 2-3σ, critical: >3σ)
 
 ## Security Model
 
-- No credentials stored: Niyantra does not store API keys or passwords (except opt-in provider tokens)
-- No outbound network: Core features connect only to 127.0.0.1 (local language server)
-- Provider polling (opt-in): HTTPS to provider APIs using locally-stored tokens
-- Sensitive config masking: `copilot_pat`, `smtp_pass`, `webhook_secret`, `webpush_vapid_private` returned as `"configured"` in GET
+- Dashboard API token: generated with cryptographic randomness; required for `/api/*` and HTTP `/mcp`
+- Secret storage: sensitive config values use OS secret storage by default; plaintext fallback requires `--insecure-plaintext-secrets`
+- Backup redaction: CLI and dashboard backups redact sensitive config values from the copied SQLite file
+- No outbound network in core status/read flows; opt-in provider polling uses HTTPS to provider APIs
+- Sensitive config masking: `dashboard_api_token`, `copilot_pat`, `smtp_user`, `smtp_pass`, `webhook_secret`, `webpush_vapid_private`, provider secrets, and plugin secret-like keys are returned as `"configured"` in API responses
 - CSRF token: Extracted from process arguments, used for same-request auth to local LS
 - TLS: Self-signed cert from language server, InsecureSkipVerify: true (localhost only)
-- Dashboard auth: Optional HTTP basic auth via --auth user:pass flag
+- Optional HTTP basic auth: can be layered on top of bearer-token auth via `--auth user:pass`
 - Environment variables: NIYANTRA_PORT, NIYANTRA_BIND, NIYANTRA_DB, NIYANTRA_AUTH (CLI flags take precedence)
 - Activity log: Full audit trail of every data mutation and config change
+- Plugin boundary: plugins are operator-trusted local code, not sandboxed third-party extensions; discovery rejects symlink/path escapes and oversized manifests; HTTP run never executes a plugin
 
 ## Dependency Policy
 
@@ -330,8 +341,9 @@ Return anomalies with severity (warning: 2-3σ, critical: >3σ)
 |-----------|---------|-----|
 | modernc.org/sqlite | SQLite database | Pure Go, no CGo, cross-compile friendly |
 | github.com/modelcontextprotocol/go-sdk | MCP server for AI agents | Official MCP Go SDK, stdio + HTTP transport |
+| github.com/zalando/go-keyring | Secret storage backend | OS-native credential storage for sensitive config values |
 | Go stdlib | Everything else | HTTP server, JSON, templates, embed, crypto, TLS, SMTP |
 
-No other dependencies. No web frameworks, no ORM, no logging libraries.
+No web frameworks, no ORM, no logging libraries.
 Chart.js is bundled locally from embedded assets (no CDN dependency) for quota history visualization.
 WebPush uses stdlib crypto exclusively (ECDSA, AES-GCM, HMAC-SHA256) — zero x/crypto.

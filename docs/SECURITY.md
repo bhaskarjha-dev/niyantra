@@ -15,14 +15,15 @@
 | Cursor session token | File read from `~/.cursor-server/` | HTTP API authentication |
 | Gemini CLI credentials | File read from `~/.config/gemini/` | OAuth for GCP API polling |
 | GitHub Copilot PAT | User-provided in Settings UI | GitHub billing API authentication |
-| Plugin scripts | Subprocess execution from `~/.niyantra/plugins/` | Execute trusted local scripts with the current user's OS permissions (not sandboxed) |
+| Dashboard API token | Generated config secret | Authenticate every `/api/*` and HTTP `/mcp` request |
+| Plugin scripts | Subprocess execution from `~/.niyantra/plugins/` | Execute operator-trusted local scripts only through the opt-in polling path; HTTP/manual execution is disabled |
 
 ## What Niyantra Does NOT Access
 
 - No programmatic account switching (see "Why Not Account Switching" below)
 - Provider and notification secrets are stored in the OS credential manager by default; SQLite keeps only opaque references unless the operator explicitly enables the insecure plaintext fallback
 - No telemetry, analytics, or phone-home
-- Core Niyantra writes stay inside its own database directory; trusted plugins can read/write anywhere their subprocess permissions allow
+- Core Niyantra writes stay inside its own database directory; operator-trusted plugins can read/write anywhere their subprocess permissions allow
 
 ## Network Behavior
 
@@ -67,6 +68,7 @@ Config keys containing secrets are masked before API transmission. When returned
 | `smtp_user` | SMTP authentication username |
 | `webhook_secret` | Webhook authentication secret (Telegram bot token, etc.) |
 | `webpush_vapid_private` | VAPID P-256 private key |
+| `dashboard_api_token` | Bearer token for dashboard API and HTTP MCP |
 
 ### Dynamic Pattern Matching (Plugins)
 
@@ -89,7 +91,9 @@ All HTTP responses include the following security headers:
 
 ## Dashboard Authentication
 
-Optional HTTP basic auth via `--auth user:pass` flag or `NIYANTRA_AUTH` environment variable. No session tokens, no cookies. The auth is per-request and not persisted.
+Every `/api/*` and HTTP `/mcp` request requires `Authorization: Bearer <dashboard_api_token>`. `niyantra serve` creates the token with cryptographic randomness if missing and prints a tokenized first-open URL; the frontend stores the token in `sessionStorage` and strips it from the address bar. Use `niyantra token show` to print the current token and `niyantra token rotate` to invalidate old browser/API sessions. `/healthz` and static UI assets are intentionally unauthenticated.
+
+Optional HTTP basic auth via `--auth user:pass` flag or `NIYANTRA_AUTH` environment variable can be layered on top for dashboard access. No cookie session is created. Basic auth is per-request and not confidential over plaintext HTTP.
 
 **Non-local Bind Gate:** Niyantra binds to `127.0.0.1` by default. To bind a non-loopback address you must opt in with `--allow-remote` / `NIYANTRA_ALLOW_REMOTE=true`, enable `--auth user:pass`, and acknowledge TLS termination with `--behind-https-proxy` / `NIYANTRA_BEHIND_HTTPS_PROXY=true`. Basic auth is only an HTTP authentication scheme; it is not confidential over plaintext HTTP. Streamable HTTP MCP follows the same non-local bind policy.
 
@@ -99,8 +103,8 @@ Per-IP in-memory token bucket rate limiter protects all mutation endpoints from 
 
 | Tier | Endpoints | Limit | Window |
 |------|-----------|-------|--------|
-| `snap` | `POST /api/snap`, `POST /api/snap/all` | 10 requests | 1 minute |
-| `mutate` | `PUT /api/config`, `PATCH /api/snap/adjust` | 30 requests | 1 minute |
+| `snap` | Provider snapshot routes such as `POST /api/snap`, `POST /api/codex/snap`, `POST /api/cursor/snap`, `POST /api/gemini/snap`, `POST /api/copilot/snap` | 10 requests | 1 minute |
+| `mutate` | Dashboard writes such as config, subscriptions, backup create, notification tests, web push, alerts, pricing, account metadata/deletes, snapshot adjustment/deletes, and plugin config/run compatibility route | 30 requests | 1 minute |
 | `import` | `POST /api/import/json` | 2 requests | 1 minute |
 
 When exceeded: `429 Too Many Requests` with `Retry-After` header. Zero external dependencies — uses `sync.Mutex` + background cleanup goroutine (stale buckets cleaned every 5 minutes).
@@ -123,9 +127,13 @@ Rejects malformed input with `400 Bad Request` and a descriptive error message.
 - All operational data is stored in a single SQLite file (default: `~/.niyantra/niyantra.db`)
 - Provider and notification secrets are stored in the OS credential manager by default via `go-keyring`
 - SQLite stores opaque secret references rather than plaintext credentials unless `--insecure-plaintext-secrets` / `NIYANTRA_INSECURE_PLAINTEXT_SECRETS=true` is explicitly enabled
-- Database backups created by `niyantra backup` or `POST /api/backup/create` contain operational data but not keychain-managed secret material
+- Database backups created by `niyantra backup` or `POST /api/backup/create` redact sensitive config values from the copied SQLite file, including `dashboard_api_token`, provider credentials, notification secrets, and plugin keys matching sensitive suffix patterns
 - WebPush VAPID keys auto-generated on first subscribe (P-256 ECDSA)
 - Plugin API keys follow the same keychain-backed storage path as other secrets when their config key suffix matches the supported secret patterns
+
+## Plugin Execution Boundary
+
+Plugins are operator-trusted local scripts, not a sandbox or marketplace boundary. Discovery rejects oversized manifests, manifest symlinks, and entry points that resolve outside the plugin directory. `POST /api/plugins/{id}/run` is retained only as a compatibility stub and returns `410 Gone`; it never spawns a process. Plugin polling still requires explicit `--enable-plugins` / `NIYANTRA_ENABLE_PLUGINS=true`.
 
 ## Cloud Sync Security (Planned — ADR-0002)
 
@@ -133,15 +141,15 @@ When cloud sync is enabled (opt-in):
 
 | Concern | Mitigation |
 |---------|------------|
-| Data isolation | PocketBase Row-Level Security on all 12 synced collections |
+| Data isolation | PocketBase Row-Level Security on every sync-eligible collection; the final collection set must be recalculated after schema v21 |
 | Auth | OAuth 2.0 PKCE (no client_secret on user's machine) |
 | Token storage | OS-native keychain via `go-keyring` (Win/Mac/Linux) |
-| Secrets in sync | **"Secrets Don't Sync" policy** — config keys with `syncable=0` never leave machine |
+| Secrets in sync | **"Secrets Don't Sync" policy** - future sync metadata must classify masked config keys as local-only before any cloud sync ships |
 | Transport | TLS 1.3 via Caddy + Let's Encrypt (HTTPS everywhere) |
 | MCP exposure | MCP reads local SQLite only — no direct cloud access from MCP |
 | CORS | Eliminated via single-origin architecture |
 | Admin access | PocketBase admin `/_/` restricted by IP whitelist in Caddy |
-| GDPR | "Delete Cloud Data" button — cascades all 12 collections |
+| GDPR | "Delete Cloud Data" button must cascade every sync-eligible collection once the final cloud schema exists |
 | At rest | Oracle Cloud boot volume encryption |
 
 ## Provenance

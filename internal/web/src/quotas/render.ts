@@ -3,12 +3,14 @@
 
 import {
   GROUP_ORDER, GROUP_LABELS, GROUP_COLORS, GROUP_NAMES,
+  GRID_COLUMNS, GRID_LABELS,
   expandedAccounts, collapsedProviders,
   quotaSortState, latestQuotaData, setLatestQuotaData,
   activeTagFilter, setActiveTagFilter,
   usageDataCache,
 } from '../core/state';
-import { esc, formatSeconds, formatCredits, formatTimeAgo } from '../core/utils';
+import { esc, formatSeconds, formatCredits, formatTimeAgo, showToast } from '../core/utils';
+import { claimOverageBonus, fetchStatus } from '../core/api';
 import type { StatusResponse, AccountReadiness } from '../types/api';
 import { renderPinnedBadge, renderAccountTags, renderAccountNote, renderCreditRenewal } from './features';
 export function getGroupPct(acc: any, groupKey: string): number {
@@ -71,6 +73,138 @@ export function sortAccountsArray(accounts: any[]): any[] {
   });
 }
 
+export function sortProviderArray(array: any[], provider: string): any[] {
+  var col = quotaSortState.column;
+  var dir = quotaSortState.direction;
+  return array.slice().sort(function(a, b) {
+    var va, vb;
+    if (provider === 'codex') {
+      switch (col) {
+        case 'account':
+          va = a.email || a.accountId || '';
+          vb = b.email || b.accountId || '';
+          break;
+        case 'plan':
+          va = a.planType || '';
+          vb = b.planType || '';
+          break;
+        case 'fiveHour':
+          va = a.fiveHourPct || 0;
+          vb = b.fiveHourPct || 0;
+          break;
+        case 'sevenDay':
+          va = a.sevenDayPct || 0;
+          vb = b.sevenDayPct || 0;
+          break;
+        case 'credits':
+          va = a.creditsBalance || 0;
+          vb = b.creditsBalance || 0;
+          break;
+        case 'lastsnap':
+          va = a.capturedAt ? new Date(a.capturedAt).getTime() : 0;
+          vb = b.capturedAt ? new Date(b.capturedAt).getTime() : 0;
+          break;
+        case 'status':
+          va = getCodexClaudeStatus(a);
+          vb = getCodexClaudeStatus(b);
+          break;
+        default:
+          return 0;
+      }
+    } else if (provider === 'cursor') {
+      switch (col) {
+        case 'account':
+          va = a.email || '';
+          vb = b.email || '';
+          break;
+        case 'plan':
+          va = a.planType || '';
+          vb = b.planType || '';
+          break;
+        case 'premiumUsed':
+          va = a.premiumUsed || 0;
+          vb = b.premiumUsed || 0;
+          break;
+        case 'usage':
+          va = a.usagePct || 0;
+          vb = b.usagePct || 0;
+          break;
+        case 'lastsnap':
+          va = a.capturedAt ? new Date(a.capturedAt).getTime() : 0;
+          vb = b.capturedAt ? new Date(b.capturedAt).getTime() : 0;
+          break;
+        case 'status':
+          va = getCursorStatus(a);
+          vb = getCursorStatus(b);
+          break;
+        default:
+          return 0;
+      }
+    } else if (provider === 'gemini') {
+      switch (col) {
+        case 'account':
+          va = a.email || '';
+          vb = b.email || '';
+          break;
+        case 'tier':
+          va = a.tier || '';
+          vb = b.tier || '';
+          break;
+        case 'usage':
+          va = a.overallPct || 0;
+          vb = b.overallPct || 0;
+          break;
+        case 'lastsnap':
+          va = a.capturedAt ? new Date(a.capturedAt).getTime() : 0;
+          vb = b.capturedAt ? new Date(b.capturedAt).getTime() : 0;
+          break;
+        case 'status':
+          va = getGeminiStatus(a);
+          vb = getGeminiStatus(b);
+          break;
+        default:
+          return 0;
+      }
+    } else if (provider === 'copilot') {
+      switch (col) {
+        case 'account':
+          va = a.username || a.email || '';
+          vb = b.username || b.email || '';
+          break;
+        case 'plan':
+          va = a.plan || '';
+          vb = b.plan || '';
+          break;
+        case 'premium':
+          va = a.premiumPct || 0;
+          vb = b.premiumPct || 0;
+          break;
+        case 'chat':
+          va = a.chatPct || 0;
+          vb = b.chatPct || 0;
+          break;
+        case 'lastsnap':
+          va = a.capturedAt ? new Date(a.capturedAt).getTime() : 0;
+          vb = b.capturedAt ? new Date(b.capturedAt).getTime() : 0;
+          break;
+        case 'status':
+          va = getCopilotStatus(a);
+          vb = getCopilotStatus(b);
+          break;
+        default:
+          return 0;
+      }
+    } else {
+      return 0;
+    }
+
+    if (va === vb) return 0;
+    var res = va > vb ? 1 : -1;
+    // Ascending by default, reverse if desc
+    return dir === 'asc' ? res : -res;
+  });
+}
+
 export function filterAccountsArray(accounts: any[]): any[] {
   var searchInput = document.getElementById('quota-search');
   var statusFilter = document.getElementById('quota-filter-status');
@@ -108,6 +242,20 @@ export function updateSortHeaders(): void {
       if (span) span.textContent = quotaSortState.direction === 'asc' ? '▾' : '▴';
     }
   });
+}
+
+function renderQualityBadge(item: any): string {
+  if (!item) return '';
+  var label = '';
+  if (item.unavailableReason) label = 'Unavailable';
+  else if (item.isEstimated) label = 'Estimate';
+  else if (item.confidence && item.confidence !== 'high') label = item.confidence + ' confidence';
+  if (!label) return '';
+  var titleParts = [];
+  if (item.basis) titleParts.push('Basis: ' + item.basis);
+  if (item.confidence) titleParts.push('Confidence: ' + item.confidence);
+  if (item.unavailableReason) titleParts.push('Unavailable: ' + item.unavailableReason);
+  return '<span class="data-quality-badge" title="' + esc(titleParts.join(' | ')) + '">' + esc(label) + '</span>';
 }
 
 // ════════════════════════════════════════════
@@ -203,15 +351,15 @@ export function renderAccounts(data: any): void {
   var acctCount = (data.accounts || []).length;
   var parts = [];
   if (acctCount > 0) parts.push(acctCount + ' Antigravity');
-  if (data.codexSnapshot) parts.push('1 Codex');
+  if (data.codexSnapshots && data.codexSnapshots.length > 0) parts.push(data.codexSnapshots.length + ' Codex');
   if (data.claudeSnapshot) parts.push('1 Claude');
-  if (data.cursorSnapshot) parts.push('1 Cursor');
-  if (data.geminiSnapshot) parts.push('1 Gemini');
-  if (data.copilotSnapshot) parts.push('1 Copilot');
+  if (data.cursorSnapshots && data.cursorSnapshots.length > 0) parts.push(data.cursorSnapshots.length + ' Cursor');
+  if (data.geminiSnapshots && data.geminiSnapshots.length > 0) parts.push(data.geminiSnapshots.length + ' Gemini');
+  if (data.copilotSnapshots && data.copilotSnapshots.length > 0) parts.push(data.copilotSnapshots.length + ' Copilot');
   if (countBadge) countBadge.textContent = parts.join(' · ') || '0 accounts';
   if (snapCount) snapCount.textContent = data.snapshotCount ? (data.snapshotCount + ' snapshots') : '';
 
-  if (acctCount === 0 && !data.codexSnapshot && !data.claudeSnapshot && !data.cursorSnapshot && !data.geminiSnapshot && !data.copilotSnapshot) {
+  if (acctCount === 0 && (!data.codexSnapshots || data.codexSnapshots.length === 0) && !data.claudeSnapshot && (!data.cursorSnapshots || data.cursorSnapshots.length === 0) && (!data.geminiSnapshots || data.geminiSnapshots.length === 0) && (!data.copilotSnapshots || data.copilotSnapshots.length === 0)) {
     grid.innerHTML = '<div class="empty-state">' +
       '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>' +
       '<p>No accounts tracked yet</p>' +
@@ -236,8 +384,8 @@ export function renderAccounts(data: any): void {
   // Dynamic Antigravity grid header
   html += '<div class="grid-header">' +
     '<div class="grid-col-account sortable" data-sort="account">Account <span class="sort-indicator"></span></div>';
-  for (var gh = 0; gh < GROUP_ORDER.length; gh++) {
-    html += '<div class="grid-col-group sortable" data-sort="' + GROUP_ORDER[gh] + '">' + (GROUP_LABELS[gh] || GROUP_ORDER[gh]) + ' <span class="sort-indicator"></span></div>';
+  for (var gh = 0; gh < GRID_COLUMNS.length; gh++) {
+    html += '<div class="grid-col-group sortable" data-sort="' + GRID_COLUMNS[gh] + '">' + (GRID_LABELS[gh] || GRID_COLUMNS[gh]) + ' <span class="sort-indicator"></span></div>';
   }
   html += '<div class="grid-col-credits sortable" data-sort="credits">AI Credits <span class="sort-indicator"></span></div>' +
     '<div class="grid-col-snap sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div>' +
@@ -262,16 +410,101 @@ export function renderAccounts(data: any): void {
       }
     }
 
-    // F3: Determine pinned group for this account (default to first group)
-    var pinnedKey = acc.pinnedGroup || (acc.groups && acc.groups.length > 0 ? acc.groups[0].groupKey : 'claude_gpt');
+    // F3: Determine pinned group for this account (only if explicitly set)
+    var pinnedKey = acc.pinnedGroup || '';
     var pinnedGroupData = null;
-    var groups = acc.groups || [];
-    for (var pg = 0; pg < groups.length; pg++) {
-      if (groups[pg].groupKey === pinnedKey) { pinnedGroupData = groups[pg]; break; }
+    if (pinnedKey) {
+      var groups = acc.groups || [];
+      for (var pg = 0; pg < groups.length; pg++) {
+        if (groups[pg].groupKey === pinnedKey) { pinnedGroupData = groups[pg]; break; }
+      }
     }
 
-    for (var gi = 0; gi < GROUP_ORDER.length; gi++) {
-      var key = GROUP_ORDER[gi];
+    var geminiRendered = false;
+    for (var gi = 0; gi < GRID_COLUMNS.length; gi++) {
+      var key = GRID_COLUMNS[gi];
+      if (acc.unifiedPool && (key === 'gemini_pro' || key === 'gemini_flash')) {
+        if (geminiRendered) continue;
+        geminiRendered = true;
+
+        var geminiGroup = null;
+        var groups = acc.groups || [];
+        for (var gj = 0; gj < groups.length; gj++) {
+          if (groups[gj].groupKey === 'gemini_pro' || groups[gj].groupKey === 'gemini_flash') {
+            geminiGroup = groups[gj];
+            break;
+          }
+        }
+        var pct = geminiGroup ? Math.round(geminiGroup.remainingPercent) : 100;
+        var cls = 'good';
+        if (pct <= 0) cls = 'exhausted';
+        else if (pct < 20) cls = 'warning';
+        else if (pct < 50) cls = 'ok';
+
+        var tooltipParts = ['Unified compute tokens remaining. Flash usage counts as 1/8th of Pro usage.'];
+        if (geminiGroup && geminiGroup.timeUntilResetSec > 0) {
+          tooltipParts.push('Reset in: ' + formatSeconds(geminiGroup.timeUntilResetSec));
+        }
+
+        if (data.forecasts && data.forecasts[acc.accountId]) {
+          var acctForecasts = data.forecasts[acc.accountId];
+          for (var fi = 0; fi < acctForecasts.length; fi++) {
+            if ((acctForecasts[fi].groupKey === 'gemini_pro' || acctForecasts[fi].groupKey === 'gemini_flash') && acctForecasts[fi].ttxLabel) {
+              var ttxLabel = acctForecasts[fi].ttxLabel;
+              if (ttxLabel && ttxLabel !== '') {
+                tooltipParts.push('TTX: ' + ttxLabel);
+              }
+              break;
+            }
+          }
+        }
+
+        if (pct < 95 && data.estimatedCosts && data.estimatedCosts[acc.accountId]) {
+          var acctCosts = data.estimatedCosts[acc.accountId];
+          if (acctCosts.groups) {
+            for (var ci = 0; ci < acctCosts.groups.length; ci++) {
+              if ((acctCosts.groups[ci].groupKey === 'gemini_pro' || acctCosts.groups[ci].groupKey === 'gemini_flash') && acctCosts.groups[ci].hasData) {
+                var costVal = acctCosts.groups[ci].estimatedCost || 0;
+                if (costVal >= 0.01) {
+                  var costLabel = acctCosts.groups[ci].costLabel || '—';
+                  var hourly = acctCosts.groups[ci].hourlyLabel ? ' (' + acctCosts.groups[ci].hourlyLabel + ')' : '';
+                  tooltipParts.push('Estimated Cost: ' + costLabel + hourly);
+                }
+                break;
+              }
+            }
+          }
+        }
+
+        var cellTitle = tooltipParts.join(' | ');
+
+        var proModels = modelIdsByGroup['gemini_pro'] || [];
+        var flashModels = modelIdsByGroup['gemini_flash'] || [];
+        var allGeminiModelIds = proModels.concat(flashModels).join('|||');
+
+        var proLabels = modelLabelsByGroup['gemini_pro'] || [];
+        var flashLabels = modelLabelsByGroup['gemini_flash'] || [];
+        var allGeminiModelLabels = proLabels.concat(flashLabels).join('|||');
+
+        var groupAdjust = '<span class="group-adjust" data-snap-id="' + acc.latestSnapshotId +
+          '" data-group-key="gemini_unified' +
+          '" data-group-model-ids="' + esc(allGeminiModelIds) +
+          '" data-group-model-labels="' + esc(allGeminiModelLabels) +
+          '" data-current-pct="' + pct + '">' +
+          '<button class="gadj-btn" data-delta="-20" title="−20% unified pool">−20</button>' +
+          '<button class="gadj-btn" data-delta="20" title="+20% unified pool">+20</button>' +
+          '<button class="gadj-btn btn-custom" data-custom="true" title="Enter custom percentage for unified pool">✏️</button>' +
+          '</span>';
+
+        groupCells += '<div class="quota-cell unified-pool-cell" style="grid-column: span 2; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative;" title="' + esc(cellTitle) + '">' +
+          '<span class="quota-pct ' + cls + '">' + pct + '% Pool Left</span>' +
+          '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + pct + '%"></div></div>' +
+          '<span class="pool-multiplier-badge" style="font-size: 8px; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 3px; padding: 1px 4px; margin-top: 3px; font-weight: 600;">⚡ 8x Flash Multiplier</span>' +
+          groupAdjust +
+          '</div>';
+        continue;
+      }
+
       var g = null;
       var groups = acc.groups || [];
       for (var gj = 0; gj < groups.length; gj++) {
@@ -286,14 +519,11 @@ export function renderAccounts(data: any): void {
       if (g.isExhausted || pct === 0) cls = 'exhausted';
       else if (pct < 20) cls = 'warning';
       else if (pct < 50) cls = 'ok';
-      var reset = '';
-      if (g.timeUntilResetSec > 0) {
-        reset = '<span class="quota-reset">↻ ' + formatSeconds(g.timeUntilResetSec) + '</span>';
-      }
+      
       // Q4: Mini progress bar under percentage
       var barCls = cls;
 
-      // Group-level Quick Adjust — ±5 buttons, appear on hover
+      // Group-level Quick Adjust — ±20 buttons and custom edit button, appear on hover
       var groupModelIds = (modelIdsByGroup[key] || []).join('|||');
       var groupModelLabels = (modelLabelsByGroup[key] || []).join('|||');
       var groupAdjust = '<span class="group-adjust" data-snap-id="' + acc.latestSnapshotId +
@@ -301,56 +531,57 @@ export function renderAccounts(data: any): void {
         '" data-group-model-ids="' + esc(groupModelIds) +
         '" data-group-model-labels="' + esc(groupModelLabels) +
         '" data-current-pct="' + pct + '">' +
-        '<button class="gadj-btn" data-delta="-5" title="−5% all models in group">−5</button>' +
-        '<button class="gadj-btn" data-delta="5" title="+5% all models in group">+5</button>' +
+        '<button class="gadj-btn" data-delta="-20" title="−20% all models in group">−20</button>' +
+        '<button class="gadj-btn" data-delta="20" title="+20% all models in group">+20</button>' +
+        '<button class="gadj-btn btn-custom" data-custom="true" title="Enter custom percentage for group">✏️</button>' +
         '</span>';
 
-      // F7: TTX badge — shows "~Xh" time-to-exhaustion from forecast data
-      var ttxBadge = '';
+      // Gather rich metrics into a clean textual tooltip title for a pristine look
+      var tooltipParts: string[] = [];
+      if (g.timeUntilResetSec > 0) {
+        tooltipParts.push('Reset in: ' + formatSeconds(g.timeUntilResetSec));
+      }
+
+      // F7: TTX badge data
       if (data.forecasts && data.forecasts[acc.accountId]) {
         var acctForecasts = data.forecasts[acc.accountId];
         for (var fi = 0; fi < acctForecasts.length; fi++) {
           if (acctForecasts[fi].groupKey === key && acctForecasts[fi].ttxLabel) {
-            var ttxSev = acctForecasts[fi].severity || 'safe';
             var ttxLabel = acctForecasts[fi].ttxLabel;
-            if (ttxLabel && ttxLabel !== '' && ttxSev !== 'none') {
-              ttxBadge = '<span class="ttx-badge ttx-' + ttxSev + '" title="Time to exhaustion at current burn rate">' + esc(ttxLabel) + '</span>';
+            if (ttxLabel && ttxLabel !== '') {
+              tooltipParts.push('TTX: ' + ttxLabel);
             }
             break;
           }
         }
       }
 
-      // F8: Cost badge — shows estimated $ cost per group
-      // Only shown when: (a) group has consumed quota (pct < 95), (b) cost > $0.01
-      var costBadge = '';
+      // F8: Cost data
       if (pct < 95 && data.estimatedCosts && data.estimatedCosts[acc.accountId]) {
         var acctCosts = data.estimatedCosts[acc.accountId];
         if (acctCosts.groups) {
           for (var ci = 0; ci < acctCosts.groups.length; ci++) {
             if (acctCosts.groups[ci].groupKey === key && acctCosts.groups[ci].hasData) {
               var costVal = acctCosts.groups[ci].estimatedCost || 0;
-              if (costVal < 0.01) break; // Skip negligible costs
-              var costLabel = acctCosts.groups[ci].costLabel || '—';
-              var costCls = 'cost-low';
-              if (costVal >= 10) costCls = 'cost-high';
-              else if (costVal >= 3) costCls = 'cost-medium';
-              var costTitle = 'Estimated cost this cycle';
-              if (acctCosts.groups[ci].hourlyLabel) {
-                costTitle += ' (' + acctCosts.groups[ci].hourlyLabel + ')';
+              if (costVal >= 0.01) {
+                var costLabel = acctCosts.groups[ci].costLabel || '—';
+                var hourly = acctCosts.groups[ci].hourlyLabel ? ' (' + acctCosts.groups[ci].hourlyLabel + ')' : '';
+                tooltipParts.push('Estimated Cost: ' + costLabel + hourly);
               }
-              costBadge = '<span class="cost-badge ' + costCls + '" title="' + costTitle + '">' + esc(costLabel) + '</span>';
               break;
             }
           }
         }
       }
 
-      groupCells += '<div class="quota-cell">' +
+      var cellTitle = tooltipParts.join(' | ') || (GRID_LABELS[gi] || key);
+
+      groupCells += '<div class="quota-cell" title="' + esc(cellTitle) + '">' +
         '<span class="quota-pct ' + cls + '">' + pct + '%</span>' +
+        renderQualityBadge(g) +
         '<div class="quota-minibar"><div class="quota-minibar-fill ' + barCls + '" style="width:' + pct + '%"></div></div>' +
         groupAdjust +
-        reset + ttxBadge + costBadge + '</div>';
+        '</div>';
     }
 
 
@@ -395,9 +626,65 @@ export function renderAccounts(data: any): void {
         var starCls = isPinned ? 'pin-star pinned' : 'pin-star';
         var starTitle = isPinned ? 'Pinned — click to unpin' : 'Click to pin this group';
         var starChar = isPinned ? '★' : '☆';
+
+        // Calculate group-level analytics for the expanded view
+        var g2 = null;
+        var groups2 = acc.groups || [];
+        for (var gj2 = 0; gj2 < groups2.length; gj2++) {
+          if (groups2[gj2].groupKey === groupKey2) { g2 = groups2[gj2]; break; }
+        }
+
+        var expandedBadges = '';
+        if (g2) {
+          var pct2 = Math.round(g2.remainingPercent);
+          if (g2.timeUntilResetSec > 0) {
+            expandedBadges += ' <span class="quota-reset" style="margin-left:8px">↻ ' + formatSeconds(g2.timeUntilResetSec) + '</span>';
+          }
+
+          // F7: TTX badge shows "~Xh" time-to-exhaustion
+          if (data.forecasts && data.forecasts[acc.accountId]) {
+            var acctForecasts2 = data.forecasts[acc.accountId];
+            for (var fi2 = 0; fi2 < acctForecasts2.length; fi2++) {
+              if (acctForecasts2[fi2].groupKey === groupKey2 && acctForecasts2[fi2].ttxLabel) {
+                var ttxSev2 = acctForecasts2[fi2].severity || 'safe';
+                var ttxLabel2 = acctForecasts2[fi2].ttxLabel;
+                if (ttxLabel2 && ttxLabel2 !== '' && ttxSev2 !== 'none') {
+                  expandedBadges += ' <span class="ttx-badge ttx-' + ttxSev2 + '" style="margin-left:6px" title="Time to exhaustion at current burn rate">' + esc(ttxLabel2) + '</span>';
+                }
+                break;
+              }
+            }
+          }
+
+          // F8: Cost badge shows estimated cost
+          if (pct2 < 95 && data.estimatedCosts && data.estimatedCosts[acc.accountId]) {
+            var acctCosts2 = data.estimatedCosts[acc.accountId];
+            if (acctCosts2.groups) {
+              for (var ci2 = 0; ci2 < acctCosts2.groups.length; ci2++) {
+                if (acctCosts2.groups[ci2].groupKey === groupKey2 && acctCosts2.groups[ci2].hasData) {
+                  var costVal2 = acctCosts2.groups[ci2].estimatedCost || 0;
+                  if (costVal2 >= 0.01) {
+                    var costLabel2 = acctCosts2.groups[ci2].costLabel || '—';
+                    var costCls2 = 'cost-low';
+                    if (costVal2 >= 10) costCls2 = 'cost-high';
+                    else if (costVal2 >= 3) costCls2 = 'cost-medium';
+                    var costTitle2 = 'Estimated cost this cycle';
+                    if (acctCosts2.groups[ci2].hourlyLabel) {
+                      costTitle2 += ' (' + acctCosts2.groups[ci2].hourlyLabel + ')';
+                    }
+                    expandedBadges += ' <span class="cost-badge ' + costCls2 + '" style="margin-left:6px" title="' + costTitle2 + '">' + esc(costLabel2) + '</span>';
+                  }
+                  break;
+                }
+              }
+            }
+          }
+        }
+
         modelRows += '<div class="model-group-header">' +
           '<button class="' + starCls + '" data-pin-group="' + groupKey2 + '" data-pin-account="' + acc.accountId + '" title="' + starTitle + '">' + starChar + '</button>' +
           '<span class="model-group-name" style="color:' + (GROUP_COLORS[groupKey2] || 'var(--text-secondary)') + '">' + (GROUP_NAMES[groupKey2] || groupKey2) + '</span>' +
+          expandedBadges +
           '</div>';
 
         for (var mi3 = 0; mi3 < groupModels.length; mi3++) {
@@ -436,12 +723,11 @@ export function renderAccounts(data: any): void {
           }
         }
 
-        // Quick Adjust controls — visible on hover
+        // Quick Adjust controls — visible on hover (uses 20% increments and custom edit button for Antigravity)
         var adjustBtns = '<span class="adjust-controls" data-snap-id="' + acc.latestSnapshotId + '" data-model-id="' + esc(m.modelId || '') + '" data-model-label="' + esc(m.label || m.modelId) + '" data-current-pct="' + mpct + '">' +
-          '<button class="adj-btn" data-delta="-10" title="−10%">−10</button>' +
-          '<button class="adj-btn" data-delta="-5" title="−5%">−5</button>' +
-          '<button class="adj-btn" data-delta="5" title="+5%">+5</button>' +
-          '<button class="adj-btn" data-delta="10" title="+10%">+10</button>' +
+          '<button class="adj-btn" data-delta="-20" title="−20%">−20</button>' +
+          '<button class="adj-btn" data-delta="20" title="+20%">+20</button>' +
+          '<button class="adj-btn btn-custom" data-custom="true" title="Enter custom percentage">✏️</button>' +
           '</span>';
 
         modelRows += '<div class="model-row">' +
@@ -449,6 +735,7 @@ export function renderAccounts(data: any): void {
           '<span class="model-label">' + esc(m.label || m.modelId) + '</span>' +
           '<div class="model-bar-track"><div class="model-bar-fill ' + mcls + '" style="width:' + mpct + '%"></div></div>' +
           '<span class="model-pct ' + mcls + '">' + mpct + '%</span>' +
+          renderQualityBadge(m) +
           adjustBtns +
           '<span class="model-reset">' + resetStr + '</span>' +
           intellBadges +
@@ -496,11 +783,8 @@ export function renderAccounts(data: any): void {
   // Bug 6 fix: Apply status filter to Codex/Claude sections too
   var sf = document.getElementById('quota-filter-status');
   var statusVal = sf ? (sf as HTMLSelectElement).value : 'all';
-  if (data.codexSnapshot && (pf === 'all' || pf === 'codex')) {
-    var cxStatus = getCodexClaudeStatus(data.codexSnapshot);
-    if (statusVal === 'all' || cxStatus === statusVal) {
-      html += renderCodexProviderSection(data.codexSnapshot);
-    }
+  if (data.codexSnapshots && data.codexSnapshots.length > 0 && (pf === 'all' || pf === 'codex')) {
+    html += renderCodexProviderSection(data.codexSnapshots, statusVal);
   }
   if (data.claudeSnapshot && (pf === 'all' || pf === 'claude')) {
     var clStatus = getCodexClaudeStatus(data.claudeSnapshot);
@@ -508,23 +792,14 @@ export function renderAccounts(data: any): void {
       html += renderClaudeProviderSection(data.claudeSnapshot);
     }
   }
-  if (data.cursorSnapshot && (pf === 'all' || pf === 'cursor')) {
-    var crStatus = getCursorStatus(data.cursorSnapshot);
-    if (statusVal === 'all' || crStatus === statusVal) {
-      html += renderCursorProviderSection(data.cursorSnapshot);
-    }
+  if (data.cursorSnapshots && data.cursorSnapshots.length > 0 && (pf === 'all' || pf === 'cursor')) {
+    html += renderCursorProviderSection(data.cursorSnapshots, statusVal);
   }
-  if (data.geminiSnapshot && (pf === 'all' || pf === 'gemini')) {
-    var gmStatus = getGeminiStatus(data.geminiSnapshot);
-    if (statusVal === 'all' || gmStatus === statusVal) {
-      html += renderGeminiProviderSection(data.geminiSnapshot);
-    }
+  if (data.geminiSnapshots && data.geminiSnapshots.length > 0 && (pf === 'all' || pf === 'gemini')) {
+    html += renderGeminiProviderSection(data.geminiSnapshots, statusVal);
   }
-  if (data.copilotSnapshot && (pf === 'all' || pf === 'copilot')) {
-    var cpStatus = getCopilotStatus(data.copilotSnapshot);
-    if (statusVal === 'all' || cpStatus === statusVal) {
-      html += renderCopilotProviderSection(data.copilotSnapshot);
-    }
+  if (data.copilotSnapshots && data.copilotSnapshots.length > 0 && (pf === 'all' || pf === 'copilot')) {
+    html += renderCopilotProviderSection(data.copilotSnapshots, statusVal);
   }
 
   // V3: Empty states when a specific provider is selected but has no data
@@ -534,7 +809,7 @@ export function renderAccounts(data: any): void {
       '<p>No Antigravity accounts detected</p>' +
       '<p class="empty-hint">Open Windsurf and log in to start tracking quotas</p></div>';
   }
-  if (pf === 'codex' && !data.codexSnapshot) {
+  if (pf === 'codex' && (!data.codexSnapshots || data.codexSnapshots.length === 0)) {
     html += '<div class="provider-empty-state" data-provider="codex">' +
       '<span class="provider-empty-icon">🤖</span>' +
       '<p>No Codex snapshots yet</p>' +
@@ -546,26 +821,63 @@ export function renderAccounts(data: any): void {
       '<p>No Claude Code data yet</p>' +
       '<p class="empty-hint">Enable the Claude bridge in <strong>Settings</strong></p></div>';
   }
-  if (pf === 'cursor' && !data.cursorSnapshot) {
+  if (pf === 'cursor' && (!data.cursorSnapshots || data.cursorSnapshots.length === 0)) {
     html += '<div class="provider-empty-state" data-provider="cursor">' +
       '<span class="provider-empty-icon">🖱️</span>' +
       '<p>No Cursor data yet</p>' +
       '<p class="empty-hint">Enable Cursor capture in <strong>Settings</strong> or click <strong>Snap Now</strong></p></div>';
   }
-  if (pf === 'gemini' && !data.geminiSnapshot) {
+  if (pf === 'gemini' && (!data.geminiSnapshots || data.geminiSnapshots.length === 0)) {
     html += '<div class="provider-empty-state" data-provider="gemini">' +
       '<span class="provider-empty-icon">✦</span>' +
       '<p>No Gemini CLI data yet</p>' +
       '<p class="empty-hint">Enable Gemini capture in <strong>Settings</strong> or click <strong>Snap Now</strong></p></div>';
   }
-  if (pf === 'copilot' && !data.copilotSnapshot) {
+  if (pf === 'copilot' && (!data.copilotSnapshots || data.copilotSnapshots.length === 0)) {
     html += '<div class="provider-empty-state" data-provider="copilot">' +
       '<span class="provider-empty-icon">🐙</span>' +
       '<p>No GitHub Copilot data yet</p>' +
       '<p class="empty-hint">Add a PAT in <strong>Settings</strong> or click <strong>Snap Now</strong></p></div>';
   }
 
-  grid.innerHTML = html;
+  var eligibleAccount = (data.accounts || []).find(function(acc: any) {
+    return acc.planTier && acc.planTier.toLowerCase() === 'ultra' && acc.hasClaimedBonus2026 === 0;
+  });
+  var bannerHTML = '';
+  if (eligibleAccount) {
+    bannerHTML = '<div class="io-alert-card" data-account-id="' + eligibleAccount.accountId + '">' +
+      '<div class="io-alert-content">' +
+      '<div class="io-alert-title">✨ Google I/O 2026 Promotional Bonus</div>' +
+      '<div class="io-alert-desc">Exclusive for Ultra members: Claim your $100 Overage Credit Bonus before it expires on <strong>May 25, 2026</strong>.</div>' +
+      '</div>' +
+      '<button class="io-claim-btn" data-claim-account-id="' + eligibleAccount.accountId + '">Claim $100 Bonus</button>' +
+      '</div>';
+  }
+
+  grid.innerHTML = bannerHTML + html;
+
+  var claimBtn = grid.querySelector('.io-claim-btn');
+  if (claimBtn) {
+    claimBtn.addEventListener('click', function(e) {
+      var btn = e.currentTarget as HTMLButtonElement;
+      var accId = parseInt(btn.getAttribute('data-claim-account-id') || '0', 10);
+      if (accId > 0) {
+        btn.disabled = true;
+        btn.textContent = 'Claiming...';
+        claimOverageBonus(accId).then(function() {
+          showToast('✨ $100 Overage Bonus credit added!', 'success');
+          fetchStatus().then(function(freshData) {
+            document.dispatchEvent(new CustomEvent('niyantra:status-refreshed', { detail: { data: freshData } }));
+            document.dispatchEvent(new CustomEvent('niyantra:overview-refresh'));
+          }).catch(function() {});
+        }).catch(function(err) {
+          btn.disabled = false;
+          btn.textContent = 'Claim $100 Bonus';
+          showToast('❌ ' + (err.message || 'Claim failed'), 'error');
+        });
+      }
+    });
+  }
 
   // Wire up provider section collapse (state already baked into HTML)
   grid.querySelectorAll('.provider-header[data-toggle-provider]').forEach(function(hdr) {
@@ -581,50 +893,101 @@ export function renderAccounts(data: any): void {
       } else {
         collapsedProviders.delete(targetId!);
       }
+      localStorage.setItem('niyantra_collapsed_providers', JSON.stringify(Array.from(collapsedProviders)));
     });
   });
+  updateSortHeaders();
 }
 
-export function renderCodexProviderSection(cs: any): string {
-  var fiveUsed = cs.fiveHourPct || 0;
-  var fiveRem = Math.max(0, 100 - fiveUsed);
-  var fiveCls = fiveRem > 50 ? 'good' : fiveRem > 20 ? 'ok' : fiveRem > 0 ? 'warning' : 'exhausted';
-  var fiveReset = cs.fiveHourReset ? formatResetTime(cs.fiveHourReset) : '';
-  var sevenUsed = cs.sevenDayPct ? cs.sevenDayPct : 0;
-  var sevenRem = Math.max(0, 100 - sevenUsed);
-  var sevenCls = sevenRem > 50 ? 'good' : sevenRem > 20 ? 'ok' : sevenRem > 0 ? 'warning' : 'exhausted';
-  var sevenReset = cs.sevenDayReset ? formatResetTime(cs.sevenDayReset) : '';
-  var capturedAgo = cs.capturedAt ? formatTimeAgo(cs.capturedAt) : '\u2014';
-  var dotCls = (fiveUsed >= 80 || sevenUsed >= 80) ? 'dot-low' : 'dot-ready';
-  var dotText = dotCls === 'dot-ready' ? 'Ready' : 'Low';
-  var displayName = cs.email || (cs.accountId && cs.accountId.length > 12 ? cs.accountId.substring(0,6) + '..' + cs.accountId.slice(-6) : (cs.accountId || 'Codex'));
-  var creditsStr = cs.creditsBalance !== null && cs.creditsBalance !== undefined ? cs.creditsBalance.toFixed(2) : String.fromCharCode(8212);
+export function renderCodexProviderSection(codexSnaps: any[], statusFilter: string): string {
   var cxCollapseClass = collapsedProviders.has('section-codex') ? ' collapsed' : '';
   var cxChevron = collapsedProviders.has('section-codex') ? '▸' : '▾';
-  return '<div class="provider-section" data-provider="codex">' +
+  var html = '<div class="provider-section" data-provider="codex">' +
     '<div class="provider-header" data-toggle-provider="section-codex">' +
     '<div class="provider-header-left">' +
     '<span class="provider-chevron" id="pchev-section-codex">' + cxChevron + '</span>' +
     '<span class="provider-name">\ud83e\udd16 Codex / ChatGPT</span>' +
-    '<span class="provider-count">1 account</span>' +
+    '<span class="provider-count">' + codexSnaps.length + ' account' + (codexSnaps.length !== 1 ? 's' : '') + '</span>' +
     '</div></div>' +
     '<div class="provider-body' + cxCollapseClass + '" id="section-codex">' +
     '<div class="grid-header grid-codex">' +
-    '<div>Account</div><div>Plan</div><div>5-Hour</div><div>7-Day</div><div>Credits</div><div>Last Snap</div><div>Status</div>' +
-    '</div>' +
-    '<div class="account-card"><div class="account-row grid-codex">' +
-    '<div class="account-info"><div class="account-email">' + esc(displayName) + '</div></div>' +
-    '<div>' + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + '</span>' : String.fromCharCode(8212)) + '</div>' +
-    '<div class="quota-cell"><span class="quota-pct ' + fiveCls + '">' + fiveRem.toFixed(0) + '%</span>' +
-    '<div class="quota-minibar"><div class="quota-minibar-fill ' + fiveCls + '" style="width:' + fiveRem + '%"></div></div>' +
-    (fiveReset ? '<span class="quota-reset">\u21bb ' + fiveReset + '</span>' : '') + '</div>' +
-    '<div class="quota-cell"><span class="quota-pct ' + sevenCls + '">' + sevenRem.toFixed(0) + '%</span>' +
-    '<div class="quota-minibar"><div class="quota-minibar-fill ' + sevenCls + '" style="width:' + sevenRem + '%"></div></div>' +
-    (sevenReset ? '<span class="quota-reset">\u21bb ' + sevenReset + '</span>' : '') + '</div>' +
-    '<div class="credits-cell"><span class="credit-amount">' + creditsStr + '</span></div>' +
-    '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
-    '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
-    '</div></div></div></div>';
+    '<div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="fiveHour">5-Hour <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="sevenDay">7-Day <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="credits">Credits <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div>' +
+    '</div>';
+
+  var sortedSnaps = sortProviderArray(codexSnaps, 'codex');
+  var renderedCount = 0;
+  for (var i = 0; i < sortedSnaps.length; i++) {
+    var cs = sortedSnaps[i];
+    var cxStatus = getCodexClaudeStatus(cs);
+    if (statusFilter !== 'all' && cxStatus !== statusFilter) continue;
+    renderedCount++;
+
+    var fiveUsed = cs.fiveHourPct || 0;
+    var fiveRem = Math.max(0, 100 - fiveUsed);
+    var fiveCls = fiveRem > 50 ? 'good' : fiveRem > 20 ? 'ok' : fiveRem > 0 ? 'warning' : 'exhausted';
+    var fiveReset = cs.fiveHourReset ? formatResetTime(cs.fiveHourReset) : '';
+    var sevenUsed = cs.sevenDayPct ? cs.sevenDayPct : 0;
+    var sevenRem = Math.max(0, 100 - sevenUsed);
+    var sevenCls = sevenRem > 50 ? 'good' : sevenRem > 20 ? 'ok' : sevenRem > 0 ? 'warning' : 'exhausted';
+    var sevenReset = cs.sevenDayReset ? formatResetTime(cs.sevenDayReset) : '';
+    var capturedAgo = cs.capturedAt ? formatTimeAgo(cs.capturedAt) : '\u2014';
+    var dotCls = (fiveUsed >= 80 || sevenUsed >= 80) ? 'dot-low' : 'dot-ready';
+    var dotText = dotCls === 'dot-ready' ? 'Ready' : 'Low';
+    var displayName = cs.email || (cs.accountId && cs.accountId.length > 12 ? cs.accountId.substring(0,6) + '..' + cs.accountId.slice(-6) : (cs.accountId || 'Codex'));
+    var creditsStr = cs.creditsBalance !== null && cs.creditsBalance !== undefined ? cs.creditsBalance.toFixed(2) : String.fromCharCode(8212);
+
+    var localAccId = cs.ownerAccountId || 0;
+    var accId = 'acc-codex-' + cs.id;
+    var isExpanded = expandedAccounts.has(accId as any);
+    var chevronCls = isExpanded ? 'chevron expanded' : 'chevron';
+
+    var chevronHTML = localAccId > 0 ? '<span class="' + chevronCls + '" id="chev-' + accId + '">▸</span> ' : '';
+    var manageBadge = localAccId > 0 ? ' <span class="manage-account-badge">⚙️ Manage</span>' : '';
+    var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + manageBadge + '</div>';
+
+    var actionsHTML = '';
+    if (localAccId > 0) {
+      var expandedCls = isExpanded ? ' is-expanded' : '';
+      actionsHTML = '<div class="model-details' + expandedCls + '" id="' + accId + '">' +
+        '<div class="account-actions" style="margin-top:0">' +
+        '<button class="btn-clear-snaps" data-clear-account="' + localAccId + '" data-clear-email="' + esc(displayName) + '" title="Delete all snapshots for this account">Clear Snapshots</button>' +
+        '<button class="btn-delete-account" data-delete-account="' + localAccId + '" data-delete-email="' + esc(displayName) + '" title="Remove account and all its data">Remove Account</button>' +
+        '</div></div>';
+    }
+
+    var toggleAttr = localAccId > 0 ? ' data-toggle="' + accId + '"' : '';
+
+    var statusClass = '';
+    if (cxStatus === 'empty') statusClass = ' status-empty';
+    else if (cxStatus === 'low') statusClass = ' status-low';
+    else statusClass = ' status-ready';
+
+    html += '<div class="account-card' + statusClass + '"><div class="account-row grid-codex"' + toggleAttr + '>' +
+      '<div class="account-info">' + emailHTML + '</div>' +
+      '<div>' + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + '</span>' : String.fromCharCode(8212)) + '</div>' +
+      '<div class="quota-cell"><span class="quota-pct ' + fiveCls + '">' + fiveRem.toFixed(0) + '%</span>' +
+      '<div class="quota-minibar"><div class="quota-minibar-fill ' + fiveCls + '" style="width:' + fiveRem + '%"></div></div>' +
+      (fiveReset ? '<span class="quota-reset">\u21bb ' + fiveReset + '</span>' : '') + '</div>' +
+      '<div class="quota-cell"><span class="quota-pct ' + sevenCls + '">' + sevenRem.toFixed(0) + '%</span>' +
+      '<div class="quota-minibar"><div class="quota-minibar-fill ' + sevenCls + '" style="width:' + sevenRem + '%"></div></div>' +
+      (sevenReset ? '<span class="quota-reset">\u21bb ' + sevenReset + '</span>' : '') + '</div>' +
+      '<div class="credits-cell"><span class="credit-amount">' + creditsStr + '</span></div>' +
+      '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
+      '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
+      '</div>' +
+      actionsHTML +
+      '</div>';
+  }
+
+  if (renderedCount === 0) return '';
+  html += '</div></div>';
+  return html;
 }
 
 export function renderClaudeProviderSection(cl: any): string {
@@ -639,6 +1002,13 @@ export function renderClaudeProviderSection(cl: any): string {
   var dotText = dotCls === 'dot-ready' ? 'Ready' : 'Low';
   var clCollapseClass = collapsedProviders.has('section-claude') ? ' collapsed' : '';
   var clChevron = collapsedProviders.has('section-claude') ? '▸' : '▾';
+
+  var clStatus = getCodexClaudeStatus(cl);
+  var statusClass = '';
+  if (clStatus === 'empty') statusClass = ' status-empty';
+  else if (clStatus === 'low') statusClass = ' status-low';
+  else statusClass = ' status-ready';
+
   return '<div class="provider-section" data-provider="claude">' +
     '<div class="provider-header" data-toggle-provider="section-claude">' +
     '<div class="provider-header-left">' +
@@ -650,7 +1020,7 @@ export function renderClaudeProviderSection(cl: any): string {
     '<div class="grid-header grid-claude">' +
     '<div>Source</div><div>5-Hour</div><div>7-Day</div><div>Last Snap</div><div>Status</div>' +
     '</div>' +
-    '<div class="account-card"><div class="account-row grid-claude">' +
+    '<div class="account-card' + statusClass + '"><div class="account-row grid-claude">' +
     '<div class="account-info"><div class="account-email">' + esc(cl.source || 'statusline') + '</div></div>' +
     '<div class="quota-cell"><span class="quota-pct ' + clFiveCls + '">' + clFiveRem.toFixed(0) + '%</span>' +
     '<div class="quota-minibar"><div class="quota-minibar-fill ' + clFiveCls + '" style="width:' + clFiveRem + '%"></div></div></div>' +
@@ -660,8 +1030,6 @@ export function renderClaudeProviderSection(cl: any): string {
     '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
     '</div></div></div></div>';
 }
-
-
 
 export function formatResetTime(isoString: string | null): string {
   if (!isoString) return '';
@@ -680,66 +1048,118 @@ export function getCursorStatus(snap: any): string {
   return 'ready';
 }
 
-export function renderCursorProviderSection(cs: any): string {
-  var usagePct = cs.usagePct || 0;
-  var remaining = Math.max(0, 100 - usagePct);
-  var cls = remaining > 50 ? 'good' : remaining > 20 ? 'ok' : remaining > 0 ? 'warning' : 'exhausted';
-  var capturedAgo = cs.capturedAt ? formatTimeAgo(cs.capturedAt) : '\u2014';
-  var dotCls = usagePct >= 80 ? 'dot-low' : 'dot-ready';
-  var dotText = dotCls === 'dot-ready' ? 'Ready' : 'Low';
-  var displayName = cs.email || 'Cursor';
-  var usedStr = cs.premiumUsed !== undefined ? cs.premiumUsed : String.fromCharCode(8212);
-  var limitStr = cs.premiumLimit !== undefined ? cs.premiumLimit : String.fromCharCode(8212);
+export function renderCursorProviderSection(cursorSnaps: any[], statusFilter: string): string {
   var crCollapseClass = collapsedProviders.has('section-cursor') ? ' collapsed' : '';
-  var crChevron = collapsedProviders.has('section-cursor') ? '\u25b8' : '\u25be';
+  var crChevron = collapsedProviders.has('section-cursor') ? '▸' : '▾';
 
-  // Build per-model breakdown rows from modelsJson
-  var modelRows = '';
-  if (cs.modelsJson && cs.modelsJson !== '{}') {
-    try {
-      var models = typeof cs.modelsJson === 'string' ? JSON.parse(cs.modelsJson) : cs.modelsJson;
-      var modelKeys = Object.keys(models);
-      if (modelKeys.length > 0) {
-        modelRows = '<div class="cursor-model-breakdown">';
-        for (var mi = 0; mi < modelKeys.length; mi++) {
-          var mKey = modelKeys[mi];
-          var mVal = models[mKey];
-          var mUsed = mVal.numRequests || 0;
-          var mLimit = mVal.maxRequestUsage || 0;
-          var mPct = mLimit > 0 ? (mUsed / mLimit * 100) : 0;
-          var mRem = Math.max(0, 100 - mPct);
-          var mCls = mRem > 50 ? 'good' : mRem > 20 ? 'ok' : mRem > 0 ? 'warning' : 'exhausted';
-          modelRows += '<div class="cursor-model-row">' +
-            '<span class="cursor-model-name">' + esc(mKey) + '</span>' +
-            '<div class="quota-minibar"><div class="quota-minibar-fill ' + mCls + '" style="width:' + mRem + '%"></div></div>' +
-            '<span class="cursor-model-usage">' + mUsed + '/' + mLimit + '</span>' +
-            '</div>';
-        }
-        modelRows += '</div>';
-      }
-    } catch(e) { /* graceful degradation */ }
-  }
-
-  return '<div class="provider-section" data-provider="cursor">' +
+  var html = '<div class="provider-section" data-provider="cursor">' +
     '<div class="provider-header" data-toggle-provider="section-cursor">' +
     '<div class="provider-header-left">' +
     '<span class="provider-chevron" id="pchev-section-cursor">' + crChevron + '</span>' +
     '<span class="provider-name">\ud83d\uddb1\ufe0f Cursor</span>' +
-    '<span class="provider-count">1 account</span>' +
+    '<span class="provider-count">' + cursorSnaps.length + ' account' + (cursorSnaps.length !== 1 ? 's' : '') + '</span>' +
     '</div></div>' +
     '<div class="provider-body' + crCollapseClass + '" id="section-cursor">' +
     '<div class="grid-header grid-cursor">' +
-    '<div>Account</div><div>Plan</div><div>Premium Used</div><div>Usage</div><div>Last Snap</div><div>Status</div>' +
-    '</div>' +
-    '<div class="account-card"><div class="account-row grid-cursor">' +
-    '<div class="account-info"><div class="account-email">' + esc(displayName) + '</div></div>' +
-    '<div>' + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + '</span>' : String.fromCharCode(8212)) + '</div>' +
-    '<div class="quota-cell"><span class="quota-pct ' + cls + '">' + usedStr + ' / ' + limitStr + '</span>' +
-    '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div>' +
-    '<div class="quota-cell"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span></div>' +
-    '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
-    '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
-    '</div>' + modelRows + '</div></div></div>';
+    '<div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="premiumUsed">Premium Used <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="usage">Usage <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div>' +
+    '</div>';
+
+  var sortedSnaps = sortProviderArray(cursorSnaps, 'cursor');
+  var renderedCount = 0;
+  for (var i = 0; i < sortedSnaps.length; i++) {
+    var cs = sortedSnaps[i];
+    var crStatus = getCursorStatus(cs);
+    if (statusFilter !== 'all' && crStatus !== statusFilter) continue;
+    renderedCount++;
+
+    var usagePct = cs.usagePct || 0;
+    var remaining = Math.max(0, 100 - usagePct);
+    var cls = remaining > 50 ? 'good' : remaining > 20 ? 'ok' : remaining > 0 ? 'warning' : 'exhausted';
+    var capturedAgo = cs.capturedAt ? formatTimeAgo(cs.capturedAt) : '\u2014';
+    var dotCls = usagePct >= 80 ? 'dot-low' : 'dot-ready';
+    var dotText = dotCls === 'dot-ready' ? 'Ready' : 'Low';
+    var displayName = cs.email || 'Cursor';
+    var usedStr = cs.premiumUsed !== undefined ? cs.premiumUsed : String.fromCharCode(8212);
+    var limitStr = cs.premiumLimit !== undefined ? cs.premiumLimit : String.fromCharCode(8212);
+
+    // Build per-model breakdown rows from modelsJson
+    var modelRows = '';
+    if (cs.modelsJson && cs.modelsJson !== '{}') {
+      try {
+        var models = typeof cs.modelsJson === 'string' ? JSON.parse(cs.modelsJson) : cs.modelsJson;
+        var modelKeys = Object.keys(models);
+        if (modelKeys.length > 0) {
+          modelRows = '<div class="cursor-model-breakdown">';
+          for (var mi = 0; mi < modelKeys.length; mi++) {
+            var mKey = modelKeys[mi];
+            var mVal = models[mKey];
+            var mUsed = mVal.numRequests || 0;
+            var mLimit = mVal.maxRequestUsage || 0;
+            var mPct = mLimit > 0 ? (mUsed / mLimit * 100) : 0;
+            var mRem = Math.max(0, 100 - mPct);
+            var mCls = mRem > 50 ? 'good' : mRem > 20 ? 'ok' : mRem > 0 ? 'warning' : 'exhausted';
+            modelRows += '<div class="cursor-model-row">' +
+              '<span class="cursor-model-name">' + esc(mKey) + '</span>' +
+              '<div class="quota-minibar"><div class="quota-minibar-fill ' + mCls + '" style="width:' + mRem + '%"></div></div>' +
+              '<span class="cursor-model-usage">' + mUsed + '/' + mLimit + '</span>' +
+              '</div>';
+          }
+          modelRows += '</div>';
+        }
+      } catch(e) { /* graceful degradation */ }
+    }
+
+    var localAccId = cs.accountId || 0;
+    var accId = 'acc-cursor-' + cs.id;
+    var isExpanded = expandedAccounts.has(accId as any);
+    var chevronCls = isExpanded ? 'chevron expanded' : 'chevron';
+
+    var chevronHTML = (localAccId > 0 || modelRows) ? '<span class="' + chevronCls + '" id="chev-' + accId + '">▸</span> ' : '';
+    var manageBadge = localAccId > 0 ? ' <span class="manage-account-badge">⚙️ Manage</span>' : '';
+    var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + manageBadge + '</div>';
+
+    var actionsHTML = '';
+    if (localAccId > 0 || modelRows) {
+      var expandedCls = isExpanded ? ' is-expanded' : '';
+      var accountActions = localAccId > 0 ?
+        '<div class="account-actions">' +
+        '<button class="btn-clear-snaps" data-clear-account="' + localAccId + '" data-clear-email="' + esc(displayName) + '" title="Delete all snapshots for this account">Clear Snapshots</button>' +
+        '<button class="btn-delete-account" data-delete-account="' + localAccId + '" data-delete-email="' + esc(displayName) + '" title="Remove account and all its data">Remove Account</button>' +
+        '</div>' : '';
+      actionsHTML = '<div class="model-details' + expandedCls + '" id="' + accId + '">' +
+        modelRows +
+        accountActions +
+        '</div>';
+    }
+
+    var toggleAttr = (localAccId > 0 || modelRows) ? ' data-toggle="' + accId + '"' : '';
+
+    var statusClass = '';
+    if (crStatus === 'empty') statusClass = ' status-empty';
+    else if (crStatus === 'low') statusClass = ' status-low';
+    else statusClass = ' status-ready';
+
+    html += '<div class="account-card' + statusClass + '"><div class="account-row grid-cursor"' + toggleAttr + '>' +
+      '<div class="account-info">' + emailHTML + '</div>' +
+      '<div>' + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + '</span>' : String.fromCharCode(8212)) + '</div>' +
+      '<div class="quota-cell"><span class="quota-pct ' + cls + '">' + usedStr + ' / ' + limitStr + '</span>' +
+      '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div>' +
+      '<div class="quota-cell"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span></div>' +
+      '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
+      '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
+      '</div>' +
+      actionsHTML +
+      '</div>';
+  }
+
+  if (renderedCount === 0) return '';
+  html += '</div></div>';
+  return html;
 }
 
 export function getGeminiStatus(snap: any): string {
@@ -750,62 +1170,155 @@ export function getGeminiStatus(snap: any): string {
   return 'ready';
 }
 
-export function renderGeminiProviderSection(gs: any): string {
-  var overallPct = gs.overallPct || 0;
-  var remaining = Math.max(0, 100 - overallPct);
-  var cls = remaining > 50 ? 'good' : remaining > 20 ? 'ok' : remaining > 0 ? 'warning' : 'exhausted';
-  var capturedAgo = gs.capturedAt ? formatTimeAgo(gs.capturedAt) : '\u2014';
-  var dotCls = overallPct >= 80 ? 'dot-low' : 'dot-ready';
-  var dotText = dotCls === 'dot-ready' ? 'Ready' : 'Low';
-  var displayName = gs.email || 'Gemini CLI';
+export function renderGeminiProviderSection(geminiSnaps: any[], statusFilter: string): string {
   var gmCollapseClass = collapsedProviders.has('section-gemini') ? ' collapsed' : '';
-  var gmChevron = collapsedProviders.has('section-gemini') ? '\u25b8' : '\u25be';
+  var gmChevron = collapsedProviders.has('section-gemini') ? '▸' : '▾';
 
-  // Build per-model breakdown rows from modelsJson
-  var modelRows = '';
-  if (gs.modelsJson && gs.modelsJson !== '[]') {
-    try {
-      var models = typeof gs.modelsJson === 'string' ? JSON.parse(gs.modelsJson) : gs.modelsJson;
-      if (Array.isArray(models) && models.length > 0) {
-        modelRows = '<div class="cursor-model-breakdown">';
-        for (var mi = 0; mi < models.length; mi++) {
-          var m = models[mi];
-          var mUsedPct = m.usedPct || 0;
-          var mRemPct = Math.max(0, 100 - mUsedPct);
-          var mCls = mRemPct > 50 ? 'good' : mRemPct > 20 ? 'ok' : mRemPct > 0 ? 'warning' : 'exhausted';
-          var mResetStr = m.resetTime ? formatResetTime(m.resetTime) : '';
-          var tierLabel = (m.tier || m.modelId || 'Other');
-          modelRows += '<div class="cursor-model-row">' +
-            '<span class="cursor-model-name">' + esc(m.modelId || tierLabel) + '</span>' +
-            '<div class="quota-minibar"><div class="quota-minibar-fill ' + mCls + '" style="width:' + mRemPct + '%"></div></div>' +
-            '<span class="cursor-model-usage">' + mRemPct.toFixed(0) + '% left</span>' +
-            (mResetStr ? '<span class="quota-reset">\u21bb ' + mResetStr + '</span>' : '') +
-            '</div>';
-        }
-        modelRows += '</div>';
-      }
-    } catch(e) { /* graceful degradation */ }
+  var hasConsumerTier = false;
+  for (var i = 0; i < geminiSnaps.length; i++) {
+    var t = (geminiSnaps[i].tier || '').toLowerCase();
+    if (t === 'free' || t === 'pro' || t === 'ultra') {
+      hasConsumerTier = true;
+      break;
+    }
   }
 
-  return '<div class="provider-section" data-provider="gemini">' +
+  var migrationHTML = '';
+  if (hasConsumerTier) {
+    migrationHTML = '<div class="migration-box">' +
+      '<div class="migration-title">🚀 Upgrade to the Go-native Antigravity CLI</div>' +
+      '<div class="migration-desc">' +
+        'Google is sunsetting the legacy npm-based <code>gemini-cli</code> for consumer tiers on <strong>June 18</strong>. ' +
+        'Professional developers and teams are migrating to the high-velocity Go-native <strong>Antigravity CLI</strong>, ' +
+        'which coordinates with Antigravity Main and IDE harnesses. Run these commands to upgrade:' +
+      '</div>' +
+      '<div class="migration-code-block">' +
+        '# 1. Uninstall legacy npm CLI\n' +
+        'npm uninstall -g @google/gemini-cli\n\n' +
+        '# 2. Install the new Go-native Antigravity CLI\n' +
+        '# Windows (PowerShell):\n' +
+        'iwr -useb https://antigravity.google/install.ps1 | iex\n\n' +
+        '# Mac / Linux:\n' +
+        'curl -fsSL https://antigravity.google/install.sh | sh\n\n' +
+        '# 3. Import configurations\n' +
+        'antigravity /config import --source=gemini-cli\n\n' +
+        '# 4. Add alias to shell config\n' +
+        'alias gemini="antigravity"' +
+      '</div>' +
+      '</div>';
+  }
+
+  var html = '<div class="provider-section" data-provider="gemini">' +
     '<div class="provider-header" data-toggle-provider="section-gemini">' +
     '<div class="provider-header-left">' +
     '<span class="provider-chevron" id="pchev-section-gemini">' + gmChevron + '</span>' +
-    '<span class="provider-name">\u2728 Gemini CLI</span>' +
-    '<span class="provider-count">1 account</span>' +
+    '<span class="provider-name">\u2728 Gemini CLI' + (hasConsumerTier ? ' <span class="gemini-deprecation-badge">⚠️ Sunset Alert: June 18</span>' : '') + '</span>' +
+    '<span class="provider-count">' + geminiSnaps.length + ' account' + (geminiSnaps.length !== 1 ? 's' : '') + '</span>' +
     '</div></div>' +
     '<div class="provider-body' + gmCollapseClass + '" id="section-gemini">' +
+    migrationHTML +
     '<div class="grid-header grid-gemini">' +
-    '<div>Account</div><div>Tier</div><div>Usage</div><div>Last Snap</div><div>Status</div>' +
-    '</div>' +
-    '<div class="account-card"><div class="account-row grid-gemini">' +
-    '<div class="account-info"><div class="account-email">' + esc(displayName) + '</div></div>' +
-    '<div>' + (gs.tier ? '<span class="plan-badge">' + esc(gs.tier) + '</span>' : String.fromCharCode(8212)) + '</div>' +
-    '<div class="quota-cell" title="Arithmetic mean across reported Gemini model buckets"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span>' +
-    '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div>' +
-    '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
-    '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
-    '</div>' + modelRows + '</div></div></div>';
+    '<div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="tier">Tier <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="usage">Usage <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div>' +
+    '</div>';
+
+  var sortedSnaps = sortProviderArray(geminiSnaps, 'gemini');
+  var renderedCount = 0;
+  for (var i = 0; i < sortedSnaps.length; i++) {
+    var gs = sortedSnaps[i];
+    var gmStatus = getGeminiStatus(gs);
+    if (statusFilter !== 'all' && gmStatus !== statusFilter) continue;
+    renderedCount++;
+
+    var overallPct = gs.overallPct || 0;
+    var remaining = Math.max(0, 100 - overallPct);
+    var cls = remaining > 50 ? 'good' : remaining > 20 ? 'ok' : remaining > 0 ? 'warning' : 'exhausted';
+    var capturedAgo = gs.capturedAt ? formatTimeAgo(gs.capturedAt) : '\u2014';
+    var dotCls = overallPct >= 80 ? 'dot-low' : 'dot-ready';
+    var dotText = dotCls === 'dot-ready' ? 'Ready' : 'Low';
+    var displayName = gs.email || 'Gemini CLI';
+
+    // Build per-model breakdown rows from modelsJson
+    var modelRows = '';
+    if (gs.modelsJson && gs.modelsJson !== '[]') {
+      try {
+        var models = typeof gs.modelsJson === 'string' ? JSON.parse(gs.modelsJson) : gs.modelsJson;
+        if (Array.isArray(models) && models.length > 0) {
+          modelRows = '<div class="cursor-model-breakdown">';
+          for (var mi = 0; mi < models.length; mi++) {
+            var m = models[mi];
+            var mUsedPct = m.usedPct || 0;
+            var mRemPct = Math.max(0, 100 - mUsedPct);
+            var mCls = mRemPct > 50 ? 'good' : mRemPct > 20 ? 'ok' : mRemPct > 0 ? 'warning' : 'exhausted';
+            var mResetStr = m.resetTime ? formatResetTime(m.resetTime) : '';
+            var tierLabel = (m.tier || m.modelId || 'unknown');
+            modelRows += '<div class="cursor-model-row">' +
+              '<span class="cursor-model-name">' + esc(m.modelId || tierLabel) + '</span>' +
+              '<div class="quota-minibar"><div class="quota-minibar-fill ' + mCls + '" style="width:' + mRemPct + '%"></div></div>' +
+              '<span class="cursor-model-usage">' + mRemPct.toFixed(0) + '% left</span>' +
+              (mResetStr ? '<span class="quota-reset">\u21bb ' + mResetStr + '</span>' : '') +
+              '</div>';
+          }
+          modelRows += '</div>';
+        }
+      } catch(e) { /* graceful degradation */ }
+    }
+
+    var localAccId = gs.accountId || 0;
+    var accId = 'acc-gemini-' + gs.id;
+    var isExpanded = expandedAccounts.has(accId as any);
+    var chevronCls = isExpanded ? 'chevron expanded' : 'chevron';
+
+    var chevronHTML = (localAccId > 0 || modelRows) ? '<span class="' + chevronCls + '" id="chev-' + accId + '">▸</span> ' : '';
+    var manageBadge = localAccId > 0 ? ' <span class="manage-account-badge">⚙️ Manage</span>' : '';
+    var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + manageBadge + '</div>';
+
+    var actionsHTML = '';
+    if (localAccId > 0 || modelRows) {
+      var expandedCls = isExpanded ? ' is-expanded' : '';
+      var accountActions = localAccId > 0 ?
+        '<div class="account-actions">' +
+        '<button class="btn-clear-snaps" data-clear-account="' + localAccId + '" data-clear-email="' + esc(displayName) + '" title="Delete all snapshots for this account">Clear Snapshots</button>' +
+        '<button class="btn-delete-account" data-delete-account="' + localAccId + '" data-delete-email="' + esc(displayName) + '" title="Remove account and all its data">Remove Account</button>' +
+        '</div>' : '';
+      actionsHTML = '<div class="model-details' + expandedCls + '" id="' + accId + '">' +
+        modelRows +
+        accountActions +
+        '</div>';
+    }
+
+    var toggleAttr = (localAccId > 0 || modelRows) ? ' data-toggle="' + accId + '"' : '';
+
+    var statusClass = '';
+    if (gmStatus === 'empty') statusClass = ' status-empty';
+    else if (gmStatus === 'low') statusClass = ' status-low';
+    else statusClass = ' status-ready';
+
+    html += '<div class="account-card' + statusClass + '"><div class="account-row grid-gemini"' + toggleAttr + '>' +
+      '<div class="account-info">' + emailHTML + '</div>' +
+      '<div>' + (gs.tier ? (function() {
+        var tierL = gs.tier.toLowerCase();
+        var badge = '<span class="plan-badge">' + esc(gs.tier) + '</span>';
+        if (tierL === 'free' || tierL === 'pro' || tierL === 'ultra') {
+          badge += ' <span class="gemini-deprecation-badge" style="margin-left: 5px; font-size: 9px; padding: 1px 4px;">⚠️ Sunset</span>';
+        }
+        return badge;
+      })() : String.fromCharCode(8212)) + '</div>' +
+      '<div class="quota-cell" title="Arithmetic mean across reported Gemini model buckets"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span>' +
+      '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div>' +
+      '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
+      '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
+      '</div>' +
+      actionsHTML +
+      '</div>';
+  }
+
+  if (renderedCount === 0) return '';
+  html += '</div></div>';
+  return html;
 }
 
 export function getCopilotStatus(snap: any): string {
@@ -816,44 +1329,91 @@ export function getCopilotStatus(snap: any): string {
   return 'ready';
 }
 
-export function renderCopilotProviderSection(cp: any): string {
-  // Premium interactions
-  var premiumPct = cp.premiumPct || 0;
-  var premiumRem = Math.max(0, 100 - premiumPct);
-  var premiumCls = premiumRem > 50 ? 'good' : premiumRem > 20 ? 'ok' : premiumRem > 0 ? 'warning' : 'exhausted';
-
-  // Chat usage
-  var chatPct = cp.chatPct || 0;
-  var chatRem = Math.max(0, 100 - chatPct);
-  var chatCls = chatRem > 50 ? 'good' : chatRem > 20 ? 'ok' : chatRem > 0 ? 'warning' : 'exhausted';
-
-  var capturedAgo = cp.capturedAt ? formatTimeAgo(cp.capturedAt) : '\u2014';
-  var dotCls = premiumPct >= 80 ? 'dot-low' : 'dot-ready';
-  var dotText = dotCls === 'dot-ready' ? 'Ready' : 'Low';
-  var displayName = cp.username || cp.email || 'Copilot';
-
+export function renderCopilotProviderSection(copilotSnaps: any[], statusFilter: string): string {
   var cpCollapseClass = collapsedProviders.has('section-copilot') ? ' collapsed' : '';
-  var cpChevron = collapsedProviders.has('section-copilot') ? '\u25b8' : '\u25be';
+  var cpChevron = collapsedProviders.has('section-copilot') ? '▸' : '▾';
 
-  return '<div class="provider-section" data-provider="copilot">' +
+  var html = '<div class="provider-section" data-provider="copilot">' +
     '<div class="provider-header" data-toggle-provider="section-copilot">' +
     '<div class="provider-header-left">' +
     '<span class="provider-chevron" id="pchev-section-copilot">' + cpChevron + '</span>' +
     '<span class="provider-name">\ud83d\udc19 GitHub Copilot</span>' +
-    '<span class="provider-count">1 account</span>' +
+    '<span class="provider-count">' + copilotSnaps.length + ' account' + (copilotSnaps.length !== 1 ? 's' : '') + '</span>' +
     '</div></div>' +
     '<div class="provider-body' + cpCollapseClass + '" id="section-copilot">' +
     '<div class="grid-header grid-copilot">' +
-    '<div>Account</div><div>Plan</div><div>Premium</div><div>Chat</div><div>Last Snap</div><div>Status</div>' +
-    '</div>' +
-    '<div class="account-card"><div class="account-row grid-copilot">' +
-    '<div class="account-info"><div class="account-email">' + esc(displayName) + '</div></div>' +
-    '<div>' + (cp.plan ? '<span class="plan-badge">' + esc(cp.plan) + '</span>' : String.fromCharCode(8212)) + '</div>' +
-    '<div class="quota-cell"><span class="quota-pct ' + premiumCls + '">' + premiumRem.toFixed(0) + '% left</span>' +
-    '<div class="quota-minibar"><div class="quota-minibar-fill ' + premiumCls + '" style="width:' + premiumRem + '%"></div></div></div>' +
-    '<div class="quota-cell"><span class="quota-pct ' + chatCls + '">' + chatRem.toFixed(0) + '% left</span>' +
-    '<div class="quota-minibar"><div class="quota-minibar-fill ' + chatCls + '" style="width:' + chatRem + '%"></div></div></div>' +
-    '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
-    '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
-    '</div></div></div></div>';
+    '<div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="premium">Premium <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="chat">Chat <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div>' +
+    '</div>';
+
+  var sortedSnaps = sortProviderArray(copilotSnaps, 'copilot');
+  var renderedCount = 0;
+  for (var i = 0; i < sortedSnaps.length; i++) {
+    var cp = sortedSnaps[i];
+    var cpStatus = getCopilotStatus(cp);
+    if (statusFilter !== 'all' && cpStatus !== statusFilter) continue;
+    renderedCount++;
+
+    // Premium interactions
+    var premiumPct = cp.premiumPct || 0;
+    var premiumRem = Math.max(0, 100 - premiumPct);
+    var premiumCls = premiumRem > 50 ? 'good' : premiumRem > 20 ? 'ok' : premiumRem > 0 ? 'warning' : 'exhausted';
+
+    // Chat usage
+    var chatPct = cp.chatPct || 0;
+    var chatRem = Math.max(0, 100 - chatPct);
+    var chatCls = chatRem > 50 ? 'good' : chatRem > 20 ? 'ok' : chatRem > 0 ? 'warning' : 'exhausted';
+
+    var capturedAgo = cp.capturedAt ? formatTimeAgo(cp.capturedAt) : '\u2014';
+    var dotCls = premiumPct >= 80 ? 'dot-low' : 'dot-ready';
+    var dotText = dotCls === 'dot-ready' ? 'Ready' : 'Low';
+    var displayName = cp.username || cp.email || 'Copilot';
+
+    var localAccId = cp.accountId || 0;
+    var accId = 'acc-copilot-' + cp.id;
+    var isExpanded = expandedAccounts.has(accId as any);
+    var chevronCls = isExpanded ? 'chevron expanded' : 'chevron';
+
+    var chevronHTML = localAccId > 0 ? '<span class="' + chevronCls + '" id="chev-' + accId + '">▸</span> ' : '';
+    var manageBadge = localAccId > 0 ? ' <span class="manage-account-badge">⚙️ Manage</span>' : '';
+    var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + manageBadge + '</div>';
+
+    var actionsHTML = '';
+    if (localAccId > 0) {
+      var expandedCls = isExpanded ? ' is-expanded' : '';
+      actionsHTML = '<div class="model-details' + expandedCls + '" id="' + accId + '">' +
+        '<div class="account-actions" style="margin-top:0">' +
+        '<button class="btn-clear-snaps" data-clear-account="' + localAccId + '" data-clear-email="' + esc(displayName) + '" title="Delete all snapshots for this account">Clear Snapshots</button>' +
+        '<button class="btn-delete-account" data-delete-account="' + localAccId + '" data-delete-email="' + esc(displayName) + '" title="Remove account and all its data">Remove Account</button>' +
+        '</div></div>';
+    }
+
+    var toggleAttr = localAccId > 0 ? ' data-toggle="' + accId + '"' : '';
+
+    var statusClass = '';
+    if (cpStatus === 'empty') statusClass = ' status-empty';
+    else if (cpStatus === 'low') statusClass = ' status-low';
+    else statusClass = ' status-ready';
+
+    html += '<div class="account-card' + statusClass + '"><div class="account-row grid-copilot"' + toggleAttr + '>' +
+      '<div class="account-info">' + emailHTML + '</div>' +
+      '<div>' + (cp.plan ? '<span class="plan-badge">' + esc(cp.plan) + '</span>' : String.fromCharCode(8212)) + '</div>' +
+      '<div class="quota-cell"><span class="quota-pct ' + premiumCls + '">' + premiumRem.toFixed(0) + '% left</span>' +
+      '<div class="quota-minibar"><div class="quota-minibar-fill ' + premiumCls + '" style="width:' + premiumRem + '%"></div></div></div>' +
+      '<div class="quota-cell"><span class="quota-pct ' + chatCls + '">' + chatRem.toFixed(0) + '% left</span>' +
+      '<div class="quota-minibar"><div class="quota-minibar-fill ' + chatCls + '" style="width:' + chatRem + '%"></div></div></div>' +
+      '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
+      '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
+      '</div>' +
+      actionsHTML +
+      '</div>';
+  }
+
+  if (renderedCount === 0) return '';
+  html += '</div></div>';
+  return html;
 }

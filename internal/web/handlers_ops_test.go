@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -96,7 +97,14 @@ func TestHandleBackupDeprecatedGetReturnsGone(t *testing.T) {
 }
 
 func TestHandleBackupCreateDownloadsDatabase(t *testing.T) {
-	srv := &Server{logger: slog.Default(), store: openTestStore(t)}
+	st := openTestStore(t)
+	if _, _, err := st.EnsureDashboardToken(); err != nil {
+		t.Fatalf("EnsureDashboardToken: %v", err)
+	}
+	if _, err := st.SetConfig("smtp_pass", "super-secret-pass"); err != nil {
+		t.Fatalf("SetConfig smtp_pass: %v", err)
+	}
+	srv := &Server{logger: slog.Default(), store: st}
 	req := httptest.NewRequest(http.MethodPost, "/api/backup/create", nil)
 	rec := httptest.NewRecorder()
 
@@ -113,6 +121,22 @@ func TestHandleBackupCreateDownloadsDatabase(t *testing.T) {
 	}
 	if rec.Body.Len() == 0 {
 		t.Fatal("expected non-empty backup body")
+	}
+
+	backupPath := filepath.Join(t.TempDir(), "backup.db")
+	if err := os.WriteFile(backupPath, rec.Body.Bytes(), 0o600); err != nil {
+		t.Fatalf("write backup fixture: %v", err)
+	}
+	backup, err := store.Open(backupPath, store.WithSecretBackend(store.NewMemorySecretBackend()))
+	if err != nil {
+		t.Fatalf("store.Open(backup): %v", err)
+	}
+	defer backup.Close()
+	if got := backup.GetConfig(store.DashboardTokenConfigKey); got != "" {
+		t.Fatalf("dashboard token was present in backup")
+	}
+	if got := backup.GetConfig("smtp_pass"); got != "" {
+		t.Fatalf("smtp_pass was present in backup")
 	}
 }
 

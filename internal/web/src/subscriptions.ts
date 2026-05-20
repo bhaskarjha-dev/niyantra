@@ -1,11 +1,10 @@
 // Niyantra Dashboard — Subscriptions Module
 // Render, modal, search for subscription management.
 
-import { presetsData } from './core/state';
+import { presetsData, collapsedSubProviders } from './core/state';
 import type { Subscription } from './types/api';
 import { esc, showToast, currencySymbol, formatDurationSec, formatNumber } from './core/utils';
 import { fetchSubscriptions, createSubscription, updateSubscription, deleteSubscription } from './core/api';
-import { checkOnboardingStep } from './core/onboarding';
 import { emptySubscriptions } from './core/emptyStates';
 
 export function loadSubscriptions(): void {
@@ -34,9 +33,6 @@ export function renderSubscriptions(data: any) {
     if (emptyAddBtn) emptyAddBtn.addEventListener('click', function() { openModal(); });
     return;
   }
-
-  // F7-UX: Mark subscription onboarding step as complete
-  checkOnboardingStep('subscription');
 
   // Split subs into auto-tracked provider groups vs manual
   var providerGroups: Record<string, any> = {};
@@ -107,17 +103,21 @@ export function renderSubscriptions(data: any) {
 
     var sectionId = 'sub-provider-' + provider.replace(/\s+/g, '-').toLowerCase();
     var providerAttr = provider.toLowerCase().replace(/[^a-z]/g, '');
+    var collapsed = collapsedSubProviders.has(sectionId);
+    var subCollapseClass = collapsed ? ' collapsed' : '';
+    var subChevron = collapsed ? '▸' : '▾';
+
     html += '<div class="provider-section" data-provider="' + providerAttr + '">' +
       '<div class="provider-header" data-toggle-provider="' + sectionId + '">' +
       '<div class="provider-header-left">' +
-      '<span class="provider-chevron" id="pchev-' + sectionId + '">▾</span> ' +
+      '<span class="provider-chevron" id="pchev-' + sectionId + '">' + subChevron + '</span> ' +
       '<span class="provider-icon">' + icon + '</span>' +
       '<span class="provider-name">' + esc(provider) + '</span>' +
       '<span class="provider-count">' + items.length + ' account' + (items.length !== 1 ? 's' : '') + '</span>' +
       '</div>' +
       '<span class="provider-spend">' + sym + group.total.toFixed(2) + '/mo</span>' +
       '</div>' +
-      '<div class="provider-body" id="' + sectionId + '">' +
+      '<div class="provider-body' + subCollapseClass + '" id="' + sectionId + '">' +
       '<div class="subs-card-grid">';
 
     // Render each auto-tracked sub as a FULL CARD (same as manual)
@@ -158,7 +158,7 @@ export function renderSubscriptions(data: any) {
   grid.innerHTML = html;
 
   // Wire up provider section collapse/expand
-  grid.querySelectorAll('.provider-header').forEach(function(hdr) {
+  grid.querySelectorAll('.provider-header[data-toggle-provider]').forEach(function(hdr) {
     hdr.addEventListener('click', function() {
       var targetId = (hdr as HTMLElement).dataset.toggleProvider!;
       var body = document.getElementById(targetId);
@@ -166,6 +166,12 @@ export function renderSubscriptions(data: any) {
       if (!body) return;
       var collapsed = body.classList.toggle('collapsed');
       if (chev) chev.textContent = collapsed ? '▸' : '▾';
+      if (collapsed) {
+        collapsedSubProviders.add(targetId);
+      } else {
+        collapsedSubProviders.delete(targetId);
+      }
+      localStorage.setItem('niyantra_collapsed_subs_providers', JSON.stringify(Array.from(collapsedSubProviders)));
     });
   });
 }
