@@ -947,6 +947,27 @@ func (s *Store) migrate() error {
 		}
 	}
 
+	// ── v22: Ensure plan_tier, overage_credits, and has_claimed_bonus_2026 exist on accounts table ──
+	if s.getUserVersion() < 22 {
+		for _, col := range []struct {
+			name string
+			def  string
+		}{
+			{"plan_tier", "TEXT CHECK(plan_tier IN ('pro', 'ultra', 'flagship', 'enterprise', 'free')) DEFAULT 'pro'"},
+			{"overage_credits", "REAL DEFAULT 0.0"},
+			{"has_claimed_bonus_2026", "INTEGER DEFAULT 0"},
+		} {
+			if !columnExists(s.db, "accounts", col.name) {
+				if _, err := s.db.Exec(fmt.Sprintf("ALTER TABLE accounts ADD COLUMN %s %s", col.name, col.def)); err != nil {
+					return fmt.Errorf("store: alter accounts (%s): %w", col.name, err)
+				}
+			}
+		}
+		if err := s.setUserVersion(22); err != nil {
+			return err
+		}
+	}
+
 	if _, err := s.db.Exec(`
 		UPDATE codex_snapshots SET owner_account_id = NULL WHERE owner_account_id = 0;
 		UPDATE cursor_snapshots SET account_id = NULL WHERE account_id = 0;
