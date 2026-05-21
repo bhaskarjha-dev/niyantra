@@ -57,6 +57,26 @@ export function getCodexClaudeStatus(snap: any): string {
   return 'ready';
 }
 
+export function getCodexSoonestResetSec(cs: any): number {
+  var now = Date.now();
+  var soonest = Infinity;
+  if (cs.fiveHourReset) {
+    var t5 = new Date(cs.fiveHourReset).getTime() - now;
+    if (t5 > 0 && t5 < soonest) soonest = t5;
+  }
+  if (cs.sevenDayReset) {
+    var t7 = new Date(cs.sevenDayReset).getTime() - now;
+    if (t7 > 0 && t7 < soonest) soonest = t7;
+  }
+  return soonest === Infinity ? -1 : Math.round(soonest / 1000);
+}
+
+export function getCursorSoonestResetSec(cs: any): number {
+  if (!cs.cycleEnd) return -1;
+  var t = new Date(cs.cycleEnd).getTime() - Date.now();
+  return t > 0 ? Math.round(t / 1000) : -1;
+}
+
 export function sortAccountsArray(accounts: any[]): any[] {
   var state = quotaSortStates.antigravity || quotaSortState;
   var col = state.column;
@@ -126,8 +146,19 @@ export function sortProviderArray(array: any[], provider: string): any[] {
           vb = b.capturedAt ? new Date(b.capturedAt).getTime() : 0;
           break;
         case 'status':
-          va = getCodexClaudeStatus(a);
-          vb = getCodexClaudeStatus(b);
+          var vaReset = getCodexSoonestResetSec(a);
+          var vbReset = getCodexSoonestResetSec(b);
+          if (vaReset < 0) vaReset = 999999999;
+          if (vbReset < 0) vbReset = 999999999;
+          if (vaReset <= 0) vaReset = 0;
+          if (vbReset <= 0) vbReset = 0;
+          if (vaReset === vbReset) {
+            va = getCodexClaudeStatus(a) === 'ready' ? 0 : (getCodexClaudeStatus(a) === 'low' ? 1 : 2);
+            vb = getCodexClaudeStatus(b) === 'ready' ? 0 : (getCodexClaudeStatus(b) === 'low' ? 1 : 2);
+          } else {
+            va = vaReset;
+            vb = vbReset;
+          }
           break;
         default:
           return 0;
@@ -155,8 +186,19 @@ export function sortProviderArray(array: any[], provider: string): any[] {
           vb = b.capturedAt ? new Date(b.capturedAt).getTime() : 0;
           break;
         case 'status':
-          va = getCursorStatus(a);
-          vb = getCursorStatus(b);
+          var vaReset = getCursorSoonestResetSec(a);
+          var vbReset = getCursorSoonestResetSec(b);
+          if (vaReset < 0) vaReset = 999999999;
+          if (vbReset < 0) vbReset = 999999999;
+          if (vaReset <= 0) vaReset = 0;
+          if (vbReset <= 0) vbReset = 0;
+          if (vaReset === vbReset) {
+            va = getCursorStatus(a) === 'ready' ? 0 : (getCursorStatus(a) === 'low' ? 1 : 2);
+            vb = getCursorStatus(b) === 'ready' ? 0 : (getCursorStatus(b) === 'low' ? 1 : 2);
+          } else {
+            va = vaReset;
+            vb = vbReset;
+          }
           break;
         default:
           return 0;
@@ -185,8 +227,8 @@ export function sortProviderArray(array: any[], provider: string): any[] {
           vb = b.capturedAt ? new Date(b.capturedAt).getTime() : 0;
           break;
         case 'status':
-          va = getCopilotStatus(a);
-          vb = getCopilotStatus(b);
+          va = getCopilotStatus(a) === 'ready' ? 0 : (getCopilotStatus(a) === 'low' ? 1 : 2);
+          vb = getCopilotStatus(b) === 'ready' ? 0 : (getCopilotStatus(b) === 'low' ? 1 : 2);
           break;
         default:
           return 0;
@@ -440,7 +482,7 @@ export function renderAccounts(data: any): void {
   }
   html += '<div class="grid-col-credits sortable" data-sort="credits">AI Credits <span class="sort-indicator"></span></div>' +
     '<div class="grid-col-snap sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div>' +
-    '<div class="grid-col-status sortable" data-sort="resetsIn">Status <span class="sort-indicator"></span></div></div>';
+    '<div class="grid-col-status sortable" data-sort="resetsIn">Refresh In <span class="sort-indicator"></span></div></div>';
   for (var i = 0; i < sorted.length; i++) {
     var acc = sorted[i];
     var accId = 'acc-' + acc.accountId;
@@ -743,11 +785,11 @@ export function renderAccounts(data: any): void {
       groupCells +
       creditsCell +
       '<div class="snap-cell"><span class="snap-ago" title="' + esc(acc.lastSeen || '') + '">' + esc(acc.stalenessLabel) + '</span></div>' +
-      '<div class="status-cell"><span class="health-dot ' + dotCls + '">● ' + badgeText + '</span>' + (function() {
+      '<div class="status-cell"><span class="health-dot ' + dotCls + '">●' + (function() {
         var rs = getSoonestResetSec(acc);
         if (rs <= 0) return '';
-        return '<div class="reset-timer" style="margin-top:2px">↻ ' + formatSeconds(rs) + '</div>';
-      })() + '</div>' +
+        return ' ↻ ' + formatSeconds(rs);
+      })() + '</span></div>' +
       '</div>' +
       modelsHTML +
       '</div>';
@@ -891,7 +933,7 @@ export function renderCodexProviderSection(codexSnaps: any[], statusFilter: stri
     '<div class="sortable" data-sort="sevenDay">Weekly <span class="sort-indicator"></span></div>' +
     '<div class="sortable" data-sort="credits">Credits <span class="sort-indicator"></span></div>' +
     '<div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div>' +
-    '<div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="status">Refresh In <span class="sort-indicator"></span></div>' +
     '</div>';
 
   var sortedSnaps = sortProviderArray(codexSnaps, 'codex');
@@ -956,7 +998,10 @@ export function renderCodexProviderSection(codexSnaps: any[], statusFilter: stri
       (sevenReset ? '<span class="quota-reset">\u21bb ' + sevenReset + '</span>' : '') + '</div>' +
       '<div class="credits-cell"><span class="credit-amount">' + creditsStr + '</span></div>' +
       '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
-      '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
+      '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf' + (function() {
+        var rs = getCodexSoonestResetSec(cs);
+        return rs > 0 ? ' ↻ ' + formatSeconds(rs) : '';
+      })() + '</span></div>' +
       '</div>' +
       actionsHTML +
       '</div>';
@@ -995,7 +1040,7 @@ export function renderClaudeProviderSection(cl: any): string {
     '</div></div>' +
     '<div class="provider-body' + clCollapseClass + '" id="section-claude">' +
     '<div class="grid-header grid-claude">' +
-    '<div>Source</div><div>Short-Term</div><div>Weekly</div><div>Last Snap</div><div>Status</div>' +
+    '<div>Source</div><div>Short-Term</div><div>Weekly</div><div>Last Snap</div><div>Refresh In</div>' +
     '</div>' +
     '<div class="account-card' + statusClass + '"><div class="account-row grid-claude">' +
     '<div class="account-info"><div class="account-email">' + esc(cl.source || 'statusline') + '</div></div>' +
@@ -1006,7 +1051,10 @@ export function renderClaudeProviderSection(cl: any): string {
     renderProviderEstBadge(isResetElapsed(cl.sevenDayReset)) +
     '<div class="quota-minibar"><div class="quota-minibar-fill ' + clSevenCls + '" style="width:' + clSevenRem + '%"></div></div></div>' +
     '<div class="snap-cell"><span class="snap-ago">' + clAgo + '</span></div>' +
-    '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
+    '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf' + (function() {
+      var rs = getCodexSoonestResetSec(cl);
+      return rs > 0 ? ' ↻ ' + formatSeconds(rs) : '';
+    })() + '</span></div>' +
     '</div></div></div></div>';
 }
 
@@ -1067,7 +1115,7 @@ export function renderCursorProviderSection(cursorSnaps: any[], statusFilter: st
     '<div class="sortable" data-sort="premiumUsed">Premium Used <span class="sort-indicator"></span></div>' +
     '<div class="sortable" data-sort="usage">Usage <span class="sort-indicator"></span></div>' +
     '<div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div>' +
-    '<div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="status">Refresh In <span class="sort-indicator"></span></div>' +
     '</div>';
 
   var sortedSnaps = sortProviderArray(cursorSnaps, 'cursor');
@@ -1154,7 +1202,10 @@ export function renderCursorProviderSection(cursorSnaps: any[], statusFilter: st
       '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div>' +
       '<div class="quota-cell"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span></div>' +
       '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
-      '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
+      '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf' + (function() {
+        var rs = getCursorSoonestResetSec(cs);
+        return rs > 0 ? ' ↻ ' + formatSeconds(rs) : '';
+      })() + '</span></div>' +
       '</div>' +
       actionsHTML +
       '</div>';
@@ -1198,7 +1249,7 @@ export function renderCopilotProviderSection(copilotSnaps: any[], statusFilter: 
     '<div class="sortable" data-sort="premium">Premium <span class="sort-indicator"></span></div>' +
     '<div class="sortable" data-sort="chat">Chat <span class="sort-indicator"></span></div>' +
     '<div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div>' +
-    '<div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div>' +
+    '<div class="sortable" data-sort="status">Refresh In <span class="sort-indicator"></span></div>' +
     '</div>';
 
   var sortedSnaps = sortProviderArray(copilotSnaps, 'copilot');
@@ -1261,7 +1312,7 @@ export function renderCopilotProviderSection(copilotSnaps: any[], statusFilter: 
       renderProviderEstBadge(cp.capturedAt && new Date(cp.capturedAt).getUTCMonth() !== new Date().getUTCMonth()) +
       '<div class="quota-minibar"><div class="quota-minibar-fill ' + chatCls + '" style="width:' + chatRem + '%"></div></div></div>' +
       '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
-      '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
+      '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf</span></div>' +
       '</div>' +
       actionsHTML +
       '</div>';

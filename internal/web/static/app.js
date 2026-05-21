@@ -696,6 +696,24 @@
     if (fiveUsed >= 80 || sevenUsed >= 80) return "low";
     return "ready";
   }
+  function getCodexSoonestResetSec(cs) {
+    var now = Date.now();
+    var soonest = Infinity;
+    if (cs.fiveHourReset) {
+      var t5 = new Date(cs.fiveHourReset).getTime() - now;
+      if (t5 > 0 && t5 < soonest) soonest = t5;
+    }
+    if (cs.sevenDayReset) {
+      var t7 = new Date(cs.sevenDayReset).getTime() - now;
+      if (t7 > 0 && t7 < soonest) soonest = t7;
+    }
+    return soonest === Infinity ? -1 : Math.round(soonest / 1e3);
+  }
+  function getCursorSoonestResetSec(cs) {
+    if (!cs.cycleEnd) return -1;
+    var t = new Date(cs.cycleEnd).getTime() - Date.now();
+    return t > 0 ? Math.round(t / 1e3) : -1;
+  }
   function sortAccountsArray(accounts) {
     var state = quotaSortStates.antigravity || quotaSortState;
     var col = state.column;
@@ -776,8 +794,19 @@
             vb = b.capturedAt ? new Date(b.capturedAt).getTime() : 0;
             break;
           case "status":
-            va = getCodexClaudeStatus(a);
-            vb = getCodexClaudeStatus(b);
+            var vaReset = getCodexSoonestResetSec(a);
+            var vbReset = getCodexSoonestResetSec(b);
+            if (vaReset < 0) vaReset = 999999999;
+            if (vbReset < 0) vbReset = 999999999;
+            if (vaReset <= 0) vaReset = 0;
+            if (vbReset <= 0) vbReset = 0;
+            if (vaReset === vbReset) {
+              va = getCodexClaudeStatus(a) === "ready" ? 0 : getCodexClaudeStatus(a) === "low" ? 1 : 2;
+              vb = getCodexClaudeStatus(b) === "ready" ? 0 : getCodexClaudeStatus(b) === "low" ? 1 : 2;
+            } else {
+              va = vaReset;
+              vb = vbReset;
+            }
             break;
           default:
             return 0;
@@ -805,8 +834,19 @@
             vb = b.capturedAt ? new Date(b.capturedAt).getTime() : 0;
             break;
           case "status":
-            va = getCursorStatus(a);
-            vb = getCursorStatus(b);
+            var vaReset = getCursorSoonestResetSec(a);
+            var vbReset = getCursorSoonestResetSec(b);
+            if (vaReset < 0) vaReset = 999999999;
+            if (vbReset < 0) vbReset = 999999999;
+            if (vaReset <= 0) vaReset = 0;
+            if (vbReset <= 0) vbReset = 0;
+            if (vaReset === vbReset) {
+              va = getCursorStatus(a) === "ready" ? 0 : getCursorStatus(a) === "low" ? 1 : 2;
+              vb = getCursorStatus(b) === "ready" ? 0 : getCursorStatus(b) === "low" ? 1 : 2;
+            } else {
+              va = vaReset;
+              vb = vbReset;
+            }
             break;
           default:
             return 0;
@@ -834,8 +874,8 @@
             vb = b.capturedAt ? new Date(b.capturedAt).getTime() : 0;
             break;
           case "status":
-            va = getCopilotStatus(a);
-            vb = getCopilotStatus(b);
+            va = getCopilotStatus(a) === "ready" ? 0 : getCopilotStatus(a) === "low" ? 1 : 2;
+            vb = getCopilotStatus(b) === "ready" ? 0 : getCopilotStatus(b) === "low" ? 1 : 2;
             break;
           default:
             return 0;
@@ -1026,7 +1066,7 @@
       for (var gh = 0; gh < GRID_COLUMNS.length; gh++) {
         html += '<div class="grid-col-group sortable" data-sort="' + GRID_COLUMNS[gh] + '">' + (GRID_LABELS[gh] || GRID_COLUMNS[gh]) + ' <span class="sort-indicator"></span></div>';
       }
-      html += '<div class="grid-col-credits sortable" data-sort="credits">AI Credits <span class="sort-indicator"></span></div><div class="grid-col-snap sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="grid-col-status sortable" data-sort="resetsIn">Status <span class="sort-indicator"></span></div></div>';
+      html += '<div class="grid-col-credits sortable" data-sort="credits">AI Credits <span class="sort-indicator"></span></div><div class="grid-col-snap sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="grid-col-status sortable" data-sort="resetsIn">Refresh In <span class="sort-indicator"></span></div></div>';
       for (var i = 0; i < sorted.length; i++) {
         var acc = sorted[i];
         var accId = "acc-" + acc.accountId;
@@ -1247,11 +1287,11 @@
         if (allExhausted(acc)) statusClass = " status-empty";
         else if (!acc.isReady) statusClass = " status-low";
         else statusClass = " status-ready";
-        html += '<div class="account-card' + statusClass + '"><div class="account-row" data-toggle="' + accId + '"><div class="account-info"><div class="account-email"><span class="' + chevronCls + '" id="chev-' + accId + '">\u25B8</span> ' + esc(acc.email) + '</div><div class="account-meta" style="position:relative">' + (acc.planName ? '<span class="plan-badge">' + esc(acc.planName) + "</span>" : "") + renderAccountTags(acc) + renderAccountNote(acc) + "</div></div>" + groupCells + creditsCell + '<div class="snap-cell"><span class="snap-ago" title="' + esc(acc.lastSeen || "") + '">' + esc(acc.stalenessLabel) + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + badgeText + "</span>" + (function() {
+        html += '<div class="account-card' + statusClass + '"><div class="account-row" data-toggle="' + accId + '"><div class="account-info"><div class="account-email"><span class="' + chevronCls + '" id="chev-' + accId + '">\u25B8</span> ' + esc(acc.email) + '</div><div class="account-meta" style="position:relative">' + (acc.planName ? '<span class="plan-badge">' + esc(acc.planName) + "</span>" : "") + renderAccountTags(acc) + renderAccountNote(acc) + "</div></div>" + groupCells + creditsCell + '<div class="snap-cell"><span class="snap-ago" title="' + esc(acc.lastSeen || "") + '">' + esc(acc.stalenessLabel) + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF' + (function() {
           var rs = getSoonestResetSec(acc);
           if (rs <= 0) return "";
-          return '<div class="reset-timer" style="margin-top:2px">\u21BB ' + formatSeconds(rs) + "</div>";
-        })() + "</div></div>" + modelsHTML + "</div>";
+          return " \u21BB " + formatSeconds(rs);
+        })() + "</span></div></div>" + modelsHTML + "</div>";
       }
       html += "</div></div>";
     }
@@ -1343,7 +1383,7 @@
     for (var i = 0; i < codexSnaps.length; i++) {
       if (getCodexClaudeStatus(codexSnaps[i]) === "ready") cxReadyCount++;
     }
-    var html = '<div class="provider-section" data-provider="codex"><div class="provider-header" data-toggle-provider="section-codex"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-codex">' + cxChevron + '</span><span class="provider-name">\u{1F916} Codex / ChatGPT</span><span class="provider-count">' + codexSnaps.length + " account" + (codexSnaps.length !== 1 ? "s" : "") + ' <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + cxReadyCount + ' ready)</span></span></div></div><div class="provider-body' + cxCollapseClass + '" id="section-codex"><div class="grid-header grid-codex"><div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div><div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div><div class="sortable" data-sort="fiveHour">Short-Term <span class="sort-indicator"></span></div><div class="sortable" data-sort="sevenDay">Weekly <span class="sort-indicator"></span></div><div class="sortable" data-sort="credits">Credits <span class="sort-indicator"></span></div><div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div></div>';
+    var html = '<div class="provider-section" data-provider="codex"><div class="provider-header" data-toggle-provider="section-codex"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-codex">' + cxChevron + '</span><span class="provider-name">\u{1F916} Codex / ChatGPT</span><span class="provider-count">' + codexSnaps.length + " account" + (codexSnaps.length !== 1 ? "s" : "") + ' <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + cxReadyCount + ' ready)</span></span></div></div><div class="provider-body' + cxCollapseClass + '" id="section-codex"><div class="grid-header grid-codex"><div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div><div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div><div class="sortable" data-sort="fiveHour">Short-Term <span class="sort-indicator"></span></div><div class="sortable" data-sort="sevenDay">Weekly <span class="sort-indicator"></span></div><div class="sortable" data-sort="credits">Credits <span class="sort-indicator"></span></div><div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="sortable" data-sort="status">Refresh In <span class="sort-indicator"></span></div></div>';
     var sortedSnaps = sortProviderArray(codexSnaps, "codex");
     var renderedCount = 0;
     for (var i = 0; i < sortedSnaps.length; i++) {
@@ -1384,7 +1424,10 @@
       if (cxStatus === "empty") statusClass = " status-empty";
       else if (cxStatus === "low") statusClass = " status-low";
       else statusClass = " status-ready";
-      html += '<div class="account-card' + statusClass + '"><div class="account-row grid-codex"' + toggleAttr + '><div class="account-info">' + emailHTML + metaHTML + "</div><div>" + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell"><span class="quota-pct ' + fiveCls + '">' + estPrefix(isResetElapsed(cs.fiveHourReset)) + fiveRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cs.fiveHourReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + fiveCls + '" style="width:' + fiveRem + '%"></div></div>' + (fiveReset ? '<span class="quota-reset">\u21BB ' + fiveReset + "</span>" : "") + '</div><div class="quota-cell"><span class="quota-pct ' + sevenCls + '">' + estPrefix(isResetElapsed(cs.sevenDayReset)) + sevenRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cs.sevenDayReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + sevenCls + '" style="width:' + sevenRem + '%"></div></div>' + (sevenReset ? '<span class="quota-reset">\u21BB ' + sevenReset + "</span>" : "") + '</div><div class="credits-cell"><span class="credit-amount">' + creditsStr + '</span></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div>" + actionsHTML + "</div>";
+      html += '<div class="account-card' + statusClass + '"><div class="account-row grid-codex"' + toggleAttr + '><div class="account-info">' + emailHTML + metaHTML + "</div><div>" + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell"><span class="quota-pct ' + fiveCls + '">' + estPrefix(isResetElapsed(cs.fiveHourReset)) + fiveRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cs.fiveHourReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + fiveCls + '" style="width:' + fiveRem + '%"></div></div>' + (fiveReset ? '<span class="quota-reset">\u21BB ' + fiveReset + "</span>" : "") + '</div><div class="quota-cell"><span class="quota-pct ' + sevenCls + '">' + estPrefix(isResetElapsed(cs.sevenDayReset)) + sevenRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cs.sevenDayReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + sevenCls + '" style="width:' + sevenRem + '%"></div></div>' + (sevenReset ? '<span class="quota-reset">\u21BB ' + sevenReset + "</span>" : "") + '</div><div class="credits-cell"><span class="credit-amount">' + creditsStr + '</span></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF' + (function() {
+        var rs = getCodexSoonestResetSec(cs);
+        return rs > 0 ? " \u21BB " + formatSeconds(rs) : "";
+      })() + "</span></div></div>" + actionsHTML + "</div>";
     }
     if (renderedCount === 0) return "";
     html += "</div></div>";
@@ -1407,7 +1450,10 @@
     if (clStatus === "empty") statusClass = " status-empty";
     else if (clStatus === "low") statusClass = " status-low";
     else statusClass = " status-ready";
-    return '<div class="provider-section" data-provider="claude"><div class="provider-header" data-toggle-provider="section-claude"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-claude">' + clChevron + '</span><span class="provider-name">\u{1F517} Claude Code</span><span class="provider-count">1 account \xB7 Bridge <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + (getCodexClaudeStatus(cl) === "ready" ? "1 ready" : "0 ready") + ')</span></span></div></div><div class="provider-body' + clCollapseClass + '" id="section-claude"><div class="grid-header grid-claude"><div>Source</div><div>Short-Term</div><div>Weekly</div><div>Last Snap</div><div>Status</div></div><div class="account-card' + statusClass + '"><div class="account-row grid-claude"><div class="account-info"><div class="account-email">' + esc(cl.source || "statusline") + '</div></div><div class="quota-cell"><span class="quota-pct ' + clFiveCls + '">' + estPrefix(isResetElapsed(cl.fiveHourReset)) + clFiveRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cl.fiveHourReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + clFiveCls + '" style="width:' + clFiveRem + '%"></div></div></div><div class="quota-cell"><span class="quota-pct ' + clSevenCls + '">' + estPrefix(isResetElapsed(cl.sevenDayReset)) + clSevenRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cl.sevenDayReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + clSevenCls + '" style="width:' + clSevenRem + '%"></div></div></div><div class="snap-cell"><span class="snap-ago">' + clAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div></div></div></div>";
+    return '<div class="provider-section" data-provider="claude"><div class="provider-header" data-toggle-provider="section-claude"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-claude">' + clChevron + '</span><span class="provider-name">\u{1F517} Claude Code</span><span class="provider-count">1 account \xB7 Bridge <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + (getCodexClaudeStatus(cl) === "ready" ? "1 ready" : "0 ready") + ')</span></span></div></div><div class="provider-body' + clCollapseClass + '" id="section-claude"><div class="grid-header grid-claude"><div>Source</div><div>Short-Term</div><div>Weekly</div><div>Last Snap</div><div>Refresh In</div></div><div class="account-card' + statusClass + '"><div class="account-row grid-claude"><div class="account-info"><div class="account-email">' + esc(cl.source || "statusline") + '</div></div><div class="quota-cell"><span class="quota-pct ' + clFiveCls + '">' + estPrefix(isResetElapsed(cl.fiveHourReset)) + clFiveRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cl.fiveHourReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + clFiveCls + '" style="width:' + clFiveRem + '%"></div></div></div><div class="quota-cell"><span class="quota-pct ' + clSevenCls + '">' + estPrefix(isResetElapsed(cl.sevenDayReset)) + clSevenRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cl.sevenDayReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + clSevenCls + '" style="width:' + clSevenRem + '%"></div></div></div><div class="snap-cell"><span class="snap-ago">' + clAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF' + (function() {
+      var rs = getCodexSoonestResetSec(cl);
+      return rs > 0 ? " \u21BB " + formatSeconds(rs) : "";
+    })() + "</span></div></div></div></div></div>";
   }
   function formatResetTime(isoString) {
     if (!isoString) return "";
@@ -1441,7 +1487,7 @@
     for (var i = 0; i < cursorSnaps.length; i++) {
       if (getCursorStatus(cursorSnaps[i]) === "ready") crReadyCount++;
     }
-    var html = '<div class="provider-section" data-provider="cursor"><div class="provider-header" data-toggle-provider="section-cursor"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-cursor">' + crChevron + '</span><span class="provider-name">\u{1F5B1}\uFE0F Cursor</span><span class="provider-count">' + cursorSnaps.length + " account" + (cursorSnaps.length !== 1 ? "s" : "") + ' <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + crReadyCount + ' ready)</span></span></div></div><div class="provider-body' + crCollapseClass + '" id="section-cursor"><div class="grid-header grid-cursor"><div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div><div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div><div class="sortable" data-sort="premiumUsed">Premium Used <span class="sort-indicator"></span></div><div class="sortable" data-sort="usage">Usage <span class="sort-indicator"></span></div><div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div></div>';
+    var html = '<div class="provider-section" data-provider="cursor"><div class="provider-header" data-toggle-provider="section-cursor"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-cursor">' + crChevron + '</span><span class="provider-name">\u{1F5B1}\uFE0F Cursor</span><span class="provider-count">' + cursorSnaps.length + " account" + (cursorSnaps.length !== 1 ? "s" : "") + ' <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + crReadyCount + ' ready)</span></span></div></div><div class="provider-body' + crCollapseClass + '" id="section-cursor"><div class="grid-header grid-cursor"><div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div><div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div><div class="sortable" data-sort="premiumUsed">Premium Used <span class="sort-indicator"></span></div><div class="sortable" data-sort="usage">Usage <span class="sort-indicator"></span></div><div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="sortable" data-sort="status">Refresh In <span class="sort-indicator"></span></div></div>';
     var sortedSnaps = sortProviderArray(cursorSnaps, "cursor");
     var renderedCount = 0;
     for (var i = 0; i < sortedSnaps.length; i++) {
@@ -1501,7 +1547,10 @@
       if (crStatus === "empty") statusClass = " status-empty";
       else if (crStatus === "low") statusClass = " status-low";
       else statusClass = " status-ready";
-      html += '<div class="account-card' + statusClass + '"><div class="account-row grid-cursor"' + toggleAttr + '><div class="account-info">' + emailHTML + metaHTML + "</div><div>" + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell"><span class="quota-pct ' + cls + '">' + usedStr + " / " + limitStr + "</span>" + renderProviderEstBadge(isResetElapsed(cs.cycleEnd)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div><div class="quota-cell"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div>" + actionsHTML + "</div>";
+      html += '<div class="account-card' + statusClass + '"><div class="account-row grid-cursor"' + toggleAttr + '><div class="account-info">' + emailHTML + metaHTML + "</div><div>" + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell"><span class="quota-pct ' + cls + '">' + usedStr + " / " + limitStr + "</span>" + renderProviderEstBadge(isResetElapsed(cs.cycleEnd)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div><div class="quota-cell"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF' + (function() {
+        var rs = getCursorSoonestResetSec(cs);
+        return rs > 0 ? " \u21BB " + formatSeconds(rs) : "";
+      })() + "</span></div></div>" + actionsHTML + "</div>";
     }
     if (renderedCount === 0) return "";
     html += "</div></div>";
@@ -1521,7 +1570,7 @@
     for (var i = 0; i < copilotSnaps.length; i++) {
       if (getCopilotStatus(copilotSnaps[i]) === "ready") cpReadyCount++;
     }
-    var html = '<div class="provider-section" data-provider="copilot"><div class="provider-header" data-toggle-provider="section-copilot"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-copilot">' + cpChevron + '</span><span class="provider-name">\u{1F419} GitHub Copilot</span><span class="provider-count">' + copilotSnaps.length + " account" + (copilotSnaps.length !== 1 ? "s" : "") + ' <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + cpReadyCount + ' ready)</span></span></div></div><div class="provider-body' + cpCollapseClass + '" id="section-copilot"><div class="grid-header grid-copilot"><div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div><div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div><div class="sortable" data-sort="premium">Premium <span class="sort-indicator"></span></div><div class="sortable" data-sort="chat">Chat <span class="sort-indicator"></span></div><div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div></div>';
+    var html = '<div class="provider-section" data-provider="copilot"><div class="provider-header" data-toggle-provider="section-copilot"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-copilot">' + cpChevron + '</span><span class="provider-name">\u{1F419} GitHub Copilot</span><span class="provider-count">' + copilotSnaps.length + " account" + (copilotSnaps.length !== 1 ? "s" : "") + ' <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + cpReadyCount + ' ready)</span></span></div></div><div class="provider-body' + cpCollapseClass + '" id="section-copilot"><div class="grid-header grid-copilot"><div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div><div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div><div class="sortable" data-sort="premium">Premium <span class="sort-indicator"></span></div><div class="sortable" data-sort="chat">Chat <span class="sort-indicator"></span></div><div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="sortable" data-sort="status">Refresh In <span class="sort-indicator"></span></div></div>';
     var sortedSnaps = sortProviderArray(copilotSnaps, "copilot");
     var renderedCount = 0;
     for (var i = 0; i < sortedSnaps.length; i++) {
@@ -1559,7 +1608,7 @@
       if (cpStatus === "empty") statusClass = " status-empty";
       else if (cpStatus === "low") statusClass = " status-low";
       else statusClass = " status-ready";
-      html += '<div class="account-card' + statusClass + '"><div class="account-row grid-copilot"' + toggleAttr + '><div class="account-info">' + emailHTML + metaHTML + "</div><div>" + (cp.plan ? '<span class="plan-badge">' + esc(cp.plan) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell"><span class="quota-pct ' + premiumCls + '">' + premiumRem.toFixed(0) + "% left</span>" + renderProviderEstBadge(cp.capturedAt && new Date(cp.capturedAt).getUTCMonth() !== (/* @__PURE__ */ new Date()).getUTCMonth()) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + premiumCls + '" style="width:' + premiumRem + '%"></div></div></div><div class="quota-cell"><span class="quota-pct ' + chatCls + '">' + chatRem.toFixed(0) + "% left</span>" + renderProviderEstBadge(cp.capturedAt && new Date(cp.capturedAt).getUTCMonth() !== (/* @__PURE__ */ new Date()).getUTCMonth()) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + chatCls + '" style="width:' + chatRem + '%"></div></div></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div>" + actionsHTML + "</div>";
+      html += '<div class="account-card' + statusClass + '"><div class="account-row grid-copilot"' + toggleAttr + '><div class="account-info">' + emailHTML + metaHTML + "</div><div>" + (cp.plan ? '<span class="plan-badge">' + esc(cp.plan) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell"><span class="quota-pct ' + premiumCls + '">' + premiumRem.toFixed(0) + "% left</span>" + renderProviderEstBadge(cp.capturedAt && new Date(cp.capturedAt).getUTCMonth() !== (/* @__PURE__ */ new Date()).getUTCMonth()) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + premiumCls + '" style="width:' + premiumRem + '%"></div></div></div><div class="quota-cell"><span class="quota-pct ' + chatCls + '">' + chatRem.toFixed(0) + "% left</span>" + renderProviderEstBadge(cp.capturedAt && new Date(cp.capturedAt).getUTCMonth() !== (/* @__PURE__ */ new Date()).getUTCMonth()) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + chatCls + '" style="width:' + chatRem + '%"></div></div></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF</span></div></div>' + actionsHTML + "</div>";
     }
     if (renderedCount === 0) return "";
     html += "</div></div>";
