@@ -34,7 +34,7 @@ import {
 } from './quotas/render';
 import { setupToggle, initQuotas } from './quotas/expand';
 import {
-  renderPinnedBadge, renderAccountTags, renderAccountNote,
+  renderAccountTags, renderAccountNote,
   renderCreditRenewal, updateAccountMeta, initAccountMetaHandlers,
   setRenderAccounts,
 } from './quotas/features';

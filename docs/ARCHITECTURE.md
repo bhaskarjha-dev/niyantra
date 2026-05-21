@@ -205,6 +205,23 @@ For each group:
 - Reset time = earliest resetTime in the group
 - Exhausted = any model in the group has remainingFraction <= 0
 
+### Quota Post-Reset Estimation Engine
+
+To ensure the dashboard represents real-world account availability even when background polling is stale, Niyantra uses optimistic estimation logic when reset boundaries elapse:
+
+1. **Antigravity (Model level)**: Integrated into `internal/client/types.go` (`ApplyResetInference`). When a sprint reset time passes, remaining model fraction is optimistically projected to 100% with a graduated 4-tier confidence rating based on elapsed time:
+   - `high` (<30 min since reset)
+   - `medium` (<6h)
+   - `low` (<24h)
+   - `very_low` (>24h since reset; falls back to original stale values)
+
+2. **Other Providers (Snapshot level)**: Managed by `internal/readiness/estimate.go` and executed in `internal/web/handlers_quota.go` before serving the `/api/status` response.
+   - **Codex & Claude Code**: Simulates rolling 5h/7d window recovery. When reset elapsed, usage is estimated to be fully restored (0% used) for up to 24 hours.
+   - **Cursor**: Simulates billing cycle boundaries. All usage indicators (requests, cents, auto/API percentages) are reset to 0% within a 48-hour window after the `cycleEnd` timestamp.
+   - **GitHub Copilot**: Simulates calendar month boundaries (1st of month UTC). Premium and chat request percentages are estimated as 0% within the first 7 days of the new month.
+
+Estimated values are explicitly identified on the frontend with a `Reset Est.` badge and metadata markers to avoid presenting heuristics as observed truth.
+
 ## 4. internal/notify/ — Quad-Channel Notification Engine
 
 Provides alert delivery for quota warnings via 4 independent channels:

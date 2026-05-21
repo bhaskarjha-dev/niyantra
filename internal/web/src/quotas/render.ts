@@ -873,9 +873,11 @@ export function renderCodexProviderSection(codexSnaps: any[], statusFilter: stri
       '<div class="account-info">' + emailHTML + metaHTML + '</div>' +
       '<div>' + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + '</span>' : String.fromCharCode(8212)) + '</div>' +
       '<div class="quota-cell"><span class="quota-pct ' + fiveCls + '">' + fiveRem.toFixed(0) + '%</span>' +
+      renderProviderEstBadge(isResetElapsed(cs.fiveHourReset)) +
       '<div class="quota-minibar"><div class="quota-minibar-fill ' + fiveCls + '" style="width:' + fiveRem + '%"></div></div>' +
       (fiveReset ? '<span class="quota-reset">\u21bb ' + fiveReset + '</span>' : '') + '</div>' +
       '<div class="quota-cell"><span class="quota-pct ' + sevenCls + '">' + sevenRem.toFixed(0) + '%</span>' +
+      renderProviderEstBadge(isResetElapsed(cs.sevenDayReset)) +
       '<div class="quota-minibar"><div class="quota-minibar-fill ' + sevenCls + '" style="width:' + sevenRem + '%"></div></div>' +
       (sevenReset ? '<span class="quota-reset">\u21bb ' + sevenReset + '</span>' : '') + '</div>' +
       '<div class="credits-cell"><span class="credit-amount">' + creditsStr + '</span></div>' +
@@ -924,8 +926,10 @@ export function renderClaudeProviderSection(cl: any): string {
     '<div class="account-card' + statusClass + '"><div class="account-row grid-claude">' +
     '<div class="account-info"><div class="account-email">' + esc(cl.source || 'statusline') + '</div></div>' +
     '<div class="quota-cell"><span class="quota-pct ' + clFiveCls + '">' + clFiveRem.toFixed(0) + '%</span>' +
+    renderProviderEstBadge(isResetElapsed(cl.fiveHourReset)) +
     '<div class="quota-minibar"><div class="quota-minibar-fill ' + clFiveCls + '" style="width:' + clFiveRem + '%"></div></div></div>' +
     '<div class="quota-cell"><span class="quota-pct ' + clSevenCls + '">' + clSevenRem.toFixed(0) + '%</span>' +
+    renderProviderEstBadge(isResetElapsed(cl.sevenDayReset)) +
     '<div class="quota-minibar"><div class="quota-minibar-fill ' + clSevenCls + '" style="width:' + clSevenRem + '%"></div></div></div>' +
     '<div class="snap-cell"><span class="snap-ago">' + clAgo + '</span></div>' +
     '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +
@@ -939,6 +943,18 @@ export function formatResetTime(isoString: string | null): string {
   var diffSec = (reset.getTime() - now.getTime()) / 1000;
   if (diffSec <= 0) return 'now';
   return formatSeconds(diffSec);
+}
+
+// Returns true if the given ISO reset timestamp is in the past
+function isResetElapsed(isoString: string | null | undefined): boolean {
+  if (!isoString) return false;
+  return new Date(isoString).getTime() < Date.now();
+}
+
+// Renders a small estimation badge for non-Antigravity providers when reset has elapsed
+function renderProviderEstBadge(resetElapsed: boolean): string {
+  if (!resetElapsed) return '';
+  return ' <span class="data-quality-badge" title="Basis: post_reset_estimate | Values may have been restored after reset">Reset Est.</span>';
 }
 
 export function getCursorStatus(snap: any): string {
@@ -1050,6 +1066,7 @@ export function renderCursorProviderSection(cursorSnaps: any[], statusFilter: st
       '<div class="account-info">' + emailHTML + metaHTML + '</div>' +
       '<div>' + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + '</span>' : String.fromCharCode(8212)) + '</div>' +
       '<div class="quota-cell"><span class="quota-pct ' + cls + '">' + usedStr + ' / ' + limitStr + '</span>' +
+      renderProviderEstBadge(isResetElapsed(cs.cycleEnd)) +
       '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div>' +
       '<div class="quota-cell"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span></div>' +
       '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
@@ -1149,8 +1166,10 @@ export function renderCopilotProviderSection(copilotSnaps: any[], statusFilter: 
       '<div class="account-info">' + emailHTML + metaHTML + '</div>' +
       '<div>' + (cp.plan ? '<span class="plan-badge">' + esc(cp.plan) + '</span>' : String.fromCharCode(8212)) + '</div>' +
       '<div class="quota-cell"><span class="quota-pct ' + premiumCls + '">' + premiumRem.toFixed(0) + '% left</span>' +
+      renderProviderEstBadge(cp.capturedAt && new Date(cp.capturedAt).getUTCMonth() !== new Date().getUTCMonth()) +
       '<div class="quota-minibar"><div class="quota-minibar-fill ' + premiumCls + '" style="width:' + premiumRem + '%"></div></div></div>' +
       '<div class="quota-cell"><span class="quota-pct ' + chatCls + '">' + chatRem.toFixed(0) + '% left</span>' +
+      renderProviderEstBadge(cp.capturedAt && new Date(cp.capturedAt).getUTCMonth() !== new Date().getUTCMonth()) +
       '<div class="quota-minibar"><div class="quota-minibar-fill ' + chatCls + '" style="width:' + chatRem + '%"></div></div></div>' +
       '<div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div>' +
       '<div class="status-cell"><span class="health-dot ' + dotCls + '">\u25cf ' + dotText + '</span></div>' +

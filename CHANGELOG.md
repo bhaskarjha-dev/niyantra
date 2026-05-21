@@ -20,6 +20,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Advisor output ranks accounts when no current account is supplied and only gives switch guidance with explicit current-account context.
 - Reset-time elapsed no longer converts exhausted quotas into observed availability; estimated/unknown data is labeled with quality metadata.
 - **Post-reset quota estimation engine rewrite** — `ApplyResetInference` now produces optimistic 100% estimates after sprint reset (matching Google's actual behavior). Previously, exhausted accounts that had reset would still show 0% and score poorly in the advisor, defeating the core account-switching feature. New 4-tier graduated confidence: `high` (<30 min since reset), `medium` (<6h), `low` (<24h), `very_low` (>24h, keeps original values). UI badges differentiate "Reset Est." from "Stale" and "Very Stale".
+- **Multi-provider post-reset estimation** — estimation engine extended to all 4 non-Antigravity providers, each using its actual reset mechanics: Codex/Claude Code (rolling 5h+7d window recovery → usage resets to 0% used), Cursor (monthly billing cycle → all counters reset at `cycleEnd`), GitHub Copilot (calendar month → counters reset on 1st of month). 18 new tests in `estimate_test.go`. Frontend badges show "Reset Est." on all providers when reset time has elapsed.
 - Missing model pricing now produces unavailable cost output instead of false zero-dollar spend.
 
 ## [0.29.0]

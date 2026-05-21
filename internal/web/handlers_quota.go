@@ -56,24 +56,37 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	// C4: Include Codex snapshots (for homepage grid)
 	codexSnaps, _ := s.store.LatestCodexSnapshots()
 	if len(codexSnaps) > 0 {
+		now := time.Now()
+		for _, cs := range codexSnaps {
+			readiness.EstimateCodexSnapshot(cs, now)
+		}
 		result["codexSnapshots"] = codexSnaps
 	}
 
 	// C4: Include Claude snapshot if available
 	claudeSnap, _ := s.store.LatestClaudeSnapshot()
 	if claudeSnap != nil {
+		readiness.EstimateClaudeSnapshot(claudeSnap, time.Now())
 		result["claudeSnapshot"] = claudeSnap
 	}
 
 	// F15a: Include Cursor snapshots if available
 	cursorSnaps, _ := s.store.LatestCursorSnapshots()
 	if len(cursorSnaps) > 0 {
+		now := time.Now()
+		for _, cs := range cursorSnaps {
+			readiness.EstimateCursorSnapshot(cs, now)
+		}
 		result["cursorSnapshots"] = cursorSnaps
 	}
 
 	// F15c: Include Copilot snapshots if available
 	copilotSnaps, _ := s.store.LatestCopilotSnapshots()
 	if len(copilotSnaps) > 0 {
+		now := time.Now()
+		for _, cs := range copilotSnaps {
+			readiness.EstimateCopilotSnapshot(cs, now)
+		}
 		result["copilotSnapshots"] = copilotSnaps
 	}
 
