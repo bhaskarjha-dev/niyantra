@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+### Added
+- **Claude Code manual snap support** — Added `POST /api/claude/snap` endpoint, a direct "Snap" button on the Claude Code quota section (collapsible panel and empty state), and wired "Claude Code" into the global "Snap Now" navigation header dropdown.
+- **Claude Code statusline env var injection** — Injected `CLAUDE_CODE_ENABLE_STATUSLINE=1` into `~/.claude/settings.json`'s `env` block during bridge setup, ensuring that Claude Code emits telemetry data.
+- **Claude Code testing/mocking utility** — Added `scripts/mock_claude_statusline.py` script to generate mock statusline JSON for development and testing without a paid subscription.
+- **OTLP telemetry ADR** — Added `docs/adr/005-claude-code-otel-tracking.md` to design future transition to OpenTelemetry metrics with delta temporality.
+
+### Changed
+- **Claude Code auto-enablement** — The statusline bridge is now automatically enabled on server startup if Claude Code is installed (`~/.claude/` directory exists) unless explicitly disabled in settings.
+
+### Removed
+- **Dead Overview card code** — Cleaned up dead and unused Claude and Codex card logic (`renderClaudeCodeCard`, `loadClaudeCardData`, `loadClaudeDeepUsage`, `renderCodexCard`, and associated HTML) from the Overview tab.
+
 ### Security
 - Dashboard API token is now mandatory for all `/api/*` and HTTP `/mcp` requests. `niyantra serve` prints a tokenized first-open URL, and `niyantra token show|rotate` manages the token.
 - Dashboard and CLI backups now redact sensitive config values from the copied SQLite database, including the dashboard token, provider credentials, notification secrets, and plugin secret-like keys.

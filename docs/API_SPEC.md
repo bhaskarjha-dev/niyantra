@@ -1143,6 +1143,33 @@ Returns Claude Code rate limit data from the statusline bridge.
 
 ---
 
+### `POST /api/claude/snap`
+
+Triggers a manual snapshot capture of Claude Code rate limit data by reading the local statusline bridge file. Provides parity with Codex, Cursor, and Copilot manual snap buttons.
+
+**Request:** No body required.
+
+**Response (success):** `200 OK`
+
+```json
+{
+  "status": "captured",
+  "id": 42,
+  "fiveHourPct": 42.5,
+  "sevenDayPct": 15.0
+}
+```
+
+**Error Responses:**
+- `400` — Claude Code is not installed, or statusline data is invalid/empty
+- `404` — No fresh statusline data (the bridge data is stale or has never been written)
+- `500` — Failed to read statusline data, or failed to save snapshot to SQLite
+
+---
+
+
+---
+
 ### `GET /api/backup`
 
 Legacy route. Returns `410 Gone`; full database backups must use the protected POST flow.

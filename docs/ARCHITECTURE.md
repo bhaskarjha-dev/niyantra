@@ -14,7 +14,7 @@ Application Layer
   agent/        - polling loop + session management
   client/       - LS detection + multi-process account capture (Connect RPC, instance-level dedup)
   codex/        - OAuth + Codex API polling + OIDC JWT parsing
-  claude/       - deep session parser + statusline bridge + settings patch
+  claude/       - deep session parser + statusline bridge + settings patch (auto-enable + env injection)
   cursor/       - session token auth + HTTP API polling
   copilot/      - GitHub PAT + Copilot billing endpoints
   advisor/      - ranking + current-account recommendation engine
@@ -43,7 +43,7 @@ cmd/niyantra/main.go
   |    +-- tracker      (cycles + sessions)
   |    +-- advisor      (ranking/current-account recommendation engine)
   |    +-- codex        (ChatGPT integration)
-  |    +-- claude       (deep JSONL parser + statusline bridge)
+  |    +-- claude       (deep JSONL parser + statusline bridge + env injection)
   |    +-- cursor       (Cursor Pro quota polling)
   |    +-- copilot      (GitHub Copilot billing)
   |    +-- notify       (OS + SMTP + Webhook + WebPush - 4 channels + digest)
@@ -274,7 +274,7 @@ Stack: Go embed.FS + TypeScript (strict mode, 39 modules) bundled via esbuild in
 |----------|---------|------|--------|
 | Antigravity | `client/` | CSRF token / Direct OAuth | Connect RPC to active local LS servers |
 | Codex/ChatGPT | `codex/` | OAuth from `~/.codex/auth.json` | HTTPS to OpenAI API |
-| Claude Code | `claude/` | None (local files) | JSONL session parsing + statusline bridge |
+| Claude Code | `claude/` | None (local files) | JSONL session parsing + statusline bridge (auto-enabled + env injected) |
 | Cursor | `cursor/` | Session token from `~/.cursor-server/` | HTTPS to cursor.com API |
 | GitHub Copilot | `copilot/` | GitHub PAT | HTTPS to GitHub billing API |
 | Manual | `store/` | N/A | User input via subscription form |

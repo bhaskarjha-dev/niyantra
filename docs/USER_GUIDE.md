@@ -438,18 +438,35 @@ The **Overview** tab shows a Codex status card with all three quota windows and 
 
 ### Statusline Bridge
 
-Monitors Claude Code's rate limit data via a statusline bridge. This patches Claude Code's settings to expose rate limit information.
+Monitors Claude Code's rate limit data via a statusline bridge. This bridge parses Claude Code's statusline output to track your remaining 5-hour and 7-day quotas.
 
-1. Enable in **Settings** tab > Claude Code Bridge
-2. Niyantra patches `~/.claude/settings.json` to add statusline data
-3. Rate limit data (5h/7d meters) appears in the dashboard
+- **Auto-Enablement**: If Claude Code is installed on your system (indicated by the presence of a `~/.claude/` directory), Niyantra automatically enables the bridge on startup. You can manually toggle this state via the **Settings** tab under the **Claude Code Bridge** section.
+- **Environment Injection**: When setting up the bridge, Niyantra automatically patches `~/.claude/settings.json` to inject the `CLAUDE_CODE_ENABLE_STATUSLINE=1` environment variable under the `env` block. This variable is required for Claude Code to emit statusline metrics; without it, the bridge receives no data.
+
+### Manual Snapshot Capture
+
+While the background agent updates Claude Code statusline data during active CLI sessions, you can trigger an on-demand snapshot of the latest metrics:
+1. **Snap Now Dropdown**: Select **Claude Code** from the global **Snap Now** dropdown in the navigation header.
+2. **Quota Section Button**: Click the **Snap** button within the Claude Code section or empty-state card in the **Quotas** tab.
+3. **Snap All Sources**: Click the global **Snap All Sources** option.
+
+### Testing and Mocking
+
+If you do not have a paid Claude Code subscription or want to test the tracking logic without running an active session, Niyantra includes a development utility script to simulate statusline activity:
+
+```bash
+python scripts/mock_claude_statusline.py
+```
+
+This script generates a mock statusline file (e.g., at `~/.niyantra/data/claude-statusline.json` or `~/.claude/statusline.json` depending on configuration) simulating various quota levels and reset times.
 
 ### Deep Token Tracking
 
-Niyantra parses Claude Code's JSONL session logs for detailed token analytics:
-- Per-turn input/output/cache token counts
-- Model-aware cost estimation using configured model pricing
-- Daily aggregated views in the Token Usage section
+Niyantra parses Claude Code's local JSONL session logs (located under `~/.claude/projects/*/sessions/*.jsonl`) for detailed token analytics:
+- **Per-Turn Aggregations**: Turn-by-turn tracking of input, output, cache-read, and cache-creation tokens.
+- **Model-Aware Cost Estimation**: Maps token consumption against configured pricing tiers (customizable in Settings).
+- **Data Reliability Caveat**: Due to how Claude Code outputs tokens during streaming generation, the input and output token fields inside the JSONL files may represent streaming placeholder values and be less reliable. However, the cache metrics (`cache_read` and `cache_creation`) are accurate.
+- **Visual Reporting**: Aggregated token metrics are displayed in the Token Usage sections and history charts.
 
 ---
 
