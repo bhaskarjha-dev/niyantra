@@ -832,10 +832,23 @@ export function renderAccounts(data: any): void {
       '<p class="empty-hint">Install Codex CLI and click <strong>Snap Now</strong> to capture</p></div>';
   }
   if (pf === 'claude' && !data.claudeSnapshot) {
+    var claudeStatus = (data as any).claudeStatus;
+    var clInstalled = claudeStatus && claudeStatus.installed;
+    var clBridge = claudeStatus && claudeStatus.bridgeEnabled;
+    var clHint = '';
+    if (!clInstalled) {
+      clHint = '<p class="empty-hint">Install <a href="https://docs.anthropic.com/en/docs/claude-code/overview" target="_blank" style="color:var(--accent)">Claude Code</a> to start tracking quotas</p>';
+    } else if (!clBridge) {
+      clHint = '<p class="empty-hint">Claude Code detected but bridge is disabled</p>' +
+        '<button class="snap-btn" onclick="fetch(\'/api/config\',{method:\'PUT\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({key:\'claude_bridge\',value:\'true\'})}).then(function(){location.reload()})" style="margin-top:8px">Enable Tracking</button>';
+    } else {
+      clHint = '<p class="empty-hint">Bridge is active — start a Claude Code session, then click Snap</p>' +
+        '<button class="snap-btn" id="claude-snap-btn" style="margin-top:8px">⚡ Snap Now</button>';
+    }
     html += '<div class="provider-empty-state" data-provider="claude">' +
-      '<span class="provider-empty-icon">🔮</span>' +
-      '<p>No Claude Code data yet</p>' +
-      '<p class="empty-hint">Enable the Claude bridge in <strong>Settings</strong></p></div>';
+      '<span class="provider-empty-icon">🔗</span>' +
+      '<p>No Claude Code quota data yet</p>' +
+      clHint + '</div>';
   }
   if (pf === 'cursor' && (!data.cursorSnapshots || data.cursorSnapshots.length === 0)) {
     html += '<div class="provider-empty-state" data-provider="cursor">' +
@@ -908,6 +921,29 @@ export function renderAccounts(data: any): void {
     });
   });
   updateSortHeaders();
+
+  // Wire Claude Code snap button
+  var claudeSnapBtn = document.getElementById('claude-snap-btn');
+  if (claudeSnapBtn) {
+    claudeSnapBtn.addEventListener('click', function() {
+      var btn = claudeSnapBtn as HTMLButtonElement;
+      btn.disabled = true;
+      btn.textContent = 'Snapping...';
+      fetch('/api/claude/snap', { method: 'POST' }).then(function(r) {
+        if (!r.ok) return r.json().then(function(e: any) { throw new Error(e.error || 'Snap failed'); });
+        return r.json();
+      }).then(function() {
+        showToast('✅ Claude Code snapshot captured', 'success');
+        fetchStatus().then(function(freshData) {
+          document.dispatchEvent(new CustomEvent('niyantra:status-refreshed', { detail: { data: freshData } }));
+        }).catch(function() {});
+      }).catch(function(err) {
+        btn.disabled = false;
+        btn.textContent = '⚡ Snap Now';
+        showToast('❌ ' + (err.message || 'Snap failed'), 'error');
+      });
+    });
+  }
 }
 
 export function renderCodexProviderSection(codexSnaps: any[], statusFilter: string, allAccounts: any[] = []): string {

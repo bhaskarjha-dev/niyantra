@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bhaskarjha-com/niyantra/internal/claude"
 	"github.com/bhaskarjha-com/niyantra/internal/client"
 	"github.com/bhaskarjha-com/niyantra/internal/readiness"
 	"github.com/bhaskarjha-com/niyantra/internal/store"
@@ -68,6 +69,13 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if claudeSnap != nil {
 		readiness.EstimateClaudeSnapshot(claudeSnap, time.Now())
 		result["claudeSnapshot"] = claudeSnap
+	}
+
+	// Always include Claude install/bridge status for contextual UI
+	result["claudeStatus"] = map[string]interface{}{
+		"installed":     claude.IsClaudeCodeInstalled(),
+		"bridgeEnabled": s.store.GetConfigBool("claude_bridge"),
+		"bridgeFresh":   claude.IsFresh(claude.DefaultStaleness),
 	}
 
 	// F15a: Include Cursor snapshots if available

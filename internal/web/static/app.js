@@ -1319,7 +1319,18 @@
       html += '<div class="provider-empty-state" data-provider="codex"><span class="provider-empty-icon">\u{1F916}</span><p>No Codex snapshots yet</p><p class="empty-hint">Install Codex CLI and click <strong>Snap Now</strong> to capture</p></div>';
     }
     if (pf === "claude" && !data.claudeSnapshot) {
-      html += '<div class="provider-empty-state" data-provider="claude"><span class="provider-empty-icon">\u{1F52E}</span><p>No Claude Code data yet</p><p class="empty-hint">Enable the Claude bridge in <strong>Settings</strong></p></div>';
+      var claudeStatus = data.claudeStatus;
+      var clInstalled = claudeStatus && claudeStatus.installed;
+      var clBridge = claudeStatus && claudeStatus.bridgeEnabled;
+      var clHint = "";
+      if (!clInstalled) {
+        clHint = '<p class="empty-hint">Install <a href="https://docs.anthropic.com/en/docs/claude-code/overview" target="_blank" style="color:var(--accent)">Claude Code</a> to start tracking quotas</p>';
+      } else if (!clBridge) {
+        clHint = `<p class="empty-hint">Claude Code detected but bridge is disabled</p><button class="snap-btn" onclick="fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:'claude_bridge',value:'true'})}).then(function(){location.reload()})" style="margin-top:8px">Enable Tracking</button>`;
+      } else {
+        clHint = '<p class="empty-hint">Bridge is active \u2014 start a Claude Code session, then click Snap</p><button class="snap-btn" id="claude-snap-btn" style="margin-top:8px">\u26A1 Snap Now</button>';
+      }
+      html += '<div class="provider-empty-state" data-provider="claude"><span class="provider-empty-icon">\u{1F517}</span><p>No Claude Code quota data yet</p>' + clHint + "</div>";
     }
     if (pf === "cursor" && (!data.cursorSnapshots || data.cursorSnapshots.length === 0)) {
       html += '<div class="provider-empty-state" data-provider="cursor"><span class="provider-empty-icon">\u{1F5B1}\uFE0F</span><p>No Cursor data yet</p><p class="empty-hint">Enable Cursor capture in <strong>Settings</strong> or click <strong>Snap Now</strong></p></div>';
@@ -1375,6 +1386,30 @@
       });
     });
     updateSortHeaders();
+    var claudeSnapBtn = document.getElementById("claude-snap-btn");
+    if (claudeSnapBtn) {
+      claudeSnapBtn.addEventListener("click", function() {
+        var btn = claudeSnapBtn;
+        btn.disabled = true;
+        btn.textContent = "Snapping...";
+        fetch("/api/claude/snap", { method: "POST" }).then(function(r) {
+          if (!r.ok) return r.json().then(function(e) {
+            throw new Error(e.error || "Snap failed");
+          });
+          return r.json();
+        }).then(function() {
+          showToast("\u2705 Claude Code snapshot captured", "success");
+          fetchStatus().then(function(freshData) {
+            document.dispatchEvent(new CustomEvent("niyantra:status-refreshed", { detail: { data: freshData } }));
+          }).catch(function() {
+          });
+        }).catch(function(err) {
+          btn.disabled = false;
+          btn.textContent = "\u26A1 Snap Now";
+          showToast("\u274C " + (err.message || "Snap failed"), "error");
+        });
+      });
+    }
   }
   function renderCodexProviderSection(codexSnaps, statusFilter, allAccounts = []) {
     var cxCollapseClass = collapsedProviders.has("section-codex") ? " collapsed" : "";
@@ -2721,110 +2756,6 @@
     }
   }
 
-  // internal/web/src/advanced/claude.ts
-  function loadClaudeBridgeStatus() {
-    fetch("/api/claude/status").then(function(r) {
-      return r.json();
-    }).then(function(data) {
-      var statusEl = document.getElementById("claude-bridge-status");
-      if (!statusEl) return;
-      var bridgeOn = data.bridgeEnabled;
-      var installed = data.installed;
-      if (!bridgeOn) {
-        statusEl.style.display = "none";
-        return;
-      }
-      var msg = "";
-      if (!installed) {
-        msg = "\u26A0\uFE0F Claude Code not detected (~/.claude/ not found)";
-      } else if (data.bridgeFresh) {
-        msg = '<span class="claude-bridge-dot"></span> Bridge active';
-        if (data.snapshot) {
-          msg += " \xB7 5h: " + data.snapshot.fiveHourPct.toFixed(1) + "% used";
-        }
-      } else if (data.snapshot) {
-        msg = '<span class="claude-bridge-dot stale"></span> Last data: ' + formatTimeAgo(data.snapshot.capturedAt);
-      } else {
-        msg = '<span class="claude-bridge-dot off"></span> Waiting for Claude Code statusline data...';
-      }
-      statusEl.innerHTML = msg;
-      statusEl.style.display = "";
-    }).catch(function() {
-    });
-  }
-  function renderClaudeCodeCard() {
-    return '<div class="claude-card" id="claude-code-card"><h3>\u{1F517} Claude Code</h3><div id="claude-card-body"><div class="empty-hint">Loading...</div></div><div id="claude-deep-usage" class="claude-deep-section"></div></div>';
-  }
-  function loadClaudeCardData() {
-    fetch("/api/claude/status").then(function(r) {
-      return r.json();
-    }).then(function(data) {
-      var body = document.getElementById("claude-card-body");
-      if (!body) return;
-      if (!data.snapshot) {
-        body.innerHTML = '<div class="empty-hint">No Claude Code data yet. Start a Claude Code session to see rate limits.</div>';
-        return;
-      }
-      var snap = data.snapshot;
-      var html = "";
-      var fiveColor = meterColor(snap.fiveHourPct);
-      var fiveReset = snap.fiveHourReset ? "\u21BB " + formatResetTime(snap.fiveHourReset) : "";
-      html += '<div class="claude-meter"><span class="claude-meter-label">5-Hour</span><div class="claude-meter-track"><div class="claude-meter-fill" style="width:' + snap.fiveHourPct + "%;background:" + fiveColor + '"></div></div><span class="claude-meter-pct" style="color:' + fiveColor + '">' + snap.fiveHourPct.toFixed(1) + '%</span><span class="claude-meter-reset">' + fiveReset + "</span></div>";
-      if (snap.sevenDayPct !== void 0) {
-        var sevenColor = meterColor(snap.sevenDayPct);
-        var sevenReset = snap.sevenDayReset ? "\u21BB " + formatResetTime(snap.sevenDayReset) : "";
-        html += '<div class="claude-meter"><span class="claude-meter-label">7-Day</span><div class="claude-meter-track"><div class="claude-meter-fill" style="width:' + snap.sevenDayPct + "%;background:" + sevenColor + '"></div></div><span class="claude-meter-pct" style="color:' + sevenColor + '">' + snap.sevenDayPct.toFixed(1) + '%</span><span class="claude-meter-reset">' + sevenReset + "</span></div>";
-      }
-      var dotCls = data.bridgeFresh ? "" : "stale";
-      var agoStr = formatTimeAgo(snap.capturedAt);
-      html += '<div class="claude-bridge-badge"><span class="claude-bridge-dot ' + dotCls + '"></span>Bridge ' + (data.bridgeFresh ? "active" : "stale") + " \xB7 Last: " + agoStr + "</div>";
-      body.innerHTML = html;
-    }).catch(function() {
-    });
-  }
-  function meterColor(pct) {
-    if (pct >= 80) return "var(--red)";
-    if (pct >= 50) return "var(--amber)";
-    return "var(--green)";
-  }
-  function loadClaudeDeepUsage() {
-    fetch("/api/claude/usage?days=30").then(function(r) {
-      return r.json();
-    }).then(function(data) {
-      var container = document.getElementById("claude-deep-usage");
-      if (!container) return;
-      if (!data || !data.days || data.days.length === 0) {
-        container.innerHTML = '<div class="empty-hint">No Claude Code session data found. Start coding with Claude Code to see token analytics.</div>';
-        return;
-      }
-      var html = "";
-      html += '<div class="claude-deep-stats">';
-      html += '<div class="claude-deep-stat"><span class="claude-deep-value">' + formatTokens(data.totalTokens) + '</span><span class="claude-deep-label">tokens (30d)</span></div>';
-      html += '<div class="claude-deep-stat"><span class="claude-deep-value">$' + (data.totalCost || 0).toFixed(2) + '</span><span class="claude-deep-label">est. cost</span></div>';
-      html += '<div class="claude-deep-stat"><span class="claude-deep-value">' + (data.totalSessions || 0) + '</span><span class="claude-deep-label">sessions</span></div>';
-      html += '<div class="claude-deep-stat"><span class="claude-deep-value">' + ((data.cacheHitRate || 0) * 100).toFixed(0) + '%</span><span class="claude-deep-label">cache hit</span></div>';
-      html += "</div>";
-      var totalIn = data.totalInput || 0;
-      var totalOut = data.totalOutput || 0;
-      var totalAll = totalIn + totalOut;
-      if (totalAll > 0) {
-        var inPct = (totalIn / totalAll * 100).toFixed(0);
-        var outPct = (totalOut / totalAll * 100).toFixed(0);
-        html += '<div class="claude-token-bar"><div class="claude-token-in" style="width:' + inPct + '%"><span>In ' + formatTokens(totalIn) + '</span></div><div class="claude-token-out" style="width:' + outPct + '%"><span>Out ' + formatTokens(totalOut) + "</span></div></div>";
-      }
-      if (data.topModel) {
-        html += '<div class="claude-deep-meta"><span class="claude-deep-chip">\u{1F3C6} ' + data.topModel + "</span></div>";
-      }
-      container.innerHTML = html;
-    }).catch(function() {
-    });
-  }
-  function formatTokens(n) {
-    if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
-    if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
-    return n.toString();
-  }
-
   // internal/web/src/advanced/codex.ts
   function loadCodexSettingsStatus() {
     var statusEl = document.getElementById("codex-status-settings");
@@ -2995,16 +2926,16 @@
     var tokenSpark = tokenSparkData.length >= 3 ? sparkline(tokenSparkData, { width: 50, height: 18, color: "#6366f1", direction: trendDirection(tokenSparkData) }) : "";
     var costSpark = costSparkData.length >= 3 ? sparkline(costSparkData, { width: 50, height: 18, color: "#f59e0b", direction: trendDirection(costSparkData) }) : "";
     var kpiHTML = '<div class="token-kpi-row">';
-    kpiHTML += buildKpiCard("Total Tokens", formatTokens2(totals.totalTokens), "Usage", tokenSpark);
+    kpiHTML += buildKpiCard("Total Tokens", formatTokens(totals.totalTokens), "Usage", tokenSpark);
     kpiHTML += buildKpiCard("Heuristic Cost", "$" + (totals.estimatedCostUSD || 0).toFixed(2), "Cost", costSpark);
     kpiHTML += buildKpiCard("Active Days", String(kpis.daysActive || 0), "Days");
-    kpiHTML += buildKpiCard("Avg/Day", formatTokens2(kpis.avgTokensPerDay || 0), "Rate");
+    kpiHTML += buildKpiCard("Avg/Day", formatTokens(kpis.avgTokensPerDay || 0), "Rate");
     kpiHTML += buildKpiCard("Cache Rate", Math.round((kpis.cacheHitRate || 0) * 100) + "%", "Cache");
     kpiHTML += "</div>";
     var chipsHTML = '<div class="token-breakdown-chips">';
-    chipsHTML += '<span class="token-chip token-chip-input">Input: ' + formatTokens2(totals.inputTokens) + "</span>";
-    chipsHTML += '<span class="token-chip token-chip-output">Output: ' + formatTokens2(totals.outputTokens) + "</span>";
-    chipsHTML += '<span class="token-chip token-chip-cache">Cache: ' + formatTokens2(totals.cacheTokens) + "</span>";
+    chipsHTML += '<span class="token-chip token-chip-input">Input: ' + formatTokens(totals.inputTokens) + "</span>";
+    chipsHTML += '<span class="token-chip token-chip-output">Output: ' + formatTokens(totals.outputTokens) + "</span>";
+    chipsHTML += '<span class="token-chip token-chip-cache">Cache: ' + formatTokens(totals.cacheTokens) + "</span>";
     if (totals.sessions > 0) {
       chipsHTML += '<span class="token-chip token-chip-sessions">Sessions: ' + totals.sessions + "</span>";
     }
@@ -3021,7 +2952,7 @@
         var color = colors[mi % colors.length];
         var pct = model.percentage || 0;
         var costLabel = model.costUSD > 0 ? " | $" + model.costUSD.toFixed(2) : "";
-        modelHTML += '<div class="token-model-row"><div class="token-model-header"><span class="token-model-name" style="color:' + color + '">' + escapeHtml(model.model) + '</span><span class="token-model-stats">' + formatTokens2(model.totalTokens) + " (" + pct.toFixed(1) + "%)" + costLabel + '</span></div><div class="token-model-bar-track"><div class="token-model-bar-fill" style="width:' + pct + "%;background:" + color + '"></div></div></div>';
+        modelHTML += '<div class="token-model-row"><div class="token-model-header"><span class="token-model-name" style="color:' + color + '">' + escapeHtml(model.model) + '</span><span class="token-model-stats">' + formatTokens(model.totalTokens) + " (" + pct.toFixed(1) + "%)" + costLabel + '</span></div><div class="token-model-bar-track"><div class="token-model-bar-fill" style="width:' + pct + "%;background:" + color + '"></div></div></div>';
       }
       modelHTML += "</div></div>";
     }
@@ -3044,7 +2975,7 @@
         var inputPct = day.totalTokens > 0 ? day.inputTokens / day.totalTokens * barHeight : 0;
         var outputPct = barHeight - inputPct;
         var dayLabel = day.date.substring(5);
-        chartHTML += '<div class="token-bar-col" title="' + day.date + ": " + formatTokens2(day.totalTokens) + " tokens, $" + (day.costUSD || 0).toFixed(2) + '"><div class="token-bar-stack" style="height:' + barHeight + '%"><div class="token-bar-output" style="height:' + outputPct + '%"></div><div class="token-bar-input" style="height:' + inputPct + '%"></div></div><span class="token-bar-label">' + dayLabel + "</span></div>";
+        chartHTML += '<div class="token-bar-col" title="' + day.date + ": " + formatTokens(day.totalTokens) + " tokens, $" + (day.costUSD || 0).toFixed(2) + '"><div class="token-bar-stack" style="height:' + barHeight + '%"><div class="token-bar-output" style="height:' + outputPct + '%"></div><div class="token-bar-input" style="height:' + inputPct + '%"></div></div><span class="token-bar-label">' + dayLabel + "</span></div>";
       }
       chartHTML += "</div>";
       chartHTML += '<div class="token-chart-legend"><span class="token-legend-item"><span class="token-legend-dot" style="background:var(--token-input-color)"></span>Input</span><span class="token-legend-item"><span class="token-legend-dot" style="background:var(--token-output-color)"></span>Output</span></div>';
@@ -3052,7 +2983,7 @@
     }
     var peakHTML = "";
     if (kpis.peakDay) {
-      peakHTML = '<div class="token-peak-badge">Peak: ' + kpis.peakDay + " | " + formatTokens2(kpis.peakDayTokens) + " tokens</div>";
+      peakHTML = '<div class="token-peak-badge">Peak: ' + kpis.peakDay + " | " + formatTokens(kpis.peakDayTokens) + " tokens</div>";
     }
     container.innerHTML = '<div class="overview-card full-width token-analytics-card"><div class="token-analytics-header"><h3>Observed Token Usage</h3>' + rangeHTML + '</div><p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">Observed sources are Claude session files plus any provider rows already persisted into <code>token_usage</code>.</p>' + kpiHTML + chipsHTML + peakHTML + modelHTML + chartHTML + "</div>";
     var rangeBtns = container.querySelectorAll(".token-range-btn");
@@ -3073,7 +3004,7 @@
   function buildKpiCard(label, value, icon, spark) {
     return '<div class="token-kpi-card"><div class="token-kpi-icon">' + icon + '</div><div class="token-kpi-value">' + value + "</div>" + (spark ? '<div class="token-kpi-spark">' + spark + "</div>" : "") + '<div class="token-kpi-label">' + label + "</div></div>";
   }
-  function formatTokens2(n) {
+  function formatTokens(n) {
     if (n >= 1e9) return (n / 1e9).toFixed(1) + "B";
     if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
     if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
@@ -3137,7 +3068,7 @@
         var c = displayCommits[di];
         var barH = maxCost > 0 ? Math.max(3, c.costUSD / maxCost * 100) : 3;
         var barColor = c.costUSD > 0 ? "var(--accent)" : "var(--border)";
-        chartHTML += '<div class="git-bar-col" title="' + escapeAttr(c.shortHash) + ": " + escapeAttr(c.message) + "\n$" + c.costUSD.toFixed(2) + " | " + formatTokens3(c.totalTokens) + ' tokens"><div class="git-bar" style="height:' + barH + "%;background:" + barColor + '"></div><span class="git-bar-hash">' + c.shortHash + "</span></div>";
+        chartHTML += '<div class="git-bar-col" title="' + escapeAttr(c.shortHash) + ": " + escapeAttr(c.message) + "\n$" + c.costUSD.toFixed(2) + " | " + formatTokens2(c.totalTokens) + ' tokens"><div class="git-bar" style="height:' + barH + "%;background:" + barColor + '"></div><span class="git-bar-hash">' + c.shortHash + "</span></div>";
       }
       chartHTML += "</div></div>";
     }
@@ -3151,7 +3082,7 @@
       for (var bi = 0; bi < displayBranches.length; bi++) {
         var b = displayBranches[bi];
         if (b.costUSD === 0 && b.totalTokens === 0) continue;
-        branchHTML += '<div class="git-branch-row"><span class="git-branch-name">' + escapeHtml2(truncate(b.name, 30)) + '</span><span class="git-branch-val">' + b.commits + '</span><span class="git-branch-val">' + formatTokens3(b.totalTokens) + '</span><span class="git-branch-cost">$' + b.costUSD.toFixed(2) + '</span><span class="git-branch-val">$' + b.avgPerCommit.toFixed(2) + "</span></div>";
+        branchHTML += '<div class="git-branch-row"><span class="git-branch-name">' + escapeHtml2(truncate(b.name, 30)) + '</span><span class="git-branch-val">' + b.commits + '</span><span class="git-branch-val">' + formatTokens2(b.totalTokens) + '</span><span class="git-branch-cost">$' + b.costUSD.toFixed(2) + '</span><span class="git-branch-val">$' + b.avgPerCommit.toFixed(2) + "</span></div>";
       }
       branchHTML += "</div></div>";
     }
@@ -3162,7 +3093,7 @@
     for (var ri = 0; ri < showCommits.length; ri++) {
       var rc = showCommits[ri];
       var costBadge = rc.costUSD > 0 ? '<span class="git-cost-badge">$' + rc.costUSD.toFixed(2) + "</span>" : '<span class="git-cost-badge git-cost-zero">-</span>';
-      var tokenBadge = rc.totalTokens > 0 ? '<span class="git-token-badge">' + formatTokens3(rc.totalTokens) + "</span>" : "";
+      var tokenBadge = rc.totalTokens > 0 ? '<span class="git-token-badge">' + formatTokens2(rc.totalTokens) + "</span>" : "";
       commitsHTML += '<div class="git-commit-item"><span class="git-commit-hash">' + rc.shortHash + '</span><span class="git-commit-msg">' + escapeHtml2(rc.message) + '</span><div class="git-commit-meta">' + tokenBadge + costBadge + "</div></div>";
     }
     commitsHTML += "</div></div>";
@@ -3171,7 +3102,7 @@
   function buildKpi(label, value, icon) {
     return '<div class="git-kpi-card"><div class="git-kpi-icon">' + icon + '</div><div class="git-kpi-value">' + value + '</div><div class="git-kpi-label">' + label + "</div></div>";
   }
-  function formatTokens3(n) {
+  function formatTokens2(n) {
     if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
     if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
     return String(n);
@@ -3508,7 +3439,6 @@
       spendHTML += '<div class="overview-big-label">' + onlyCat.count + " " + cats[0] + " subscription" + (onlyCat.count !== 1 ? "s" : "") + "</div>";
     }
     spendHTML += "</div>";
-    var claudeHTML = renderClaudeCodeCard();
     var calendarHTML = "";
     if (renewals.length > 0) {
       calendarHTML = '<div id="renewal-calendar-container" class="overview-card full-width"></div>';
@@ -3525,7 +3455,6 @@
       }
     }
     var exportHTML = '<div class="overview-card full-width"><h3>Export</h3><p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Download a redacted JSON report or a full database backup.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn-add" id="download-csv-btn" style="padding:6px 12px;font-size:12px">\u{1F4E5} CSV</button><button class="btn-add" id="download-json-btn" style="padding:6px 12px;font-size:12px">\u{1F4E6} Redacted JSON</button><button class="btn-add" id="download-backup-btn" style="padding:6px 12px;font-size:12px">\u{1F4BE} DB Backup</button><button class="btn-add" id="generate-report-btn" style="padding:6px 12px;font-size:12px">\u{1F4CA} Monthly Report</button></div></div>';
-    var providerHTML = "";
     var costKPIHTML = '<div id="cost-kpi-container"></div>';
     var tokenAnalyticsHTML = '<div id="token-analytics-container" class="overview-card full-width"></div>';
     var gitCostsHTML = '<div id="git-costs-container" class="overview-card full-width"></div>';
@@ -3540,7 +3469,7 @@
     if (eligibleAccount) {
       bannerHTML = '<div class="io-alert-card" data-account-id="' + eligibleAccount.accountId + '"><div class="io-alert-content"><div class="io-alert-title">\u2728 Google I/O 2026 Promotional Bonus</div><div class="io-alert-desc">Exclusive for Ultra members: Claim your $100 Overage Credit Bonus before it expires on <strong>May 25, 2026</strong>.</div></div><button class="io-claim-btn" data-claim-account-id="' + eligibleAccount.accountId + '">Claim $100 Bonus</button></div>';
     }
-    el.innerHTML = bannerHTML + safeToSpendHTML + advisorHTML + costKPIHTML + tokenAnalyticsHTML + gitCostsHTML + heatmapHTML + providerHTML + insightsHTML + claudeHTML + spendHTML + calendarHTML + linksHTML + exportHTML;
+    el.innerHTML = bannerHTML + safeToSpendHTML + advisorHTML + costKPIHTML + tokenAnalyticsHTML + gitCostsHTML + heatmapHTML + insightsHTML + spendHTML + calendarHTML + linksHTML + exportHTML;
     wireSafeToSpendButtons(openBudgetModal);
     var claimBtn = el.querySelector(".io-claim-btn");
     if (claimBtn) {
@@ -3595,13 +3524,6 @@
         });
       });
     }
-    if (serverConfig["claude_bridge"] === "true") {
-      loadClaudeCardData();
-    } else {
-      var cardBody = document.getElementById("claude-card-body");
-      if (cardBody) cardBody.innerHTML = "";
-    }
-    loadClaudeDeepUsage();
     loadAdvisorCard();
     loadCostKPI();
     loadHeatmap();
@@ -4579,6 +4501,38 @@
       showToast("\u21BB Pricing reset to defaults", "success");
     }).catch(function() {
       showToast("\u274C Failed to reset pricing", "error");
+    });
+  }
+
+  // internal/web/src/advanced/claude.ts
+  function loadClaudeBridgeStatus() {
+    fetch("/api/claude/status").then(function(r) {
+      return r.json();
+    }).then(function(data) {
+      var statusEl = document.getElementById("claude-bridge-status");
+      if (!statusEl) return;
+      var bridgeOn = data.bridgeEnabled;
+      var installed = data.installed;
+      if (!bridgeOn) {
+        statusEl.style.display = "none";
+        return;
+      }
+      var msg = "";
+      if (!installed) {
+        msg = "\u26A0\uFE0F Claude Code not detected (~/.claude/ not found)";
+      } else if (data.bridgeFresh) {
+        msg = '<span class="claude-bridge-dot"></span> Bridge active';
+        if (data.snapshot) {
+          msg += " \xB7 5h: " + data.snapshot.fiveHourPct.toFixed(1) + "% used";
+        }
+      } else if (data.snapshot) {
+        msg = '<span class="claude-bridge-dot stale"></span> Last data: ' + formatTimeAgo(data.snapshot.capturedAt);
+      } else {
+        msg = '<span class="claude-bridge-dot off"></span> Waiting for Claude Code statusline data...';
+      }
+      statusEl.innerHTML = msg;
+      statusEl.style.display = "";
+    }).catch(function() {
     });
   }
 

@@ -107,8 +107,17 @@ func NewServer(logger *slog.Logger, s *store.Store, c *client.Client, port int, 
 		})
 	})
 
-	// Setup Claude Code bridge if enabled
-	if s.GetConfigBool("claude_bridge") {
+	// Setup Claude Code bridge: auto-enable if Claude Code is installed
+	// and user hasn't explicitly disabled it. The bridge is non-invasive
+	// (tees statusline stdin to a file) and is the only source of quota data.
+	if claude.IsClaudeCodeInstalled() {
+		if !s.GetConfigBool("claude_bridge") {
+			// Auto-enable on first detection — user can disable via Settings
+			if _, err := s.SetConfig("claude_bridge", "true"); err == nil {
+				s.SetSourceEnabled("claude_code", true)
+				logger.Info("Claude Code detected — auto-enabled statusline bridge")
+			}
+		}
 		if err := claude.SetupBridge(logger); err != nil {
 			logger.Warn("Claude Code bridge setup failed", "error", err)
 		}
@@ -234,6 +243,7 @@ func (s *Server) ListenAndServe() error {
 	// Phase 9 routes
 	mux.HandleFunc("GET /api/claude/status", s.handleClaudeStatus)
 	mux.HandleFunc("GET /api/claude/usage", s.handleClaudeUsage)
+	mux.HandleFunc("POST /api/claude/snap", snap(s.handleClaudeSnap))
 	mux.HandleFunc("GET /api/backup", s.handleBackupDeprecated)
 	mux.HandleFunc("POST /api/backup/create", mutate(s.handleBackupCreate))
 	mux.HandleFunc("POST /api/notify/test", mutate(s.handleNotifyTest))

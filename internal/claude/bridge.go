@@ -336,6 +336,13 @@ func SetupBridge(logger *slog.Logger) error {
 	} else {
 		logger.Info("Configured Claude Code statusline bridge (prepended to existing command)")
 	}
+
+	// Ensure the statusline env var is set — without this, Claude Code
+	// never pipes data to the statusline command, making the bridge useless.
+	if err := ensureStatuslineEnvVar(logger); err != nil {
+		logger.Warn("Failed to set CLAUDE_CODE_ENABLE_STATUSLINE env var", "error", err)
+	}
+
 	return nil
 }
 
@@ -372,6 +379,50 @@ func EnsureBridge(logger *slog.Logger) {
 		logger.Warn("Claude Code statusline bridge snippet not found in settings — " +
 			"it may have been manually removed. Re-enable in Settings to re-configure.")
 	}
+}
+
+// ensureStatuslineEnvVar sets CLAUDE_CODE_ENABLE_STATUSLINE=1 in the "env"
+// block of ~/.claude/settings.json. Claude Code only pipes statusline JSON
+// when this env var is present. Without it, our bridge snippet is configured
+// but never receives data.
+func ensureStatuslineEnvVar(logger *slog.Logger) error {
+	settings, err := readClaudeSettings()
+	if err != nil {
+		return fmt.Errorf("read settings for env: %w", err)
+	}
+
+	// Get or create the "env" map
+	envRaw, ok := settings["env"]
+	var envMap map[string]interface{}
+	if ok && envRaw != nil {
+		envMap, ok = envRaw.(map[string]interface{})
+		if !ok {
+			// env exists but isn't a map — don't clobber it
+			if logger != nil {
+				logger.Warn("Claude settings.json 'env' is not a map, skipping statusline env var injection")
+			}
+			return nil
+		}
+	} else {
+		envMap = make(map[string]interface{})
+	}
+
+	// Only set if not already present (respect user's explicit choice)
+	if _, exists := envMap["CLAUDE_CODE_ENABLE_STATUSLINE"]; exists {
+		return nil // Already configured
+	}
+
+	envMap["CLAUDE_CODE_ENABLE_STATUSLINE"] = "1"
+	settings["env"] = envMap
+
+	if err := writeClaudeSettings(settings); err != nil {
+		return fmt.Errorf("write env var: %w", err)
+	}
+
+	if logger != nil {
+		logger.Info("Injected CLAUDE_CODE_ENABLE_STATUSLINE=1 into Claude Code settings")
+	}
+	return nil
 }
 
 // DisableBridge removes the bridge snippet from Claude Code settings.

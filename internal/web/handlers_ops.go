@@ -84,6 +84,70 @@ func (s *Server) handleClaudeStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, result)
 }
 
+// handleClaudeSnap manually captures a Claude Code rate limit snapshot
+// by reading the statusline bridge data file. Provides parity with the
+// Codex/Cursor/Copilot manual snap buttons.
+func (s *Server) handleClaudeSnap(w http.ResponseWriter, r *http.Request) {
+	if !claude.IsClaudeCodeInstalled() {
+		jsonError(w, "Claude Code is not installed", http.StatusBadRequest)
+		return
+	}
+
+	if !claude.IsFresh(claude.DefaultStaleness) {
+		jsonError(w, "No fresh statusline data. Start a Claude Code session to generate data.", http.StatusNotFound)
+		return
+	}
+
+	rl, err := claude.ReadData()
+	if err != nil {
+		jsonError(w, fmt.Sprintf("failed to read statusline data: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if !claude.IsValid(rl) {
+		jsonError(w, "statusline data is invalid or empty", http.StatusBadRequest)
+		return
+	}
+
+	var fiveHourPct float64
+	var sevenDayPct *float64
+	var fiveReset, sevenReset *time.Time
+
+	if rl.FiveHour != nil {
+		fiveHourPct = rl.FiveHour.UsedPercentage
+		if rl.FiveHour.ResetsAt > 0 {
+			t := time.Unix(rl.FiveHour.ResetsAt, 0).UTC()
+			fiveReset = &t
+		}
+	}
+	if rl.SevenDay != nil {
+		v := rl.SevenDay.UsedPercentage
+		sevenDayPct = &v
+		if rl.SevenDay.ResetsAt > 0 {
+			t := time.Unix(rl.SevenDay.ResetsAt, 0).UTC()
+			sevenReset = &t
+		}
+	}
+
+	id, err := s.store.InsertClaudeSnapshot(fiveHourPct, sevenDayPct, fiveReset, sevenReset, "manual", nil)
+	if err != nil {
+		jsonError(w, fmt.Sprintf("failed to store snapshot: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.store.UpdateSourceCapture("claude_code")
+	s.store.LogInfo("ui", "claude_snap", "", map[string]interface{}{
+		"fiveHourPct": fiveHourPct,
+		"source":      "manual",
+	})
+
+	writeJSON(w, map[string]interface{}{
+		"status":      "captured",
+		"id":          id,
+		"fiveHourPct": fiveHourPct,
+		"sevenDayPct": sevenDayPct,
+	})
+}
+
 // handleBackupDeprecated rejects the legacy GET backup route. A full SQLite
 // backup is a sensitive state export and must use the protected POST flow.
 func (s *Server) handleBackupDeprecated(w http.ResponseWriter, r *http.Request) {
