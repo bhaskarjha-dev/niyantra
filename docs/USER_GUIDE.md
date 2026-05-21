@@ -136,7 +136,7 @@ Each section has its own header with provider color coding, and automatically in
 
 **Account rows** show:
 - Email, plan name, and time since last snapshot ("2m ago")
-- Color-coded status badge (Ready / Low / Exhausted)
+- Color-coded health dot and reset countdown timer
 - Accounts with low/empty quota are visually dimmed
 
 **Click any row** to expand and see:
