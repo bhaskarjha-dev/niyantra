@@ -1,0 +1,7 @@
+- Feature branches: git checkout -b feat/<name> or refactor/<name>
+- Commit format: "feat: ...", "fix: ...", "refactor: ...", "test: ...", "docs: ..."
+- No file over 300 lines (goal — currently not enforced)
+- Business logic goes in service layer (being added)
+- New providers will use the Provider interface (being added)
+- All API responses are JSON
+- All config is in SQLite config table (key-value)

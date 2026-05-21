@@ -1,13 +1,17 @@
 // Package client provides the Antigravity language server API client.
 //
-// It auto-detects the running Antigravity language server process,
-// discovers its listening port, and fetches quota information via
-// the Connect RPC protocol.
+// Key types:
+//   - Client: Orchestrates auto-detection of processes and Connect RPC endpoint queries
+//   - ConnInfo: Contains diagnostic information for established client connections
 //
-// This package makes exactly ONE network call per FetchQuotas invocation,
-// to localhost only (127.0.0.1). No external network traffic.
+// Dependencies:
+//   - None: This package uses only standard library packages
 //
-// The LS maintains its own cache (~60-120s refresh cycle). Data is always
-// for the correct current account. Users can fine-tune stale values via
-// the Quick Adjust feature after snapping (PATCH /api/snap/adjust).
+// Files:
+//   - client.go: Core detection caching and quota-fetching orchestrations
+//   - detect_unix.go: UNIX-based implementation for discovering process IDs
+//   - detect_windows.go: Windows-based implementation for discovering process IDs
+//   - helpers.go: IDE process signature parsing and path lookups
+//   - probe.go: TCP port probing and CSRF token verification
+//   - types.go: Connect RPC JSON payload mappings and response schemas
 package client
