@@ -89,6 +89,18 @@ export function snapSource(source: string): void {
     );
   }
 
+  if (source === 'claude' || source === 'all') {
+    promises.push(
+      fetch('/api/claude/snap', { method: 'POST' }).then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.error) return { source: 'Claude', error: d.error };
+        var label = 'Claude · ' + (d.fiveHourPct || 0).toFixed(0) + '% / ' + (d.sevenDayPct || 0).toFixed(0) + '%';
+        return { source: 'Claude', data: d, label: label };
+      })
+      .catch(function() { return { source: 'Claude', error: 'capture failed' }; })
+    );
+  }
+
   if (source === 'codex' || source === 'all') {
     promises.push(
       fetch('/api/codex/snap', { method: 'POST' }).then(function(r) { return r.json(); })
