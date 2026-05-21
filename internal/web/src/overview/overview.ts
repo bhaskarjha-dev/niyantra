@@ -8,7 +8,6 @@ import { loadCostKPI } from './cost';
 import { loadHeatmap } from './heatmap';
 import { renderRenewalCalendar } from './calendar';
 import { formatResetTime } from '../quotas/render';
-import { renderClaudeCodeCard, loadClaudeCardData, loadClaudeDeepUsage } from '../advanced/claude';
 import { renderSessionsTimeline } from '../advanced/codex';
 import { loadTokenAnalytics } from './tokenAnalytics';
 import { loadGitCosts } from './gitCosts';
@@ -74,8 +73,6 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
   }
   spendHTML += '</div>';
 
-  var claudeHTML = renderClaudeCodeCard();
-
   var calendarHTML = '';
   if (renewals.length > 0) {
     calendarHTML = '<div id="renewal-calendar-container" class="overview-card full-width"></div>';
@@ -105,8 +102,6 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
     '<button class="btn-add" id="generate-report-btn" style="padding:6px 12px;font-size:12px">📊 Monthly Report</button>' +
     '</div></div>';
 
-  var providerHTML = '';
-
   var costKPIHTML = '<div id="cost-kpi-container"></div>';
   var tokenAnalyticsHTML = '<div id="token-analytics-container" class="overview-card full-width"></div>';
   var gitCostsHTML = '<div id="git-costs-container" class="overview-card full-width"></div>';
@@ -129,7 +124,7 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
       '</div>';
   }
 
-  el.innerHTML = bannerHTML + safeToSpendHTML + advisorHTML + costKPIHTML + tokenAnalyticsHTML + gitCostsHTML + heatmapHTML + providerHTML + insightsHTML + claudeHTML + spendHTML + calendarHTML + linksHTML + exportHTML;
+  el.innerHTML = bannerHTML + safeToSpendHTML + advisorHTML + costKPIHTML + tokenAnalyticsHTML + gitCostsHTML + heatmapHTML + insightsHTML + spendHTML + calendarHTML + linksHTML + exportHTML;
 
   wireSafeToSpendButtons(openBudgetModal);
 
@@ -185,14 +180,6 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
     });
   }
 
-  if (serverConfig['claude_bridge'] === 'true') {
-    loadClaudeCardData();
-  } else {
-    var cardBody = document.getElementById('claude-card-body');
-    if (cardBody) cardBody.innerHTML = '';
-  }
-
-  loadClaudeDeepUsage();
   loadAdvisorCard();
   loadCostKPI();
   loadHeatmap();
