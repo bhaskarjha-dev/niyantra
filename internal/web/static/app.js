@@ -866,6 +866,42 @@
       }
     });
   }
+  function getHumanReadableBasis(basis) {
+    if (!basis) return "";
+    switch (basis) {
+      case "contains_post_reset_estimate":
+        return "Estimated models restored following their reset window";
+      case "sprint_reset_high":
+        return "Optimistic 100% estimate (reset occurred <30m ago)";
+      case "sprint_reset_medium":
+        return "Optimistic 100% estimate (reset occurred <6h ago)";
+      case "sprint_reset_low":
+        return "Optimistic 100% estimate (reset occurred <24h ago)";
+      case "sprint_reset_stale":
+        return "Stale reset window (fallback to last observed value)";
+      case "snapshot_too_stale":
+        return "Snapshot is too old to confidently estimate";
+      case "post_reset_estimate":
+        return "Usage reset to 0% following provider reset boundary";
+      default:
+        return basis.replace(/_/g, " ");
+    }
+  }
+  function getHumanReadableConfidence(confidence) {
+    if (!confidence) return "";
+    switch (confidence) {
+      case "high":
+        return "High (Recent reset or fresh capture)";
+      case "medium":
+        return "Medium (Less than 6h since reset/activity)";
+      case "low":
+        return "Low (Up to 24h since reset/activity)";
+      case "very_low":
+        return "Very Low (Stale data; needs refresh)";
+      default:
+        return confidence.charAt(0).toUpperCase() + confidence.slice(1);
+    }
+  }
   function renderQualityBadge(item) {
     if (!item) return "";
     var label = "";
@@ -878,8 +914,8 @@
     } else if (item.confidence && item.confidence !== "high") label = item.confidence + " confidence";
     if (!label) return "";
     var titleParts = [];
-    if (item.basis) titleParts.push("Basis: " + item.basis);
-    if (item.confidence) titleParts.push("Confidence: " + item.confidence);
+    if (item.basis) titleParts.push("Basis: " + getHumanReadableBasis(item.basis));
+    if (item.confidence) titleParts.push("Confidence: " + getHumanReadableConfidence(item.confidence));
     if (item.unavailableReason) titleParts.push("Unavailable: " + item.unavailableReason);
     return '<span class="data-quality-badge" title="' + esc(titleParts.join(" | ")) + '">' + esc(label) + "</span>";
   }
