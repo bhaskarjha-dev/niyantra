@@ -807,11 +807,16 @@ Adds per-provider snapshot tables for Cursor, Gemini CLI, and Copilot.
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | INTEGER PK | Auto-incrementing ID |
+| `account_id` | INTEGER FK | Nullable FK to `accounts(id)` |
+| `email` | TEXT | Email address associated with the Copilot account |
+| `username` | TEXT | Username of the GitHub Copilot user |
+| `plan` | TEXT | Plan name (e.g. "Copilot Business", "Free", etc.) |
+| `premium_pct` | REAL | Premium autocomplete usage percentage |
+| `chat_pct` | REAL | Chat usage percentage |
+| `models_json` | TEXT | JSON blob representing individual usage metrics |
 | `captured_at` | DATETIME | UTC timestamp |
-| `usage_amount` | REAL | Usage metric value |
-| `plan_type` | TEXT | Plan tier |
 | `capture_method` | TEXT | `manual` or `auto` |
-| `capture_source` | TEXT | `ui` or `server` |
+| `capture_source` | TEXT | Credential origin: `manual_pat`, `github_cli`, or `hosts.json` |
 
 ---
 

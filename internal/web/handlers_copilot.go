@@ -11,10 +11,21 @@ import (
 // handleCopilotStatus returns Copilot detection state and latest snapshot.
 func (s *Server) handleCopilotStatus(w http.ResponseWriter, r *http.Request) {
 	pat := s.store.GetConfig("copilot_pat")
+	hasAutoToken := false
+	source := "manual_pat"
+	if pat == "" {
+		detected, src, err := copilot.DetectCredentials(s.logger)
+		if err == nil && detected != "" {
+			hasAutoToken = true
+			source = src
+		}
+	}
 
 	result := map[string]interface{}{
-		"configured":     pat != "",
-		"captureEnabled": s.store.GetConfigBool("copilot_capture"),
+		"configured":      pat != "" || hasAutoToken,
+		"autoDetected":    hasAutoToken && pat == "",
+		"detectionSource": source,
+		"captureEnabled":  s.store.GetConfigBool("copilot_capture"),
 	}
 
 	// Latest snapshots
@@ -32,9 +43,16 @@ func (s *Server) handleCopilotStatus(w http.ResponseWriter, r *http.Request) {
 // handleCopilotSnap triggers a manual Copilot usage snapshot.
 func (s *Server) handleCopilotSnap(w http.ResponseWriter, r *http.Request) {
 	pat := s.store.GetConfig("copilot_pat")
+	source := "manual_pat"
 	if pat == "" {
-		jsonError(w, "GitHub Copilot PAT not configured. Set it in Settings → Copilot PAT.", http.StatusBadRequest)
-		return
+		detected, src, err := copilot.DetectCredentials(s.logger)
+		if err == nil && detected != "" {
+			pat = detected
+			source = src
+		} else {
+			jsonError(w, "GitHub Copilot PAT not configured and auto-detection failed. Set it in Settings → Copilot PAT or log in to Copilot in your IDE.", http.StatusBadRequest)
+			return
+		}
 	}
 
 	client := copilot.NewClient(pat, s.logger)
@@ -53,7 +71,7 @@ func (s *Server) handleCopilotSnap(w http.ResponseWriter, r *http.Request) {
 		HasPremium:    snapshot.HasPremium,
 		HasChat:       snapshot.HasChat,
 		CaptureMethod: "manual",
-		CaptureSource: "ui",
+		CaptureSource: source,
 	}
 
 	// Create/update account if we have identity info

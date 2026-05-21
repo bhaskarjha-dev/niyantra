@@ -1637,12 +1637,20 @@
       var dotCls = premiumPct >= 80 ? "dot-low" : "dot-ready";
       var dotText = dotCls === "dot-ready" ? "Ready" : "Low";
       var displayName = cp.username || cp.email || "Copilot";
+      var sourceLabel = "";
+      if (cp.captureSource === "github_cli") {
+        sourceLabel = '<span class="source-badge" title="Auto-detected via GitHub CLI" style="font-size: 10px; opacity: 0.7; border: 1px solid var(--border-color); padding: 1px 4px; border-radius: 4px; margin-left: 6px; display: inline-block; vertical-align: middle;">gh cli</span>';
+      } else if (cp.captureSource === "hosts.json") {
+        sourceLabel = '<span class="source-badge" title="Auto-detected via IDE hosts.json" style="font-size: 10px; opacity: 0.7; border: 1px solid var(--border-color); padding: 1px 4px; border-radius: 4px; margin-left: 6px; display: inline-block; vertical-align: middle;">ide</span>';
+      } else if (cp.captureSource === "manual_pat") {
+        sourceLabel = '<span class="source-badge" title="Configured via Settings PAT" style="font-size: 10px; opacity: 0.7; border: 1px solid var(--border-color); padding: 1px 4px; border-radius: 4px; margin-left: 6px; display: inline-block; vertical-align: middle;">pat</span>';
+      }
       var localAccId = cp.accountId || 0;
       var accId = "acc-copilot-" + cp.id;
       var isExpanded = expandedAccounts.has(accId);
       var chevronCls = isExpanded ? "chevron expanded" : "chevron";
       var chevronHTML = localAccId > 0 ? '<span class="' + chevronCls + '" id="chev-' + accId + '">\u25B8</span> ' : "";
-      var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + "</div>";
+      var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + sourceLabel + "</div>";
       var accData = localAccId > 0 ? allAccounts.find(function(a) {
         return a.id === localAccId;
       }) : null;
@@ -4849,8 +4857,13 @@
         smtpFromEl.value = cfg["smtp_from"] || "";
         smtpToEl.value = cfg["smtp_to"] || "";
         if (cfg["smtp_pass"]) {
-          smtpPassEl.placeholder = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (configured)";
+          smtpPassEl.value = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
         }
+        smtpPassEl.addEventListener("focus", function() {
+          if (smtpPassEl.value === "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022") {
+            smtpPassEl.select();
+          }
+        });
         smtpEnabledEl.addEventListener("change", function() {
           var val = smtpEnabledEl.checked ? "true" : "false";
           updateConfig("smtp_enabled", val).then(function() {
@@ -4876,13 +4889,16 @@
         });
         smtpPassEl.addEventListener("change", function() {
           var val = smtpPassEl.value.trim();
-          if (val) {
-            updateConfig("smtp_pass", val).then(function() {
+          if (val === "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022") return;
+          updateConfig("smtp_pass", val).then(function() {
+            if (val) {
               showToast("\u{1F4E7} SMTP password saved", "success");
+              smtpPassEl.value = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
+            } else {
+              showToast("\u{1F4E7} SMTP password cleared", "success");
               smtpPassEl.value = "";
-              smtpPassEl.placeholder = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (configured)";
-            });
-          }
+            }
+          });
         });
         smtpFromEl.addEventListener("change", function() {
           updateConfig("smtp_from", smtpFromEl.value.trim());
@@ -4961,8 +4977,13 @@
         webhookTypeEl.value = cfg["webhook_type"] || "discord";
         webhookUrlEl.value = cfg["webhook_url"] || "";
         if (cfg["webhook_secret"]) {
-          webhookSecretEl.placeholder = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (configured)";
+          webhookSecretEl.value = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
         }
+        webhookSecretEl.addEventListener("focus", function() {
+          if (webhookSecretEl.value === "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022") {
+            webhookSecretEl.select();
+          }
+        });
         updateWebhookLabels2();
         webhookEnabledEl.addEventListener("change", function() {
           var val = webhookEnabledEl.checked ? "true" : "false";
@@ -4982,13 +5003,16 @@
         });
         webhookSecretEl.addEventListener("change", function() {
           var val = webhookSecretEl.value.trim();
-          if (val) {
-            updateConfig("webhook_secret", val).then(function() {
+          if (val === "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022") return;
+          updateConfig("webhook_secret", val).then(function() {
+            if (val) {
               showToast("\u{1F517} Webhook secret saved", "success");
+              webhookSecretEl.value = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
+            } else {
+              showToast("\u{1F517} Webhook secret cleared", "success");
               webhookSecretEl.value = "";
-              webhookSecretEl.placeholder = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (configured)";
-            });
-          }
+            }
+          });
         });
         document.getElementById("webhook-test-btn").addEventListener("click", function() {
           var btn = document.getElementById("webhook-test-btn");
@@ -5160,18 +5184,27 @@
       }
       if (copilotPatEl) {
         if (cfg["copilot_pat"]) {
-          copilotPatEl.placeholder = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (configured)";
+          copilotPatEl.value = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
         }
+        copilotPatEl.addEventListener("focus", function() {
+          if (copilotPatEl.value === "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022") {
+            copilotPatEl.select();
+          }
+        });
         copilotPatEl.addEventListener("change", function() {
           var val = copilotPatEl.value.trim();
-          if (val) {
-            updateConfig("copilot_pat", val).then(function() {
+          if (val === "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022") return;
+          updateConfig("copilot_pat", val).then(function() {
+            if (val) {
               showToast("\u{1F419} Copilot PAT saved", "success");
+              copilotPatEl.value = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
+            } else {
+              showToast("\u{1F419} Copilot PAT cleared (falling back to auto-detection)", "success");
               copilotPatEl.value = "";
-              copilotPatEl.placeholder = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (configured)";
-              loadDataSources();
-            });
-          }
+              copilotPatEl.placeholder = "Enter GitHub Personal Access Token...";
+            }
+            loadDataSources();
+          });
         });
       }
       var importBtn = document.getElementById("import-json-btn");

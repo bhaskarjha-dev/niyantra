@@ -1325,13 +1325,22 @@ export function renderCopilotProviderSection(copilotSnaps: any[], statusFilter: 
     var dotText = dotCls === 'dot-ready' ? 'Ready' : 'Low';
     var displayName = cp.username || cp.email || 'Copilot';
 
+    var sourceLabel = '';
+    if (cp.captureSource === 'github_cli') {
+      sourceLabel = '<span class="source-badge" title="Auto-detected via GitHub CLI" style="font-size: 10px; opacity: 0.7; border: 1px solid var(--border-color); padding: 1px 4px; border-radius: 4px; margin-left: 6px; display: inline-block; vertical-align: middle;">gh cli</span>';
+    } else if (cp.captureSource === 'hosts.json') {
+      sourceLabel = '<span class="source-badge" title="Auto-detected via IDE hosts.json" style="font-size: 10px; opacity: 0.7; border: 1px solid var(--border-color); padding: 1px 4px; border-radius: 4px; margin-left: 6px; display: inline-block; vertical-align: middle;">ide</span>';
+    } else if (cp.captureSource === 'manual_pat') {
+      sourceLabel = '<span class="source-badge" title="Configured via Settings PAT" style="font-size: 10px; opacity: 0.7; border: 1px solid var(--border-color); padding: 1px 4px; border-radius: 4px; margin-left: 6px; display: inline-block; vertical-align: middle;">pat</span>';
+    }
+
     var localAccId = cp.accountId || 0;
     var accId = 'acc-copilot-' + cp.id;
     var isExpanded = expandedAccounts.has(accId as any);
     var chevronCls = isExpanded ? 'chevron expanded' : 'chevron';
 
     var chevronHTML = localAccId > 0 ? '<span class="' + chevronCls + '" id="chev-' + accId + '">▸</span> ' : '';
-    var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + '</div>';
+    var emailHTML = '<div class="account-email">' + chevronHTML + esc(displayName) + sourceLabel + '</div>';
     var accData = localAccId > 0 ? allAccounts.find(function(a: any) { return a.id === localAccId; }) : null;
     var metaHTML = accData ? '<div class="account-meta" style="position:relative">' + renderAccountTags(accData) + renderAccountNote(accData) + '</div>' : '';
 

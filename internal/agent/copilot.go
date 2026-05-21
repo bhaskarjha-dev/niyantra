@@ -15,8 +15,15 @@ func (a *PollingAgent) pollCopilot(ctx context.Context) {
 	}
 
 	pat := a.store.GetConfig("copilot_pat")
+	source := "manual_pat"
 	if pat == "" {
-		return
+		detected, src, err := copilot.DetectCredentials(a.logger)
+		if err == nil && detected != "" {
+			pat = detected
+			source = src
+		} else {
+			return
+		}
 	}
 
 	if a.copilotAuthFails >= 3 {
@@ -50,7 +57,7 @@ func (a *PollingAgent) pollCopilot(ctx context.Context) {
 		HasPremium:    snapshot.HasPremium,
 		HasChat:       snapshot.HasChat,
 		CaptureMethod: "auto",
-		CaptureSource: "server",
+		CaptureSource: source,
 	}
 
 	// Create/update account if we have identity info

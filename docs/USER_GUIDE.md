@@ -485,9 +485,21 @@ Niyantra tracks Cursor usage via the `cursor.com/api/usage` endpoint.
 
 Niyantra tracks GitHub Copilot usage via the GitHub billing API.
 
-1. Create a GitHub Personal Access Token (PAT)
-2. Enter in **Settings** tab > Copilot section (PAT is masked in API responses)
-3. Usage metrics are tracked and displayed
+### Credential Detection & Source Attribution
+Niyantra can automatically retrieve your active GitHub Copilot credentials without requiring a manual Personal Access Token (PAT):
+
+1. **Auto-Detection Sequence**: If no manual PAT is set, Niyantra scans the local machine to find active tokens in the following order:
+   - **GitHub CLI**: Runs `gh auth token` to extract active authenticated tokens.
+   - **IDE Configurations**: Reads the `hosts.json` file in platform-specific IDE directories (e.g. `%APPDATA%\github-copilot\hosts.json` on Windows, `~/Library/Application Support/github-copilot/hosts.json` on macOS, and `~/.config/github-copilot/hosts.json` on Linux).
+2. **Visual Source Badges**: The source of the credential used for capture is displayed next to the account name in the dashboard:
+   - `gh cli`: Auto-detected via the GitHub CLI.
+   - `ide`: Auto-detected via the IDE configuration path.
+   - `pat`: Configured manually via Settings.
+3. **Manual Override**: You can still configure a manual GitHub Personal Access Token (with `read:user` scope) in **Settings** tab > Copilot section. The manually provided PAT is masked (rendered as `••••••••` in the UI) and takes precedence over auto-detection.
+4. **Clearing Settings**: You can clear the manually configured PAT (and fall back to auto-detection) by deleting the contents of the PAT input field in Settings and saving the empty value.
+
+### Free & Limited Copilot Plan Support
+Niyantra detects the `free_limited_copilot` SKU and displays the plan tier as `Free`. When standard billing API quota limits are not returned (as is the case with free-tier accounts), Niyantra falls back to extracting the `monthly_quotas` and `limited_user_quotas` parameters from the billing API to calculate exact Chat and Completion request usage percentage.
 
 ---
 

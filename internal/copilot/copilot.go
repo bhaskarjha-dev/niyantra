@@ -21,6 +21,11 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 )
 
@@ -40,8 +45,17 @@ var (
 
 // UsageResponse is the top-level response from GET /copilot_internal/user.
 type UsageResponse struct {
-	CopilotPlan    string         `json:"copilot_plan"`
-	QuotaSnapshots QuotaSnapshots `json:"quota_snapshots"`
+	CopilotPlan       string         `json:"copilot_plan"`
+	AccessTypeSKU     string         `json:"access_type_sku"`
+	QuotaSnapshots    QuotaSnapshots `json:"quota_snapshots"`
+	LimitedUserQuotas *LimitedQuotas `json:"limited_user_quotas"`
+	MonthlyQuotas     *LimitedQuotas `json:"monthly_quotas"`
+}
+
+// LimitedQuotas represents individual chat/completions limits for free_limited_copilot SKU.
+type LimitedQuotas struct {
+	Chat        int64 `json:"chat"`
+	Completions int64 `json:"completions"`
 }
 
 // QuotaSnapshots contains the quota windows from the Copilot API.
@@ -104,10 +118,10 @@ type Snapshot struct {
 
 // ── Endpoints ───────────────────────────────────────────────────────
 
-const (
-	usageURL   = "https://api.github.com/copilot_internal/user"
+var (
+	usageURL    = "https://api.github.com/copilot_internal/user"
 	identityURL = "https://api.github.com/user"
-	timeout    = 15 * time.Second
+	timeout     = 15 * time.Second
 )
 
 // ── Client ──────────────────────────────────────────────────────────
@@ -143,8 +157,13 @@ func (c *Client) FetchSnapshot(ctx context.Context) (*Snapshot, error) {
 		return nil, err
 	}
 
+	plan := normalizePlan(usage.CopilotPlan)
+	if usage.AccessTypeSKU == "free_limited_copilot" {
+		plan = "Free"
+	}
+
 	snap := &Snapshot{
-		Plan: normalizePlan(usage.CopilotPlan),
+		Plan: plan,
 	}
 
 	// Parse premium interactions
@@ -157,6 +176,26 @@ func (c *Client) FetchSnapshot(ctx context.Context) (*Snapshot, error) {
 	if usage.QuotaSnapshots.Chat != nil && usage.QuotaSnapshots.Chat.HasData() {
 		snap.HasChat = true
 		snap.ChatPct = usage.QuotaSnapshots.Chat.UsedPercent()
+	}
+
+	// Fallback to limited user quotas if standard ones are missing
+	if !snap.HasPremium && !snap.HasChat && usage.LimitedUserQuotas != nil && usage.MonthlyQuotas != nil {
+		if usage.MonthlyQuotas.Completions > 0 {
+			snap.HasPremium = true
+			usedCompletions := usage.MonthlyQuotas.Completions - usage.LimitedUserQuotas.Completions
+			if usedCompletions < 0 {
+				usedCompletions = 0
+			}
+			snap.PremiumPct = (float64(usedCompletions) / float64(usage.MonthlyQuotas.Completions)) * 100.0
+		}
+		if usage.MonthlyQuotas.Chat > 0 {
+			snap.HasChat = true
+			usedChat := usage.MonthlyQuotas.Chat - usage.LimitedUserQuotas.Chat
+			if usedChat < 0 {
+				usedChat = 0
+			}
+			snap.ChatPct = (float64(usedChat) / float64(usage.MonthlyQuotas.Chat)) * 100.0
+		}
 	}
 
 	if !snap.HasPremium && !snap.HasChat {
@@ -273,4 +312,128 @@ func normalizePlan(raw string) string {
 	default:
 		return raw
 	}
+}
+
+// hostConfig is a helper struct for parsing hosts.json.
+type hostConfig struct {
+	User       string `json:"user"`
+	OAuthToken string `json:"oauth_token"`
+}
+
+// copilotDataDir returns the platform-specific GitHub Copilot config root.
+func copilotDataDir() string {
+	switch runtime.GOOS {
+	case "windows":
+		appdata := os.Getenv("APPDATA")
+		if appdata == "" {
+			home, _ := os.UserHomeDir()
+			appdata = filepath.Join(home, "AppData", "Roaming")
+		}
+		return filepath.Join(appdata, "github-copilot")
+	case "darwin":
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, "Library", "Application Support", "github-copilot")
+	default:
+		home, _ := os.UserHomeDir()
+		configDir := os.Getenv("XDG_CONFIG_HOME")
+		if configDir == "" {
+			configDir = filepath.Join(home, ".config")
+		}
+		return filepath.Join(configDir, "github-copilot")
+	}
+}
+
+// DetectCredentials discovers the GitHub Copilot token from hosts.json or GitHub CLI.
+func DetectCredentials(logger *slog.Logger) (string, string, error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	// Try GitHub CLI first
+	if token, err := detectGHCLIToken(logger); err == nil && token != "" {
+		return token, "github_cli", nil
+	}
+
+	dataDir := copilotDataDir()
+	hostsPath := filepath.Join(dataDir, "hosts.json")
+
+	// Try the primary platform-specific path
+	token, err := extractTokenFromFile(hostsPath, logger)
+	if err == nil && token != "" {
+		return token, "hosts.json", nil
+	}
+
+	// Fallback path: ~/.config/github-copilot/hosts.json (common for unix/macOS setups)
+	home, _ := os.UserHomeDir()
+	if home != "" {
+		fallbackPath := filepath.Join(home, ".config", "github-copilot", "hosts.json")
+		if fallbackPath != hostsPath {
+			token, err := extractTokenFromFile(fallbackPath, logger)
+			if err == nil && token != "" {
+				return token, "hosts.json", nil
+			}
+		}
+	}
+
+	return "", "", fmt.Errorf("copilot: hosts.json not found and gh CLI detection failed")
+}
+
+// detectGHCLIToken detects the token by executing `gh auth token`.
+func detectGHCLIToken(logger *slog.Logger) (string, error) {
+	path, err := exec.LookPath("gh")
+	if err != nil {
+		logger.Debug("Copilot: gh CLI not found in PATH")
+		return "", err
+	}
+
+	cmd := exec.Command(path, "auth", "token")
+	out, err := cmd.Output()
+	if err != nil {
+		logger.Debug("Copilot: gh auth token command failed", "error", err)
+		return "", err
+	}
+
+	token := strings.TrimSpace(string(out))
+	if token == "" {
+		logger.Debug("Copilot: gh auth token returned empty token")
+		return "", fmt.Errorf("empty token")
+	}
+
+	logger.Debug("Copilot: token auto-detected via gh CLI")
+	return token, nil
+}
+
+// extractTokenFromFile reads a hosts.json file and extracts the oauth_token.
+func extractTokenFromFile(path string, logger *slog.Logger) (string, error) {
+	if _, err := os.Stat(path); err != nil {
+		return "", err
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		logger.Debug("Copilot: failed to read hosts.json", "path", path, "error", err)
+		return "", err
+	}
+
+	var config map[string]hostConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		logger.Debug("Copilot: failed to unmarshal hosts.json", "path", path, "error", err)
+		return "", err
+	}
+
+	// Try github.com first
+	if cfg, ok := config["github.com"]; ok && cfg.OAuthToken != "" {
+		logger.Debug("Copilot: token auto-detected for github.com", "path", path)
+		return cfg.OAuthToken, nil
+	}
+
+	// Fallback to any host with an oauth_token
+	for host, cfg := range config {
+		if cfg.OAuthToken != "" {
+			logger.Debug("Copilot: token auto-detected", "host", host, "path", path)
+			return cfg.OAuthToken, nil
+		}
+	}
+
+	return "", fmt.Errorf("no oauth_token found in %s", path)
 }

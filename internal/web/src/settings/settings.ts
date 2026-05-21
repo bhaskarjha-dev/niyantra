@@ -181,10 +181,15 @@ export function initSettings(): void {
       smtpFromEl.value = cfg['smtp_from'] || '';
       smtpToEl.value = cfg['smtp_to'] || '';
 
-      // Show placeholder if password is configured
+      // Show value if password is configured
       if (cfg['smtp_pass']) {
-        smtpPassEl.placeholder = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (configured)';
+        smtpPassEl.value = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
       }
+      smtpPassEl.addEventListener('focus', function() {
+        if (smtpPassEl.value === '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022') {
+          smtpPassEl.select();
+        }
+      });
 
       // Toggle handler
       smtpEnabledEl.addEventListener('change', function() {
@@ -214,13 +219,16 @@ export function initSettings(): void {
       });
       smtpPassEl.addEventListener('change', function() {
         var val = smtpPassEl.value.trim();
-        if (val) {
-          updateConfig('smtp_pass', val).then(function() {
+        if (val === '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022') return;
+        updateConfig('smtp_pass', val).then(function() {
+          if (val) {
             showToast('📧 SMTP password saved', 'success');
+            smtpPassEl.value = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
+          } else {
+            showToast('📧 SMTP password cleared', 'success');
             smtpPassEl.value = '';
-            smtpPassEl.placeholder = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (configured)';
-          });
-        }
+          }
+        });
       });
       smtpFromEl.addEventListener('change', function() {
         updateConfig('smtp_from', smtpFromEl.value.trim());
@@ -266,8 +274,13 @@ export function initSettings(): void {
       webhookUrlEl.value = cfg['webhook_url'] || '';
 
       if (cfg['webhook_secret']) {
-        webhookSecretEl.placeholder = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (configured)';
+        webhookSecretEl.value = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
       }
+      webhookSecretEl.addEventListener('focus', function() {
+        if (webhookSecretEl.value === '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022') {
+          webhookSecretEl.select();
+        }
+      });
 
       // Update labels/hints based on selected type
       function updateWebhookLabels() {
@@ -338,13 +351,16 @@ export function initSettings(): void {
       // Auto-save secret
       webhookSecretEl.addEventListener('change', function() {
         var val = webhookSecretEl.value.trim();
-        if (val) {
-          updateConfig('webhook_secret', val).then(function() {
+        if (val === '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022') return;
+        updateConfig('webhook_secret', val).then(function() {
+          if (val) {
             showToast('🔗 Webhook secret saved', 'success');
+            webhookSecretEl.value = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
+          } else {
+            showToast('🔗 Webhook secret cleared', 'success');
             webhookSecretEl.value = '';
-            webhookSecretEl.placeholder = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (configured)';
-          });
-        }
+          }
+        });
       });
 
       // Test webhook button
@@ -541,20 +557,28 @@ export function initSettings(): void {
       });
     }
     if (copilotPatEl) {
-      // Show masked value if PAT exists
       if (cfg['copilot_pat']) {
-        (copilotPatEl as HTMLInputElement).placeholder = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (configured)';
+        (copilotPatEl as HTMLInputElement).value = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
       }
+      copilotPatEl.addEventListener('focus', function() {
+        if ((copilotPatEl as HTMLInputElement).value === '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022') {
+          (copilotPatEl as HTMLInputElement).select();
+        }
+      });
       copilotPatEl.addEventListener('change', function() {
         var val = (copilotPatEl as HTMLInputElement).value.trim();
-        if (val) {
-          updateConfig('copilot_pat', val).then(function() {
-            showToast('\ud83d\udc19 Copilot PAT saved', 'success');
+        if (val === '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022') return;
+        updateConfig('copilot_pat', val).then(function() {
+          if (val) {
+            showToast('🐙 Copilot PAT saved', 'success');
+            (copilotPatEl as HTMLInputElement).value = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
+          } else {
+            showToast('🐙 Copilot PAT cleared (falling back to auto-detection)', 'success');
             (copilotPatEl as HTMLInputElement).value = '';
-            (copilotPatEl as HTMLInputElement).placeholder = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (configured)';
-            loadDataSources();
-          });
-        }
+            (copilotPatEl as HTMLInputElement).placeholder = 'Enter GitHub Personal Access Token...';
+          }
+          loadDataSources();
+        });
       });
     }
 

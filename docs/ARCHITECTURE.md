@@ -276,7 +276,7 @@ Stack: Go embed.FS + TypeScript (strict mode, 39 modules) bundled via esbuild in
 | Codex/ChatGPT | `codex/` | OAuth from `~/.codex/auth.json` | HTTPS to OpenAI API |
 | Claude Code | `claude/` | None (local files) | JSONL session parsing + statusline bridge (auto-enabled + env injected) |
 | Cursor | `cursor/` | Session token from `~/.cursor-server/` | HTTPS to cursor.com API |
-| GitHub Copilot | `copilot/` | GitHub PAT | HTTPS to GitHub billing API |
+| GitHub Copilot | `copilot/` | GitHub PAT / Auto-detect (`gh` CLI or `hosts.json`) | HTTPS to GitHub billing API |
 | Manual | `store/` | N/A | User input via subscription form |
 | Plugins | `plugin/` | Plugin-specific (API keys in config) | Trusted local polling subprocess with JSON protocol; HTTP manual execution returns `410 Gone` |
 
