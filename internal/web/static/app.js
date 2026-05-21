@@ -1001,7 +1001,11 @@
       var sorted = sortAccountsArray(filtered);
       var agCollapseClass = collapsedProviders.has("section-antigravity") ? " collapsed" : "";
       var agChevron = collapsedProviders.has("section-antigravity") ? "\u25B8" : "\u25BE";
-      html += '<div class="provider-section" data-provider="antigravity"><div class="provider-header" data-toggle-provider="section-antigravity"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-antigravity">' + agChevron + '</span><span class="provider-name">Antigravity</span><span class="provider-count">' + acctCount + " account" + (acctCount !== 1 ? "s" : "") + '</span></div></div><div class="provider-body' + agCollapseClass + '" id="section-antigravity">';
+      var agReadyCount = 0;
+      for (var i = 0; i < acctCount; i++) {
+        if (data.accounts[i].isReady) agReadyCount++;
+      }
+      html += '<div class="provider-section" data-provider="antigravity"><div class="provider-header" data-toggle-provider="section-antigravity"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-antigravity">' + agChevron + '</span><span class="provider-name">Antigravity</span><span class="provider-count">' + acctCount + " account" + (acctCount !== 1 ? "s" : "") + ' <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + agReadyCount + ' ready)</span></span></div></div><div class="provider-body' + agCollapseClass + '" id="section-antigravity">';
       html += '<div class="grid-header"><div class="grid-col-account sortable" data-sort="account">Account <span class="sort-indicator"></span></div>';
       for (var gh = 0; gh < GRID_COLUMNS.length; gh++) {
         html += '<div class="grid-col-group sortable" data-sort="' + GRID_COLUMNS[gh] + '">' + (GRID_LABELS[gh] || GRID_COLUMNS[gh]) + ' <span class="sort-indicator"></span></div>';
@@ -1315,7 +1319,11 @@
   function renderCodexProviderSection(codexSnaps, statusFilter, allAccounts = []) {
     var cxCollapseClass = collapsedProviders.has("section-codex") ? " collapsed" : "";
     var cxChevron = collapsedProviders.has("section-codex") ? "\u25B8" : "\u25BE";
-    var html = '<div class="provider-section" data-provider="codex"><div class="provider-header" data-toggle-provider="section-codex"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-codex">' + cxChevron + '</span><span class="provider-name">\u{1F916} Codex / ChatGPT</span><span class="provider-count">' + codexSnaps.length + " account" + (codexSnaps.length !== 1 ? "s" : "") + '</span></div></div><div class="provider-body' + cxCollapseClass + '" id="section-codex"><div class="grid-header grid-codex"><div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div><div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div><div class="sortable" data-sort="fiveHour">Short-Term <span class="sort-indicator"></span></div><div class="sortable" data-sort="sevenDay">Weekly <span class="sort-indicator"></span></div><div class="sortable" data-sort="credits">Credits <span class="sort-indicator"></span></div><div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div></div>';
+    var cxReadyCount = 0;
+    for (var i = 0; i < codexSnaps.length; i++) {
+      if (getCodexClaudeStatus(codexSnaps[i]) === "ready") cxReadyCount++;
+    }
+    var html = '<div class="provider-section" data-provider="codex"><div class="provider-header" data-toggle-provider="section-codex"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-codex">' + cxChevron + '</span><span class="provider-name">\u{1F916} Codex / ChatGPT</span><span class="provider-count">' + codexSnaps.length + " account" + (codexSnaps.length !== 1 ? "s" : "") + ' <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + cxReadyCount + ' ready)</span></span></div></div><div class="provider-body' + cxCollapseClass + '" id="section-codex"><div class="grid-header grid-codex"><div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div><div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div><div class="sortable" data-sort="fiveHour">Short-Term <span class="sort-indicator"></span></div><div class="sortable" data-sort="sevenDay">Weekly <span class="sort-indicator"></span></div><div class="sortable" data-sort="credits">Credits <span class="sort-indicator"></span></div><div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div></div>';
     var sortedSnaps = sortProviderArray(codexSnaps, "codex");
     var renderedCount = 0;
     for (var i = 0; i < sortedSnaps.length; i++) {
@@ -1379,7 +1387,7 @@
     if (clStatus === "empty") statusClass = " status-empty";
     else if (clStatus === "low") statusClass = " status-low";
     else statusClass = " status-ready";
-    return '<div class="provider-section" data-provider="claude"><div class="provider-header" data-toggle-provider="section-claude"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-claude">' + clChevron + '</span><span class="provider-name">\u{1F517} Claude Code</span><span class="provider-count">1 account \xB7 Bridge</span></div></div><div class="provider-body' + clCollapseClass + '" id="section-claude"><div class="grid-header grid-claude"><div>Source</div><div>Short-Term</div><div>Weekly</div><div>Last Snap</div><div>Status</div></div><div class="account-card' + statusClass + '"><div class="account-row grid-claude"><div class="account-info"><div class="account-email">' + esc(cl.source || "statusline") + '</div></div><div class="quota-cell"><span class="quota-pct ' + clFiveCls + '">' + clFiveRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cl.fiveHourReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + clFiveCls + '" style="width:' + clFiveRem + '%"></div></div></div><div class="quota-cell"><span class="quota-pct ' + clSevenCls + '">' + clSevenRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cl.sevenDayReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + clSevenCls + '" style="width:' + clSevenRem + '%"></div></div></div><div class="snap-cell"><span class="snap-ago">' + clAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div></div></div></div>";
+    return '<div class="provider-section" data-provider="claude"><div class="provider-header" data-toggle-provider="section-claude"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-claude">' + clChevron + '</span><span class="provider-name">\u{1F517} Claude Code</span><span class="provider-count">1 account \xB7 Bridge <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + (getCodexClaudeStatus(cl) === "ready" ? "1 ready" : "0 ready") + ')</span></span></div></div><div class="provider-body' + clCollapseClass + '" id="section-claude"><div class="grid-header grid-claude"><div>Source</div><div>Short-Term</div><div>Weekly</div><div>Last Snap</div><div>Status</div></div><div class="account-card' + statusClass + '"><div class="account-row grid-claude"><div class="account-info"><div class="account-email">' + esc(cl.source || "statusline") + '</div></div><div class="quota-cell"><span class="quota-pct ' + clFiveCls + '">' + clFiveRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cl.fiveHourReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + clFiveCls + '" style="width:' + clFiveRem + '%"></div></div></div><div class="quota-cell"><span class="quota-pct ' + clSevenCls + '">' + clSevenRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cl.sevenDayReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + clSevenCls + '" style="width:' + clSevenRem + '%"></div></div></div><div class="snap-cell"><span class="snap-ago">' + clAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div></div></div></div>";
   }
   function formatResetTime(isoString) {
     if (!isoString) return "";
@@ -1407,7 +1415,11 @@
   function renderCursorProviderSection(cursorSnaps, statusFilter, allAccounts = []) {
     var crCollapseClass = collapsedProviders.has("section-cursor") ? " collapsed" : "";
     var crChevron = collapsedProviders.has("section-cursor") ? "\u25B8" : "\u25BE";
-    var html = '<div class="provider-section" data-provider="cursor"><div class="provider-header" data-toggle-provider="section-cursor"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-cursor">' + crChevron + '</span><span class="provider-name">\u{1F5B1}\uFE0F Cursor</span><span class="provider-count">' + cursorSnaps.length + " account" + (cursorSnaps.length !== 1 ? "s" : "") + '</span></div></div><div class="provider-body' + crCollapseClass + '" id="section-cursor"><div class="grid-header grid-cursor"><div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div><div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div><div class="sortable" data-sort="premiumUsed">Premium Used <span class="sort-indicator"></span></div><div class="sortable" data-sort="usage">Usage <span class="sort-indicator"></span></div><div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div></div>';
+    var crReadyCount = 0;
+    for (var i = 0; i < cursorSnaps.length; i++) {
+      if (getCursorStatus(cursorSnaps[i]) === "ready") crReadyCount++;
+    }
+    var html = '<div class="provider-section" data-provider="cursor"><div class="provider-header" data-toggle-provider="section-cursor"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-cursor">' + crChevron + '</span><span class="provider-name">\u{1F5B1}\uFE0F Cursor</span><span class="provider-count">' + cursorSnaps.length + " account" + (cursorSnaps.length !== 1 ? "s" : "") + ' <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + crReadyCount + ' ready)</span></span></div></div><div class="provider-body' + crCollapseClass + '" id="section-cursor"><div class="grid-header grid-cursor"><div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div><div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div><div class="sortable" data-sort="premiumUsed">Premium Used <span class="sort-indicator"></span></div><div class="sortable" data-sort="usage">Usage <span class="sort-indicator"></span></div><div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div></div>';
     var sortedSnaps = sortProviderArray(cursorSnaps, "cursor");
     var renderedCount = 0;
     for (var i = 0; i < sortedSnaps.length; i++) {
@@ -1483,7 +1495,11 @@
   function renderCopilotProviderSection(copilotSnaps, statusFilter, allAccounts = []) {
     var cpCollapseClass = collapsedProviders.has("section-copilot") ? " collapsed" : "";
     var cpChevron = collapsedProviders.has("section-copilot") ? "\u25B8" : "\u25BE";
-    var html = '<div class="provider-section" data-provider="copilot"><div class="provider-header" data-toggle-provider="section-copilot"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-copilot">' + cpChevron + '</span><span class="provider-name">\u{1F419} GitHub Copilot</span><span class="provider-count">' + copilotSnaps.length + " account" + (copilotSnaps.length !== 1 ? "s" : "") + '</span></div></div><div class="provider-body' + cpCollapseClass + '" id="section-copilot"><div class="grid-header grid-copilot"><div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div><div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div><div class="sortable" data-sort="premium">Premium <span class="sort-indicator"></span></div><div class="sortable" data-sort="chat">Chat <span class="sort-indicator"></span></div><div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div></div>';
+    var cpReadyCount = 0;
+    for (var i = 0; i < copilotSnaps.length; i++) {
+      if (getCopilotStatus(copilotSnaps[i]) === "ready") cpReadyCount++;
+    }
+    var html = '<div class="provider-section" data-provider="copilot"><div class="provider-header" data-toggle-provider="section-copilot"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-copilot">' + cpChevron + '</span><span class="provider-name">\u{1F419} GitHub Copilot</span><span class="provider-count">' + copilotSnaps.length + " account" + (copilotSnaps.length !== 1 ? "s" : "") + ' <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + cpReadyCount + ' ready)</span></span></div></div><div class="provider-body' + cpCollapseClass + '" id="section-copilot"><div class="grid-header grid-copilot"><div class="sortable" data-sort="account">Account <span class="sort-indicator"></span></div><div class="sortable" data-sort="plan">Plan <span class="sort-indicator"></span></div><div class="sortable" data-sort="premium">Premium <span class="sort-indicator"></span></div><div class="sortable" data-sort="chat">Chat <span class="sort-indicator"></span></div><div class="sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="sortable" data-sort="status">Status <span class="sort-indicator"></span></div></div>';
     var sortedSnaps = sortProviderArray(copilotSnaps, "copilot");
     var renderedCount = 0;
     for (var i = 0; i < sortedSnaps.length; i++) {
@@ -3145,37 +3161,43 @@
     if (quotaData.accounts) {
       for (var i = 0; i < quotaData.accounts.length; i++) {
         var acc = quotaData.accounts[i];
-        if (acc.resetTime) {
-          var resetDate = new Date(acc.resetTime);
-          var ms = resetDate.getTime() - Date.now();
-          if (ms > 0 && ms < 864e5) {
-            items.push({
-              provider: "\u26A1 Antigravity",
-              label: acc.email ? acc.email.split("@")[0] : "account",
-              resetMs: ms
-            });
+        var soonestMs = Infinity;
+        var hasReset = false;
+        if (acc.groups) {
+          for (var j = 0; j < acc.groups.length; j++) {
+            var grp = acc.groups[j];
+            if (grp.resetTime) {
+              var ms = new Date(grp.resetTime).getTime() - Date.now();
+              if (ms < soonestMs) {
+                soonestMs = ms;
+                hasReset = true;
+              }
+            }
           }
+        }
+        if (hasReset) {
+          items.push({
+            provider: "\u26A1 Antigravity",
+            label: acc.email ? acc.email.split("@")[0] : "account",
+            resetMs: soonestMs
+          });
         }
       }
     }
     if (quotaData.claudeSnapshot) {
       var cs = quotaData.claudeSnapshot;
-      if (cs.capturedAt && (cs.fiveHourPct || 0) > 50) {
+      if (cs.capturedAt) {
         var fiveHReset = new Date(cs.capturedAt).getTime() + 5 * 36e5;
         var msLeft = fiveHReset - Date.now();
-        if (msLeft > 0) {
-          items.push({ provider: "\u{1F52E} Claude", label: "5h window", resetMs: msLeft });
-        }
+        items.push({ provider: "\u{1F52E} Claude", label: "5h window", resetMs: msLeft });
       }
     }
     if (quotaData.codexSnapshot) {
       var cx = quotaData.codexSnapshot;
-      if (cx.capturedAt && (cx.sevenDayPct || 0) > 50) {
+      if (cx.capturedAt) {
         var sevenDReset = new Date(cx.capturedAt).getTime() + 7 * 864e5;
         var cxMs = sevenDReset - Date.now();
-        if (cxMs > 0 && cxMs < 864e5 * 2) {
-          items.push({ provider: "\u{1F916} Codex", label: "7d window", resetMs: cxMs });
-        }
+        items.push({ provider: "\u{1F916} Codex", label: "7d window", resetMs: cxMs });
       }
     }
     if (items.length === 0) return "";
@@ -3183,11 +3205,17 @@
       return a.resetMs - b.resetMs;
     });
     var html = '<div class="countdown-strip"><span class="countdown-title">\u23F1 Resets:</span>';
-    for (var c = 0; c < Math.min(items.length, 4); c++) {
+    for (var c = 0; c < Math.min(items.length, 6); c++) {
       var item = items[c];
-      var h = Math.floor(item.resetMs / 36e5);
-      var m = Math.floor(item.resetMs % 36e5 / 6e4);
-      var timeStr = h > 0 ? h + "h " + m + "m" : m + "m";
+      var timeStr = "";
+      if (item.resetMs <= 0) {
+        timeStr = "ready";
+      } else {
+        var d = Math.floor(item.resetMs / 864e5);
+        var h = Math.floor(item.resetMs % 864e5 / 36e5);
+        var m = Math.floor(item.resetMs % 36e5 / 6e4);
+        timeStr = d > 0 ? d + "d " + h + "h" : h > 0 ? h + "h " + m + "m" : m + "m";
+      }
       html += '<div class="countdown-chip"><span class="countdown-provider">' + item.provider + '</span><span class="countdown-time">' + timeStr + "</span></div>";
     }
     html += "</div>";
@@ -3507,50 +3535,7 @@
       }
     }
     var exportHTML = '<div class="overview-card full-width"><h3>Export</h3><p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Download a redacted JSON report or a full database backup.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn-add" id="download-csv-btn" style="padding:6px 12px;font-size:12px">\u{1F4E5} CSV</button><button class="btn-add" id="download-json-btn" style="padding:6px 12px;font-size:12px">\u{1F4E6} Redacted JSON</button><button class="btn-add" id="download-backup-btn" style="padding:6px 12px;font-size:12px">\u{1F4BE} DB Backup</button><button class="btn-add" id="generate-report-btn" style="padding:6px 12px;font-size:12px">\u{1F4CA} Monthly Report</button></div></div>';
-    var providerHTML = '<div class="overview-card full-width"><h3>Provider Status Signals</h3><p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">Rows below use provider-specific counters and are not a normalized cross-provider health score.</p>';
-    providerHTML += '<div class="provider-health-grid">';
-    if (latestQuotaData && latestQuotaData.accounts && latestQuotaData.accounts.length > 0) {
-      var accts = latestQuotaData.accounts;
-      var readyCount = 0;
-      for (var ai = 0; ai < accts.length; ai++) {
-        if (accts[ai].isReady) readyCount++;
-      }
-      var healthPct = Math.round(readyCount / accts.length * 100);
-      var healthCls = healthPct >= 80 ? "health-good" : healthPct >= 50 ? "health-warn" : "health-bad";
-      providerHTML += '<div class="provider-health-row"><span class="ph-name">\u26A1 Antigravity</span><span class="ph-count">' + accts.length + ' accounts</span><span class="ph-bar"><span class="ph-fill ' + healthCls + '" style="width:' + healthPct + '%"></span></span><span class="ph-stat ' + healthCls + '">' + readyCount + "/" + accts.length + " ready</span></div>";
-    }
-    if (latestQuotaData && latestQuotaData.codexSnapshot) {
-      var cs = latestQuotaData.codexSnapshot;
-      var codexUsed = Math.max(cs.fiveHourPct || 0, cs.sevenDayPct || 0, cs.codeReviewPct || 0);
-      var cxStatus = usageHealthClass(codexUsed);
-      var cxLabel = cs.email || "Codex account";
-      providerHTML += '<div class="provider-health-row"><span class="ph-name">\u{1F916} Codex</span><span class="ph-count">' + esc(cxLabel) + '</span><span class="ph-bar"><span class="ph-fill ' + cxStatus + '" style="width:' + Math.max(0, 100 - codexUsed) + '%"></span></span><span class="ph-stat ' + cxStatus + '">' + esc(cs.planType || "free") + "</span></div>";
-    }
-    if (latestQuotaData && latestQuotaData.claudeSnapshot) {
-      var claude = latestQuotaData.claudeSnapshot;
-      var claudeUsed = Math.max(claude.fiveHourPct || 0, claude.sevenDayPct || 0);
-      var clStatus = usageHealthClass(claudeUsed);
-      providerHTML += '<div class="provider-health-row"><span class="ph-name">\u{1F52E} Claude Code</span><span class="ph-count">Bridge</span><span class="ph-bar"><span class="ph-fill ' + clStatus + '" style="width:' + Math.max(0, 100 - claudeUsed) + '%"></span></span><span class="ph-stat ' + clStatus + '">' + formatUsageSummary(claudeUsed) + "</span></div>";
-    }
-    if (latestQuotaData && latestQuotaData.cursorSnapshot) {
-      var cursor = latestQuotaData.cursorSnapshot;
-      var cursorStatus = usageHealthClass(cursor.usagePct || 0);
-      providerHTML += '<div class="provider-health-row"><span class="ph-name">\u{1F5B1}\uFE0F Cursor</span><span class="ph-count">' + esc(cursor.email || cursor.billingModel || "Cursor") + '</span><span class="ph-bar"><span class="ph-fill ' + cursorStatus + '" style="width:' + Math.max(0, 100 - (cursor.usagePct || 0)) + '%"></span></span><span class="ph-stat ' + cursorStatus + '">' + esc(cursor.planTier || "unknown") + "</span></div>";
-    }
-    if (latestQuotaData && latestQuotaData.copilotSnapshot) {
-      var copilot = latestQuotaData.copilotSnapshot;
-      var copilotUsed = copilot.hasPremium ? copilot.premiumPct || 0 : copilot.chatPct || 0;
-      var copilotStatus = usageHealthClass(copilotUsed);
-      providerHTML += '<div class="provider-health-row"><span class="ph-name">\u{1F419} Copilot</span><span class="ph-count">' + esc(copilot.email || copilot.username || "Copilot") + '</span><span class="ph-bar"><span class="ph-fill ' + copilotStatus + '" style="width:' + Math.max(0, 100 - copilotUsed) + '%"></span></span><span class="ph-stat ' + copilotStatus + '">' + esc(copilot.plan || "unknown") + "</span></div>";
-    }
-    if (latestQuotaData && latestQuotaData.pluginSnapshots) {
-      for (var psi = 0; psi < latestQuotaData.pluginSnapshots.length; psi++) {
-        var pluginSnap = latestQuotaData.pluginSnapshots[psi];
-        var pluginStatus = usageHealthClass(pluginSnap.usagePct || 0);
-        providerHTML += '<div class="provider-health-row"><span class="ph-name">\u{1F9E9} ' + esc(pluginSnap.provider || pluginSnap.pluginId || "Plugin") + '</span><span class="ph-count">' + esc(pluginSnap.label || pluginSnap.email || pluginSnap.pluginId || "Plugin source") + '</span><span class="ph-bar"><span class="ph-fill ' + pluginStatus + '" style="width:' + Math.max(0, 100 - (pluginSnap.usagePct || 0)) + '%"></span></span><span class="ph-stat ' + pluginStatus + '">' + esc(pluginSnap.plan || formatUsageSummary(pluginSnap.usagePct || 0)) + "</span></div>";
-      }
-    }
-    providerHTML += "</div></div>";
+    var providerHTML = "";
     var costKPIHTML = '<div id="cost-kpi-container"></div>';
     var tokenAnalyticsHTML = '<div id="token-analytics-container" class="overview-card full-width"></div>';
     var gitCostsHTML = '<div id="git-costs-container" class="overview-card full-width"></div>';
@@ -3636,14 +3621,6 @@
       renderRenewalCalendar(renewals, subs);
     }
     renderSessionsTimeline(el);
-  }
-  function usageHealthClass(usedPct) {
-    if (usedPct >= 80) return "health-bad";
-    if (usedPct >= 50) return "health-warn";
-    return "health-good";
-  }
-  function formatUsageSummary(usedPct) {
-    return Math.max(0, 100 - usedPct).toFixed(0) + "% left";
   }
 
   // internal/web/src/advanced/snap.ts
@@ -5594,6 +5571,9 @@
       populateChartAccountSelect(data);
       loadHistoryChart();
       updateTimestamp();
+      if (localStorage.getItem("niyantra-active-tab") === "overview") {
+        document.dispatchEvent(new CustomEvent("niyantra:overview-refresh"));
+      }
     });
     document.addEventListener("niyantra:theme-change", function(e) {
       updateChartTheme(e.detail.theme);

@@ -118,6 +118,10 @@ document.addEventListener('DOMContentLoaded', function() {
     populateChartAccountSelect(data);
     loadHistoryChart();
     updateTimestamp();
+
+    if (localStorage.getItem('niyantra-active-tab') === 'overview') {
+      document.dispatchEvent(new CustomEvent('niyantra:overview-refresh'));
+    }
   });
 
   // Theme-change event: update chart colors

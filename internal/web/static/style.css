@@ -1162,10 +1162,13 @@ body {
   font-size: 11px;
   color: var(--text-muted);
   cursor: pointer;
-  max-width: 200px;
+  max-width: 250px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre-wrap;
+  line-height: 1.4;
   transition: color 120ms ease;
 }
 .account-note:hover {
@@ -1192,15 +1195,18 @@ body {
   gap: 4px;
 }
 .note-inline-input {
-  padding: 2px 6px;
+  padding: 4px 6px;
   background: var(--bg-elevated);
   border: 1px solid var(--accent);
   border-radius: 4px;
   color: var(--text);
   font-family: var(--font);
   font-size: 11px;
-  width: 180px;
+  width: 250px;
+  min-height: 40px;
+  resize: vertical;
   outline: none;
+  line-height: 1.4;
 }
 .pinned-badge {
   display: inline-flex;
@@ -5599,41 +5605,52 @@ kbd {
   letter-spacing: 0.5px;
   margin-top: 2px;
 }
-.countdown-strip {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-  grid-column: 1 / -1;
-}
-.countdown-title {
-  font-size: 11px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 1px;
+.reset-countdown {
+  font-size: 10px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  margin-top: 2px;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  color: var(--text-muted);
+  opacity: 0.7;
 }
-.countdown-chip {
+.quota-cell:hover .reset-countdown {
+  opacity: 1;
+}
+.reset-countdown.urgent {
+  color: var(--red);
+  opacity: 1;
+  animation: pulse-reset 2.5s ease-in-out infinite;
+}
+.reset-countdown.soon {
+  color: var(--amber);
+  opacity: 1;
+}
+@keyframes pulse-reset {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+.provider-next-reset {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 4px 10px;
-  font-size: 12px;
-  transition: border-color 0.2s;
-}
-.countdown-chip:hover {
-  border-color: var(--border-hover);
-}
-.countdown-provider {
-  color: var(--text-secondary);
-}
-.countdown-time {
+  gap: 4px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--amber);
+  margin-left: 12px;
+  padding: 2px 10px;
+  background: var(--amber-bg);
+  border-radius: 100px;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  animation: pulse-reset 3s ease-in-out infinite;
 }
 @media (max-width: 600px) {
   .streak-card {

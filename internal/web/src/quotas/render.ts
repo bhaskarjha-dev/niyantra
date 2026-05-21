@@ -401,10 +401,15 @@ export function renderAccounts(data: any): void {
   var sorted = sortAccountsArray(filtered);
   var agCollapseClass = collapsedProviders.has('section-antigravity') ? ' collapsed' : '';
   var agChevron = collapsedProviders.has('section-antigravity') ? '▸' : '▾';
+  var agReadyCount = 0;
+  for (var i = 0; i < acctCount; i++) {
+    if (data.accounts[i].isReady) agReadyCount++;
+  }
+
   html += '<div class="provider-section" data-provider="antigravity"><div class="provider-header" data-toggle-provider="section-antigravity">' +
     '<div class="provider-header-left"><span class="provider-chevron" id="pchev-section-antigravity">' + agChevron + '</span>' +
     '<span class="provider-name">Antigravity</span>' +
-    '<span class="provider-count">' + acctCount + ' account' + (acctCount !== 1 ? 's' : '') + '</span></div></div>' +
+    '<span class="provider-count">' + acctCount + ' account' + (acctCount !== 1 ? 's' : '') + ' <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + agReadyCount + ' ready)</span></span></div></div>' +
     '<div class="provider-body' + agCollapseClass + '" id="section-antigravity">';
   // Dynamic Antigravity grid header
   html += '<div class="grid-header">' +
@@ -840,12 +845,17 @@ export function renderAccounts(data: any): void {
 export function renderCodexProviderSection(codexSnaps: any[], statusFilter: string, allAccounts: any[] = []): string {
   var cxCollapseClass = collapsedProviders.has('section-codex') ? ' collapsed' : '';
   var cxChevron = collapsedProviders.has('section-codex') ? '▸' : '▾';
+  var cxReadyCount = 0;
+  for (var i = 0; i < codexSnaps.length; i++) {
+    if (getCodexClaudeStatus(codexSnaps[i]) === 'ready') cxReadyCount++;
+  }
+
   var html = '<div class="provider-section" data-provider="codex">' +
     '<div class="provider-header" data-toggle-provider="section-codex">' +
     '<div class="provider-header-left">' +
     '<span class="provider-chevron" id="pchev-section-codex">' + cxChevron + '</span>' +
     '<span class="provider-name">\ud83e\udd16 Codex / ChatGPT</span>' +
-    '<span class="provider-count">' + codexSnaps.length + ' account' + (codexSnaps.length !== 1 ? 's' : '') + '</span>' +
+    '<span class="provider-count">' + codexSnaps.length + ' account' + (codexSnaps.length !== 1 ? 's' : '') + ' <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + cxReadyCount + ' ready)</span></span>' +
     '</div></div>' +
     '<div class="provider-body' + cxCollapseClass + '" id="section-codex">' +
     '<div class="grid-header grid-codex">' +
@@ -955,7 +965,7 @@ export function renderClaudeProviderSection(cl: any): string {
     '<div class="provider-header-left">' +
     '<span class="provider-chevron" id="pchev-section-claude">' + clChevron + '</span>' +
     '<span class="provider-name">\ud83d\udd17 Claude Code</span>' +
-    '<span class="provider-count">1 account \u00b7 Bridge</span>' +
+    '<span class="provider-count">1 account \u00b7 Bridge <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + (getCodexClaudeStatus(cl) === 'ready' ? '1 ready' : '0 ready') + ')</span></span>' +
     '</div></div>' +
     '<div class="provider-body' + clCollapseClass + '" id="section-claude">' +
     '<div class="grid-header grid-claude">' +
@@ -1007,12 +1017,17 @@ export function renderCursorProviderSection(cursorSnaps: any[], statusFilter: st
   var crCollapseClass = collapsedProviders.has('section-cursor') ? ' collapsed' : '';
   var crChevron = collapsedProviders.has('section-cursor') ? '▸' : '▾';
 
+  var crReadyCount = 0;
+  for (var i = 0; i < cursorSnaps.length; i++) {
+    if (getCursorStatus(cursorSnaps[i]) === 'ready') crReadyCount++;
+  }
+
   var html = '<div class="provider-section" data-provider="cursor">' +
     '<div class="provider-header" data-toggle-provider="section-cursor">' +
     '<div class="provider-header-left">' +
     '<span class="provider-chevron" id="pchev-section-cursor">' + crChevron + '</span>' +
     '<span class="provider-name">\ud83d\uddb1\ufe0f Cursor</span>' +
-    '<span class="provider-count">' + cursorSnaps.length + ' account' + (cursorSnaps.length !== 1 ? 's' : '') + '</span>' +
+    '<span class="provider-count">' + cursorSnaps.length + ' account' + (cursorSnaps.length !== 1 ? 's' : '') + ' <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + crReadyCount + ' ready)</span></span>' +
     '</div></div>' +
     '<div class="provider-body' + crCollapseClass + '" id="section-cursor">' +
     '<div class="grid-header grid-cursor">' +
@@ -1133,12 +1148,17 @@ export function renderCopilotProviderSection(copilotSnaps: any[], statusFilter: 
   var cpCollapseClass = collapsedProviders.has('section-copilot') ? ' collapsed' : '';
   var cpChevron = collapsedProviders.has('section-copilot') ? '▸' : '▾';
 
+  var cpReadyCount = 0;
+  for (var i = 0; i < copilotSnaps.length; i++) {
+    if (getCopilotStatus(copilotSnaps[i]) === 'ready') cpReadyCount++;
+  }
+
   var html = '<div class="provider-section" data-provider="copilot">' +
     '<div class="provider-header" data-toggle-provider="section-copilot">' +
     '<div class="provider-header-left">' +
     '<span class="provider-chevron" id="pchev-section-copilot">' + cpChevron + '</span>' +
     '<span class="provider-name">\ud83d\udc19 GitHub Copilot</span>' +
-    '<span class="provider-count">' + copilotSnaps.length + ' account' + (copilotSnaps.length !== 1 ? 's' : '') + '</span>' +
+    '<span class="provider-count">' + copilotSnaps.length + ' account' + (copilotSnaps.length !== 1 ? 's' : '') + ' <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + cpReadyCount + ' ready)</span></span>' +
     '</div></div>' +
     '<div class="provider-body' + cpCollapseClass + '" id="section-copilot">' +
     '<div class="grid-header grid-copilot">' +

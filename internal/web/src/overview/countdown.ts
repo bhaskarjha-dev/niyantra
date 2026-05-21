@@ -6,20 +6,30 @@ export function renderCountdowns(quotaData: any): string {
 
   var items: { provider: string; label: string; resetMs: number }[] = [];
 
-  // Antigravity accounts: use resetTime from readiness data
+  // Antigravity accounts: use resetTime from readiness data groups
   if (quotaData.accounts) {
     for (var i = 0; i < quotaData.accounts.length; i++) {
       var acc = quotaData.accounts[i];
-      if (acc.resetTime) {
-        var resetDate = new Date(acc.resetTime);
-        var ms = resetDate.getTime() - Date.now();
-        if (ms > 0 && ms < 86400000) {
-          items.push({
-            provider: '⚡ Antigravity',
-            label: acc.email ? acc.email.split('@')[0] : 'account',
-            resetMs: ms,
-          });
+      var soonestMs = Infinity;
+      var hasReset = false;
+      if (acc.groups) {
+        for (var j = 0; j < acc.groups.length; j++) {
+          var grp = acc.groups[j];
+          if (grp.resetTime) {
+            var ms = new Date(grp.resetTime).getTime() - Date.now();
+            if (ms < soonestMs) {
+              soonestMs = ms;
+              hasReset = true;
+            }
+          }
         }
+      }
+      if (hasReset) {
+        items.push({
+          provider: '⚡ Antigravity',
+          label: acc.email ? acc.email.split('@')[0] : 'account',
+          resetMs: soonestMs,
+        });
       }
     }
   }
@@ -27,24 +37,20 @@ export function renderCountdowns(quotaData: any): string {
   // Claude: 5h window reset
   if (quotaData.claudeSnapshot) {
     var cs = quotaData.claudeSnapshot;
-    if (cs.capturedAt && (cs.fiveHourPct || 0) > 50) {
+    if (cs.capturedAt) {
       var fiveHReset = new Date(cs.capturedAt).getTime() + 5 * 3600000;
       var msLeft = fiveHReset - Date.now();
-      if (msLeft > 0) {
-        items.push({ provider: '🔮 Claude', label: '5h window', resetMs: msLeft });
-      }
+      items.push({ provider: '🔮 Claude', label: '5h window', resetMs: msLeft });
     }
   }
 
   // Codex: 7-day window
   if (quotaData.codexSnapshot) {
     var cx = quotaData.codexSnapshot;
-    if (cx.capturedAt && (cx.sevenDayPct || 0) > 50) {
+    if (cx.capturedAt) {
       var sevenDReset = new Date(cx.capturedAt).getTime() + 7 * 86400000;
       var cxMs = sevenDReset - Date.now();
-      if (cxMs > 0 && cxMs < 86400000 * 2) {
-        items.push({ provider: '🤖 Codex', label: '7d window', resetMs: cxMs });
-      }
+      items.push({ provider: '🤖 Codex', label: '7d window', resetMs: cxMs });
     }
   }
 
@@ -55,11 +61,17 @@ export function renderCountdowns(quotaData: any): string {
 
   var html = '<div class="countdown-strip">' +
     '<span class="countdown-title">⏱ Resets:</span>';
-  for (var c = 0; c < Math.min(items.length, 4); c++) {
+  for (var c = 0; c < Math.min(items.length, 6); c++) {
     var item = items[c];
-    var h = Math.floor(item.resetMs / 3600000);
-    var m = Math.floor((item.resetMs % 3600000) / 60000);
-    var timeStr = h > 0 ? h + 'h ' + m + 'm' : m + 'm';
+    var timeStr = '';
+    if (item.resetMs <= 0) {
+      timeStr = 'ready';
+    } else {
+      var d = Math.floor(item.resetMs / 86400000);
+      var h = Math.floor((item.resetMs % 86400000) / 3600000);
+      var m = Math.floor((item.resetMs % 3600000) / 60000);
+      timeStr = d > 0 ? d + 'd ' + h + 'h' : h > 0 ? h + 'h ' + m + 'm' : m + 'm';
+    }
     html += '<div class="countdown-chip">' +
       '<span class="countdown-provider">' + item.provider + '</span>' +
       '<span class="countdown-time">' + timeStr + '</span>' +
