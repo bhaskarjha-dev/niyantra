@@ -26,6 +26,17 @@ export function getAICredits(acc: any): number {
   return -1;
 }
 
+// Get soonest reset time in seconds across all groups for an account
+export function getSoonestResetSec(acc: any): number {
+  var groups = acc.groups || [];
+  var soonest = Infinity;
+  for (var i = 0; i < groups.length; i++) {
+    var t = groups[i].timeUntilResetSec;
+    if (t !== undefined && t !== null && t < soonest) soonest = t;
+  }
+  return soonest === Infinity ? -1 : soonest;
+}
+
 export function allExhausted(acc: any): boolean {
   var grps = acc.groups || [];
   if (grps.length === 0) return false;
@@ -65,6 +76,15 @@ export function sortAccountsArray(accounts: any[]): any[] {
         vb = b.lastSeen ? new Date(b.lastSeen).getTime() : 0; break;
       case 'status':
         va = a.isReady ? 1 : 0; vb = b.isReady ? 1 : 0; break;
+      case 'resetsIn':
+        va = getSoonestResetSec(a); vb = getSoonestResetSec(b);
+        // Treat -1 (no data) as very large so they sort last
+        if (va < 0) va = 999999999;
+        if (vb < 0) vb = 999999999;
+        // Treat <= 0 (already reset / ready) as 0 so they sort first
+        if (va <= 0) va = 0;
+        if (vb <= 0) vb = 0;
+        break;
       default: va = a.email; vb = b.email; break;
     }
     if (va === vb) return 0;
@@ -267,13 +287,14 @@ function getHumanReadableConfidence(confidence: string): string {
 function renderQualityBadge(item: any): string {
   if (!item) return '';
   var label = '';
+  // Estimates now use ~ prefix on percentage, so no badge needed
   if (item.unavailableReason) label = 'Unavailable';
   else if (item.isEstimated) {
-    // Show descriptive labels based on estimation basis
-    if (item.basis && item.basis.indexOf('sprint_reset') === 0) label = 'Reset Est.';
-    else if (item.basis === 'snapshot_too_stale') label = 'Stale';
-    else if (item.confidence === 'very_low') label = 'Very Stale';
-    else label = 'Estimate';
+    // Stale-specific labels still useful as small badges
+    if (item.basis === 'snapshot_too_stale') label = 'Stale';
+    else if (item.confidence === 'very_low') label = 'Stale';
+    // All other estimates: handled by ~ prefix, no badge
+    else return '';
   }
   else if (item.confidence && item.confidence !== 'high') label = item.confidence + ' confidence';
   if (!label) return '';
@@ -419,7 +440,7 @@ export function renderAccounts(data: any): void {
   }
   html += '<div class="grid-col-credits sortable" data-sort="credits">AI Credits <span class="sort-indicator"></span></div>' +
     '<div class="grid-col-snap sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div>' +
-    '<div class="grid-col-status sortable" data-sort="status">Status <span class="sort-indicator"></span></div></div>';
+    '<div class="grid-col-status sortable" data-sort="resetsIn">Status <span class="sort-indicator"></span></div></div>';
   for (var i = 0; i < sorted.length; i++) {
     var acc = sorted[i];
     var accId = 'acc-' + acc.accountId;
@@ -528,9 +549,10 @@ export function renderAccounts(data: any): void {
 
       groupCells += '<div class="quota-cell' + (key === 'gemini_unified' ? ' unified-pool-cell' : '') + '" title="' + esc(cellTitle) + '" style="display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative;">' +
         pinnedStarHTML +
-        '<span class="quota-pct ' + cls + '">' + pct + '%' + '</span>' +
+        '<span class="quota-pct ' + cls + '">' + (g.isEstimated ? '~' : '') + pct + '%' + '</span>' +
         renderQualityBadge(g) +
         '<div class="quota-minibar"><div class="quota-minibar-fill ' + barCls + '" style="width:' + pct + '%"></div></div>' +
+        (g.timeUntilResetSec > 0 ? '<div class="reset-timer">↻ ' + formatSeconds(g.timeUntilResetSec) + '</div>' : '') +
         groupAdjust +
         '</div>';
     }
@@ -685,7 +707,7 @@ export function renderAccounts(data: any): void {
           '<div class="model-indicator" style="background:' + color + '"></div>' +
           '<span class="model-label">' + esc(m.label || m.modelId) + '</span>' +
           '<div class="model-bar-track"><div class="model-bar-fill ' + mcls + '" style="width:' + mpct + '%"></div></div>' +
-          '<span class="model-pct ' + mcls + '">' + mpct + '%</span>' +
+          '<span class="model-pct ' + mcls + '">' + (m.isEstimated ? '~' : '') + mpct + '%</span>' +
           renderQualityBadge(m) +
           adjustBtns +
           '<span class="model-reset">' + resetStr + '</span>' +
@@ -721,7 +743,11 @@ export function renderAccounts(data: any): void {
       groupCells +
       creditsCell +
       '<div class="snap-cell"><span class="snap-ago" title="' + esc(acc.lastSeen || '') + '">' + esc(acc.stalenessLabel) + '</span></div>' +
-      '<div class="status-cell"><span class="health-dot ' + dotCls + '">● ' + badgeText + '</span></div>' +
+      '<div class="status-cell"><span class="health-dot ' + dotCls + '">● ' + badgeText + '</span>' + (function() {
+        var rs = getSoonestResetSec(acc);
+        if (rs <= 0) return '';
+        return '<div class="reset-timer" style="margin-top:2px">↻ ' + formatSeconds(rs) + '</div>';
+      })() + '</div>' +
       '</div>' +
       modelsHTML +
       '</div>';
@@ -920,11 +946,11 @@ export function renderCodexProviderSection(codexSnaps: any[], statusFilter: stri
     html += '<div class="account-card' + statusClass + '"><div class="account-row grid-codex"' + toggleAttr + '>' +
       '<div class="account-info">' + emailHTML + metaHTML + '</div>' +
       '<div>' + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + '</span>' : String.fromCharCode(8212)) + '</div>' +
-      '<div class="quota-cell"><span class="quota-pct ' + fiveCls + '">' + fiveRem.toFixed(0) + '%</span>' +
+      '<div class="quota-cell"><span class="quota-pct ' + fiveCls + '">' + estPrefix(isResetElapsed(cs.fiveHourReset)) + fiveRem.toFixed(0) + '%</span>' +
       renderProviderEstBadge(isResetElapsed(cs.fiveHourReset)) +
       '<div class="quota-minibar"><div class="quota-minibar-fill ' + fiveCls + '" style="width:' + fiveRem + '%"></div></div>' +
       (fiveReset ? '<span class="quota-reset">\u21bb ' + fiveReset + '</span>' : '') + '</div>' +
-      '<div class="quota-cell"><span class="quota-pct ' + sevenCls + '">' + sevenRem.toFixed(0) + '%</span>' +
+      '<div class="quota-cell"><span class="quota-pct ' + sevenCls + '">' + estPrefix(isResetElapsed(cs.sevenDayReset)) + sevenRem.toFixed(0) + '%</span>' +
       renderProviderEstBadge(isResetElapsed(cs.sevenDayReset)) +
       '<div class="quota-minibar"><div class="quota-minibar-fill ' + sevenCls + '" style="width:' + sevenRem + '%"></div></div>' +
       (sevenReset ? '<span class="quota-reset">\u21bb ' + sevenReset + '</span>' : '') + '</div>' +
@@ -973,10 +999,10 @@ export function renderClaudeProviderSection(cl: any): string {
     '</div>' +
     '<div class="account-card' + statusClass + '"><div class="account-row grid-claude">' +
     '<div class="account-info"><div class="account-email">' + esc(cl.source || 'statusline') + '</div></div>' +
-    '<div class="quota-cell"><span class="quota-pct ' + clFiveCls + '">' + clFiveRem.toFixed(0) + '%</span>' +
+    '<div class="quota-cell"><span class="quota-pct ' + clFiveCls + '">' + estPrefix(isResetElapsed(cl.fiveHourReset)) + clFiveRem.toFixed(0) + '%</span>' +
     renderProviderEstBadge(isResetElapsed(cl.fiveHourReset)) +
     '<div class="quota-minibar"><div class="quota-minibar-fill ' + clFiveCls + '" style="width:' + clFiveRem + '%"></div></div></div>' +
-    '<div class="quota-cell"><span class="quota-pct ' + clSevenCls + '">' + clSevenRem.toFixed(0) + '%</span>' +
+    '<div class="quota-cell"><span class="quota-pct ' + clSevenCls + '">' + estPrefix(isResetElapsed(cl.sevenDayReset)) + clSevenRem.toFixed(0) + '%</span>' +
     renderProviderEstBadge(isResetElapsed(cl.sevenDayReset)) +
     '<div class="quota-minibar"><div class="quota-minibar-fill ' + clSevenCls + '" style="width:' + clSevenRem + '%"></div></div></div>' +
     '<div class="snap-cell"><span class="snap-ago">' + clAgo + '</span></div>' +
@@ -999,10 +1025,15 @@ function isResetElapsed(isoString: string | null | undefined): boolean {
   return new Date(isoString).getTime() < Date.now();
 }
 
-// Renders a small estimation badge for non-Antigravity providers when reset has elapsed
+// Renders estimation indicator for non-Antigravity providers when reset has elapsed
+// Now returns empty string — tilde prefix on percentage handles this instead
 function renderProviderEstBadge(resetElapsed: boolean): string {
-  if (!resetElapsed) return '';
-  return ' <span class="data-quality-badge" title="Basis: post_reset_estimate | Values may have been restored after reset">Reset Est.</span>';
+  return '';
+}
+
+// Returns tilde prefix if reset has elapsed (for non-Antigravity providers)
+function estPrefix(resetElapsed: boolean): string {
+  return resetElapsed ? '~' : '';
 }
 
 export function getCursorStatus(snap: any): string {

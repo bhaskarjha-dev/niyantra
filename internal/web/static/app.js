@@ -670,6 +670,15 @@
     if (acc.aiCredits && acc.aiCredits.length > 0) return acc.aiCredits[0].creditAmount;
     return -1;
   }
+  function getSoonestResetSec(acc) {
+    var groups = acc.groups || [];
+    var soonest = Infinity;
+    for (var i = 0; i < groups.length; i++) {
+      var t = groups[i].timeUntilResetSec;
+      if (t !== void 0 && t !== null && t < soonest) soonest = t;
+    }
+    return soonest === Infinity ? -1 : soonest;
+  }
   function allExhausted(acc) {
     var grps = acc.groups || [];
     if (grps.length === 0) return false;
@@ -715,6 +724,14 @@
         case "status":
           va = a.isReady ? 1 : 0;
           vb = b.isReady ? 1 : 0;
+          break;
+        case "resetsIn":
+          va = getSoonestResetSec(a);
+          vb = getSoonestResetSec(b);
+          if (va < 0) va = 999999999;
+          if (vb < 0) vb = 999999999;
+          if (va <= 0) va = 0;
+          if (vb <= 0) vb = 0;
           break;
         default:
           va = a.email;
@@ -907,10 +924,9 @@
     var label = "";
     if (item.unavailableReason) label = "Unavailable";
     else if (item.isEstimated) {
-      if (item.basis && item.basis.indexOf("sprint_reset") === 0) label = "Reset Est.";
-      else if (item.basis === "snapshot_too_stale") label = "Stale";
-      else if (item.confidence === "very_low") label = "Very Stale";
-      else label = "Estimate";
+      if (item.basis === "snapshot_too_stale") label = "Stale";
+      else if (item.confidence === "very_low") label = "Stale";
+      else return "";
     } else if (item.confidence && item.confidence !== "high") label = item.confidence + " confidence";
     if (!label) return "";
     var titleParts = [];
@@ -1010,7 +1026,7 @@
       for (var gh = 0; gh < GRID_COLUMNS.length; gh++) {
         html += '<div class="grid-col-group sortable" data-sort="' + GRID_COLUMNS[gh] + '">' + (GRID_LABELS[gh] || GRID_COLUMNS[gh]) + ' <span class="sort-indicator"></span></div>';
       }
-      html += '<div class="grid-col-credits sortable" data-sort="credits">AI Credits <span class="sort-indicator"></span></div><div class="grid-col-snap sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="grid-col-status sortable" data-sort="status">Status <span class="sort-indicator"></span></div></div>';
+      html += '<div class="grid-col-credits sortable" data-sort="credits">AI Credits <span class="sort-indicator"></span></div><div class="grid-col-snap sortable" data-sort="lastsnap">Last Snap <span class="sort-indicator"></span></div><div class="grid-col-status sortable" data-sort="resetsIn">Status <span class="sort-indicator"></span></div></div>';
       for (var i = 0; i < sorted.length; i++) {
         var acc = sorted[i];
         var accId = "acc-" + acc.accountId;
@@ -1096,7 +1112,7 @@
           }
           var cellTitle = tooltipParts.join(" | ") || (GRID_LABELS[gi] || key);
           var pinnedStarHTML = key === pinnedKey ? '<span class="pinned-group-star" title="Pinned group" style="position: absolute; top: 4px; right: 4px; font-size: 12px; line-height: 1; z-index: 2;">\u2B50</span>' : "";
-          groupCells += '<div class="quota-cell' + (key === "gemini_unified" ? " unified-pool-cell" : "") + '" title="' + esc(cellTitle) + '" style="display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative;">' + pinnedStarHTML + '<span class="quota-pct ' + cls + '">' + pct + "%</span>" + renderQualityBadge(g) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + barCls + '" style="width:' + pct + '%"></div></div>' + groupAdjust + "</div>";
+          groupCells += '<div class="quota-cell' + (key === "gemini_unified" ? " unified-pool-cell" : "") + '" title="' + esc(cellTitle) + '" style="display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative;">' + pinnedStarHTML + '<span class="quota-pct ' + cls + '">' + (g.isEstimated ? "~" : "") + pct + "%</span>" + renderQualityBadge(g) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + barCls + '" style="width:' + pct + '%"></div></div>' + (g.timeUntilResetSec > 0 ? '<div class="reset-timer">\u21BB ' + formatSeconds(g.timeUntilResetSec) + "</div>" : "") + groupAdjust + "</div>";
         }
         var dotCls = "dot-ready";
         var badgeText = "Ready";
@@ -1220,7 +1236,7 @@
                 }
               }
               var adjustBtns = '<span class="adjust-controls" data-snap-id="' + acc.latestSnapshotId + '" data-model-id="' + esc(m.modelId || "") + '" data-model-label="' + esc(m.label || m.modelId) + '" data-current-pct="' + mpct + '"><button class="adj-btn" data-delta="-20" title="\u221220%">\u221220</button><button class="adj-btn" data-delta="20" title="+20%">+20</button><button class="adj-btn btn-custom" data-custom="true" title="Enter custom percentage">\u270F\uFE0F</button></span>';
-              modelRows += '<div class="model-row"><div class="model-indicator" style="background:' + color + '"></div><span class="model-label">' + esc(m.label || m.modelId) + '</span><div class="model-bar-track"><div class="model-bar-fill ' + mcls + '" style="width:' + mpct + '%"></div></div><span class="model-pct ' + mcls + '">' + mpct + "%</span>" + renderQualityBadge(m) + adjustBtns + '<span class="model-reset">' + resetStr + "</span>" + intellBadges + "</div>";
+              modelRows += '<div class="model-row"><div class="model-indicator" style="background:' + color + '"></div><span class="model-label">' + esc(m.label || m.modelId) + '</span><div class="model-bar-track"><div class="model-bar-fill ' + mcls + '" style="width:' + mpct + '%"></div></div><span class="model-pct ' + mcls + '">' + (m.isEstimated ? "~" : "") + mpct + "%</span>" + renderQualityBadge(m) + adjustBtns + '<span class="model-reset">' + resetStr + "</span>" + intellBadges + "</div>";
             }
           }
           var expandedCls = isExpanded ? " is-expanded" : "";
@@ -1231,7 +1247,11 @@
         if (allExhausted(acc)) statusClass = " status-empty";
         else if (!acc.isReady) statusClass = " status-low";
         else statusClass = " status-ready";
-        html += '<div class="account-card' + statusClass + '"><div class="account-row" data-toggle="' + accId + '"><div class="account-info"><div class="account-email"><span class="' + chevronCls + '" id="chev-' + accId + '">\u25B8</span> ' + esc(acc.email) + '</div><div class="account-meta" style="position:relative">' + (acc.planName ? '<span class="plan-badge">' + esc(acc.planName) + "</span>" : "") + renderAccountTags(acc) + renderAccountNote(acc) + "</div></div>" + groupCells + creditsCell + '<div class="snap-cell"><span class="snap-ago" title="' + esc(acc.lastSeen || "") + '">' + esc(acc.stalenessLabel) + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + badgeText + "</span></div></div>" + modelsHTML + "</div>";
+        html += '<div class="account-card' + statusClass + '"><div class="account-row" data-toggle="' + accId + '"><div class="account-info"><div class="account-email"><span class="' + chevronCls + '" id="chev-' + accId + '">\u25B8</span> ' + esc(acc.email) + '</div><div class="account-meta" style="position:relative">' + (acc.planName ? '<span class="plan-badge">' + esc(acc.planName) + "</span>" : "") + renderAccountTags(acc) + renderAccountNote(acc) + "</div></div>" + groupCells + creditsCell + '<div class="snap-cell"><span class="snap-ago" title="' + esc(acc.lastSeen || "") + '">' + esc(acc.stalenessLabel) + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + badgeText + "</span>" + (function() {
+          var rs = getSoonestResetSec(acc);
+          if (rs <= 0) return "";
+          return '<div class="reset-timer" style="margin-top:2px">\u21BB ' + formatSeconds(rs) + "</div>";
+        })() + "</div></div>" + modelsHTML + "</div>";
       }
       html += "</div></div>";
     }
@@ -1364,7 +1384,7 @@
       if (cxStatus === "empty") statusClass = " status-empty";
       else if (cxStatus === "low") statusClass = " status-low";
       else statusClass = " status-ready";
-      html += '<div class="account-card' + statusClass + '"><div class="account-row grid-codex"' + toggleAttr + '><div class="account-info">' + emailHTML + metaHTML + "</div><div>" + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell"><span class="quota-pct ' + fiveCls + '">' + fiveRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cs.fiveHourReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + fiveCls + '" style="width:' + fiveRem + '%"></div></div>' + (fiveReset ? '<span class="quota-reset">\u21BB ' + fiveReset + "</span>" : "") + '</div><div class="quota-cell"><span class="quota-pct ' + sevenCls + '">' + sevenRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cs.sevenDayReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + sevenCls + '" style="width:' + sevenRem + '%"></div></div>' + (sevenReset ? '<span class="quota-reset">\u21BB ' + sevenReset + "</span>" : "") + '</div><div class="credits-cell"><span class="credit-amount">' + creditsStr + '</span></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div>" + actionsHTML + "</div>";
+      html += '<div class="account-card' + statusClass + '"><div class="account-row grid-codex"' + toggleAttr + '><div class="account-info">' + emailHTML + metaHTML + "</div><div>" + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell"><span class="quota-pct ' + fiveCls + '">' + estPrefix(isResetElapsed(cs.fiveHourReset)) + fiveRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cs.fiveHourReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + fiveCls + '" style="width:' + fiveRem + '%"></div></div>' + (fiveReset ? '<span class="quota-reset">\u21BB ' + fiveReset + "</span>" : "") + '</div><div class="quota-cell"><span class="quota-pct ' + sevenCls + '">' + estPrefix(isResetElapsed(cs.sevenDayReset)) + sevenRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cs.sevenDayReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + sevenCls + '" style="width:' + sevenRem + '%"></div></div>' + (sevenReset ? '<span class="quota-reset">\u21BB ' + sevenReset + "</span>" : "") + '</div><div class="credits-cell"><span class="credit-amount">' + creditsStr + '</span></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div>" + actionsHTML + "</div>";
     }
     if (renderedCount === 0) return "";
     html += "</div></div>";
@@ -1387,7 +1407,7 @@
     if (clStatus === "empty") statusClass = " status-empty";
     else if (clStatus === "low") statusClass = " status-low";
     else statusClass = " status-ready";
-    return '<div class="provider-section" data-provider="claude"><div class="provider-header" data-toggle-provider="section-claude"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-claude">' + clChevron + '</span><span class="provider-name">\u{1F517} Claude Code</span><span class="provider-count">1 account \xB7 Bridge <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + (getCodexClaudeStatus(cl) === "ready" ? "1 ready" : "0 ready") + ')</span></span></div></div><div class="provider-body' + clCollapseClass + '" id="section-claude"><div class="grid-header grid-claude"><div>Source</div><div>Short-Term</div><div>Weekly</div><div>Last Snap</div><div>Status</div></div><div class="account-card' + statusClass + '"><div class="account-row grid-claude"><div class="account-info"><div class="account-email">' + esc(cl.source || "statusline") + '</div></div><div class="quota-cell"><span class="quota-pct ' + clFiveCls + '">' + clFiveRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cl.fiveHourReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + clFiveCls + '" style="width:' + clFiveRem + '%"></div></div></div><div class="quota-cell"><span class="quota-pct ' + clSevenCls + '">' + clSevenRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cl.sevenDayReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + clSevenCls + '" style="width:' + clSevenRem + '%"></div></div></div><div class="snap-cell"><span class="snap-ago">' + clAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div></div></div></div>";
+    return '<div class="provider-section" data-provider="claude"><div class="provider-header" data-toggle-provider="section-claude"><div class="provider-header-left"><span class="provider-chevron" id="pchev-section-claude">' + clChevron + '</span><span class="provider-name">\u{1F517} Claude Code</span><span class="provider-count">1 account \xB7 Bridge <span style="opacity:0.6; margin-left:6px; font-weight:normal; font-size:0.95em;">(' + (getCodexClaudeStatus(cl) === "ready" ? "1 ready" : "0 ready") + ')</span></span></div></div><div class="provider-body' + clCollapseClass + '" id="section-claude"><div class="grid-header grid-claude"><div>Source</div><div>Short-Term</div><div>Weekly</div><div>Last Snap</div><div>Status</div></div><div class="account-card' + statusClass + '"><div class="account-row grid-claude"><div class="account-info"><div class="account-email">' + esc(cl.source || "statusline") + '</div></div><div class="quota-cell"><span class="quota-pct ' + clFiveCls + '">' + estPrefix(isResetElapsed(cl.fiveHourReset)) + clFiveRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cl.fiveHourReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + clFiveCls + '" style="width:' + clFiveRem + '%"></div></div></div><div class="quota-cell"><span class="quota-pct ' + clSevenCls + '">' + estPrefix(isResetElapsed(cl.sevenDayReset)) + clSevenRem.toFixed(0) + "%</span>" + renderProviderEstBadge(isResetElapsed(cl.sevenDayReset)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + clSevenCls + '" style="width:' + clSevenRem + '%"></div></div></div><div class="snap-cell"><span class="snap-ago">' + clAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF ' + dotText + "</span></div></div></div></div></div>";
   }
   function formatResetTime(isoString) {
     if (!isoString) return "";
@@ -1402,8 +1422,10 @@
     return new Date(isoString).getTime() < Date.now();
   }
   function renderProviderEstBadge(resetElapsed) {
-    if (!resetElapsed) return "";
-    return ' <span class="data-quality-badge" title="Basis: post_reset_estimate | Values may have been restored after reset">Reset Est.</span>';
+    return "";
+  }
+  function estPrefix(resetElapsed) {
+    return resetElapsed ? "~" : "";
   }
   function getCursorStatus(snap) {
     var usagePct = snap.usagePct || 0;
@@ -3154,84 +3176,6 @@
     return "$";
   }
 
-  // internal/web/src/overview/countdown.ts
-  function renderCountdowns(quotaData) {
-    if (!quotaData) return "";
-    var items = [];
-    if (quotaData.accounts) {
-      for (var i = 0; i < quotaData.accounts.length; i++) {
-        var acc = quotaData.accounts[i];
-        var soonestMs = Infinity;
-        var hasReset = false;
-        if (acc.groups) {
-          for (var j = 0; j < acc.groups.length; j++) {
-            var grp = acc.groups[j];
-            if (grp.resetTime) {
-              var ms = new Date(grp.resetTime).getTime() - Date.now();
-              if (ms < soonestMs) {
-                soonestMs = ms;
-                hasReset = true;
-              }
-            }
-          }
-        }
-        if (hasReset) {
-          items.push({
-            provider: "\u26A1 Antigravity",
-            label: acc.email ? acc.email.split("@")[0] : "account",
-            resetMs: soonestMs
-          });
-        }
-      }
-    }
-    if (quotaData.claudeSnapshot) {
-      var cs = quotaData.claudeSnapshot;
-      if (cs.capturedAt) {
-        var fiveHReset = new Date(cs.capturedAt).getTime() + 5 * 36e5;
-        var msLeft = fiveHReset - Date.now();
-        items.push({ provider: "\u{1F52E} Claude", label: "5h window", resetMs: msLeft });
-      }
-    }
-    if (quotaData.codexSnapshot) {
-      var cx = quotaData.codexSnapshot;
-      if (cx.capturedAt) {
-        var sevenDReset = new Date(cx.capturedAt).getTime() + 7 * 864e5;
-        var cxMs = sevenDReset - Date.now();
-        items.push({ provider: "\u{1F916} Codex", label: "7d window", resetMs: cxMs });
-      }
-    }
-    if (items.length === 0) return "";
-    items.sort(function(a, b) {
-      return a.resetMs - b.resetMs;
-    });
-    var html = '<div class="countdown-strip"><span class="countdown-title">\u23F1 Resets:</span>';
-    for (var c = 0; c < Math.min(items.length, 6); c++) {
-      var item = items[c];
-      var timeStr = "";
-      if (item.resetMs <= 0) {
-        timeStr = "ready";
-      } else {
-        var d = Math.floor(item.resetMs / 864e5);
-        var h = Math.floor(item.resetMs % 864e5 / 36e5);
-        var m = Math.floor(item.resetMs % 36e5 / 6e4);
-        timeStr = d > 0 ? d + "d " + h + "h" : h > 0 ? h + "h " + m + "m" : m + "m";
-      }
-      html += '<div class="countdown-chip"><span class="countdown-provider">' + item.provider + '</span><span class="countdown-time">' + timeStr + "</span></div>";
-    }
-    html += "</div>";
-    return html;
-  }
-  var countdownInterval = null;
-  function startCountdownRefresh(quotaData) {
-    if (countdownInterval) clearInterval(countdownInterval);
-    countdownInterval = setInterval(function() {
-      var container = document.getElementById("countdown-container");
-      if (container) {
-        container.innerHTML = renderCountdowns(quotaData);
-      }
-    }, 6e4);
-  }
-
   // internal/web/src/advanced/report.ts
   async function assembleReportData() {
     var results = await Promise.all([
@@ -3500,9 +3444,6 @@
       usageData && usageData.budgetForecast ? usageData.budgetForecast : null,
       serverConfig["currency"] || "USD"
     );
-    var countdownContent = renderCountdowns(latestQuotaData);
-    var countdownHTML = countdownContent ? '<div id="countdown-container" style="grid-column:1/-1">' + countdownContent + "</div>" : "";
-    if (latestQuotaData) startCountdownRefresh(latestQuotaData);
     var cats = Object.keys(stats.byCategory);
     var spendHTML = '<div class="overview-card"><h3>Monthly Recurring Spend</h3><div class="kpi-with-sparkline"><div class="overview-big-number">$' + stats.totalMonthlySpend.toFixed(2) + "</div></div>";
     if (cats.length > 1) {
@@ -3550,7 +3491,7 @@
     if (eligibleAccount) {
       bannerHTML = '<div class="io-alert-card" data-account-id="' + eligibleAccount.accountId + '"><div class="io-alert-content"><div class="io-alert-title">\u2728 Google I/O 2026 Promotional Bonus</div><div class="io-alert-desc">Exclusive for Ultra members: Claim your $100 Overage Credit Bonus before it expires on <strong>May 25, 2026</strong>.</div></div><button class="io-claim-btn" data-claim-account-id="' + eligibleAccount.accountId + '">Claim $100 Bonus</button></div>';
     }
-    el.innerHTML = bannerHTML + safeToSpendHTML + countdownHTML + advisorHTML + costKPIHTML + tokenAnalyticsHTML + gitCostsHTML + heatmapHTML + providerHTML + insightsHTML + claudeHTML + spendHTML + calendarHTML + linksHTML + exportHTML;
+    el.innerHTML = bannerHTML + safeToSpendHTML + advisorHTML + costKPIHTML + tokenAnalyticsHTML + gitCostsHTML + heatmapHTML + providerHTML + insightsHTML + claudeHTML + spendHTML + calendarHTML + linksHTML + exportHTML;
     wireSafeToSpendButtons(openBudgetModal);
     var claimBtn = el.querySelector(".io-claim-btn");
     if (claimBtn) {

@@ -700,6 +700,18 @@ body {
   color: var(--text-muted);
   white-space: nowrap;
 }
+.reset-timer {
+  font-size: 9px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  opacity: 0.7;
+  line-height: 1;
+  margin-top: 1px;
+}
+.reset-timer.reset-ready {
+  color: var(--green);
+  opacity: 0.9;
+}
 .quota-minibar {
   width: 100%;
   max-width: 72px;
@@ -5605,52 +5617,41 @@ kbd {
   letter-spacing: 0.5px;
   margin-top: 2px;
 }
-.reset-countdown {
-  font-size: 10px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  margin-top: 2px;
-  letter-spacing: 0.01em;
-  line-height: 1;
+.countdown-strip {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+}
+.countdown-title {
+  font-size: 11px;
   color: var(--text-muted);
-  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
 }
-.quota-cell:hover .reset-countdown {
-  opacity: 1;
-}
-.reset-countdown.urgent {
-  color: var(--red);
-  opacity: 1;
-  animation: pulse-reset 2.5s ease-in-out infinite;
-}
-.reset-countdown.soon {
-  color: var(--amber);
-  opacity: 1;
-}
-@keyframes pulse-reset {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.55;
-  }
-}
-.provider-next-reset {
+.countdown-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
+  gap: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: 12px;
+  transition: border-color 0.2s;
+}
+.countdown-chip:hover {
+  border-color: var(--border-hover);
+}
+.countdown-provider {
+  color: var(--text-secondary);
+}
+.countdown-time {
   font-weight: 600;
   color: var(--amber);
-  margin-left: 12px;
-  padding: 2px 10px;
-  background: var(--amber-bg);
-  border-radius: 100px;
-  white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
-  animation: pulse-reset 3s ease-in-out infinite;
 }
 @media (max-width: 600px) {
   .streak-card {

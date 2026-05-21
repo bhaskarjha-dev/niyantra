@@ -46,9 +46,8 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
     serverConfig['currency'] || 'USD'
   );
 
-  var countdownContent = renderCountdowns(latestQuotaData);
-  var countdownHTML = countdownContent ? '<div id="countdown-container" style="grid-column:1/-1">' + countdownContent + '</div>' : '';
-  if (latestQuotaData) startCountdownRefresh(latestQuotaData);
+
+  // Reset countdowns now live natively in the Quotas tab grid
 
   var cats = Object.keys(stats.byCategory);
 
@@ -130,7 +129,7 @@ export function renderOverviewEnhanced(data: any, subs: any[], usageData: any): 
       '</div>';
   }
 
-  el.innerHTML = bannerHTML + safeToSpendHTML + countdownHTML + advisorHTML + costKPIHTML + tokenAnalyticsHTML + gitCostsHTML + heatmapHTML + providerHTML + insightsHTML + claudeHTML + spendHTML + calendarHTML + linksHTML + exportHTML;
+  el.innerHTML = bannerHTML + safeToSpendHTML + advisorHTML + costKPIHTML + tokenAnalyticsHTML + gitCostsHTML + heatmapHTML + providerHTML + insightsHTML + claudeHTML + spendHTML + calendarHTML + linksHTML + exportHTML;
 
   wireSafeToSpendButtons(openBudgetModal);
 
