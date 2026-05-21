@@ -2,7 +2,7 @@
    PROVIDER SECTIONS (shared: Quotas + Subscriptions)
    ════════════════════════════════════════════ */
 
-/* Codex grid: Account | Plan | 5-Hour | 7-Day | Credits | Last Snap | Status */
+/* Codex grid: Account | Plan | 5-Hour | 7-Day | Credits | Last Snap | Refresh In */
 .grid-codex {
   display: grid;
   grid-template-columns: 2fr 80px 100px 100px 80px 100px 80px;
@@ -11,7 +11,7 @@
   padding: 0 16px;
 }
 
-/* Claude grid: Source | 5-Hour | 7-Day | Last Snap | Status */
+/* Claude grid: Source | 5-Hour | 7-Day | Last Snap | Refresh In */
 .grid-claude {
   display: grid;
   grid-template-columns: 2fr 120px 120px 120px 80px;
@@ -35,7 +35,7 @@
   border-bottom: 1px solid var(--border);
 }
 
-/* Cursor grid: Account | Plan | Premium Used | Usage | Last Snap | Status */
+/* Cursor grid: Account | Plan | Premium Used | Usage | Last Snap | Refresh In */
 .grid-cursor {
   display: grid;
   grid-template-columns: 2fr 80px 120px 100px 100px 80px;
@@ -44,7 +44,7 @@
   padding: 0 16px;
 }
 
-/* Gemini grid: Account | Tier | Usage | Last Snap | Status */
+/* Gemini grid: Account | Tier | Usage | Last Snap | Refresh In */
 .grid-gemini {
   display: grid;
   grid-template-columns: 2fr 80px 120px 100px 80px;
@@ -53,7 +53,7 @@
   padding: 0 16px;
 }
 
-/* Copilot grid: Account | Plan | Premium | Chat | Last Snap | Status */
+/* Copilot grid: Account | Plan | Premium | Chat | Last Snap | Refresh In */
 .grid-copilot {
   display: grid;
   grid-template-columns: 2fr 80px 120px 120px 100px 80px;
