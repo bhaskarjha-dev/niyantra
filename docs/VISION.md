@@ -231,7 +231,7 @@ Four-tab dashboard at the tokenized URL printed by `niyantra serve`:
 
 - **Quotas** — provider-sectioned layout (Antigravity / Codex / Claude / Cursor / Copilot), per-model progress bars with reset timers, provider filter dropdown, status filter (Ready / Low / Empty), tag filter, text search, split-button snap (Snap Now / Snap All Sources), twin-axis history chart, activity heatmap, AI Credits tracking, Quick Adjust
 - **Subscriptions** — hybrid card + provider layout with spend summary bar, search, 26 platform presets, CSV export, platform filter, status filter
-- **Overview** — recurring budget headroom, advisor rankings/current-account guidance, provider health cards, estimated cost tracking, heuristic Git attribution, sessions timeline, renewal calendar, spending breakdown, observed token analytics, JSON/CSV export
+- **Overview** — recurring budget headroom, advisor rankings/current-account guidance, estimated cost tracking, heuristic Git attribution, sessions timeline, renewal calendar, spending breakdown, observed token analytics, JSON/CSV export
 - **Settings** — capture config (6 providers), budget, model pricing, notifications (4 channels), data sources, import/export, activity log, keyboard shortcuts, command palette (`Ctrl+K`)
 
 ## Roadmap
@@ -313,7 +313,7 @@ MCP server over stdio (13 tools) for AI agent integration. Uses official Go SDK 
 - **Status filter** — filter accounts by readiness state (Ready / Low / Empty) with provider-aware logic
 - **Split-button snap** — primary "Snap Now" (current account) + secondary "Snap All Sources" (all providers)
 - **Hybrid subscription layout** — card + provider grouping with inline spend summary bar
-- **Provider health cards** — overview tab shows per-provider health status
+- **Provider status integration** — provider-level readiness (e.g., how many accounts are ready out of the total) is injected natively into the Quotas tab headers for immediate visibility alongside the provider's accounts.
 - **Codex OIDC enhancement** — extract display name + profile picture from JWT `id_token` claims
 - **Visual polish** — hover accents, UUID truncation, time-ago columns, dynamic advisor labels, quick links deduplication
 - **Chart.js bundled locally** — removed CDN dependency, Chart.js served from embedded assets

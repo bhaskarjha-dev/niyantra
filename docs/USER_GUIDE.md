@@ -125,7 +125,7 @@ The default view showing all tracked accounts organized by **provider sections**
 - **Cursor** — request counts and USD credit balance
 - **Copilot** — GitHub billing data
 
-Each section has its own header with provider color coding and can be collapsed/expanded.
+Each section has its own header with provider color coding, and automatically injects real-time readiness statistics (e.g., "44 accounts (21 ready)") directly into the header to replace the old Provider Status Signals card.
 
 **Toolbar**:
 - **Search**: Fuzzy search by email or plan name
@@ -191,14 +191,6 @@ The intelligence hub combining data from all sources.
 - Gives "switch", "stay", or "wait" guidance only when a current account is explicit
 - Shows score breakdown: remaining% (60% weight), burn rate (20%), reset time (20%)
 - Avoids inventing a current account from list order
-
-**Provider Status Signals:**
-- Per-provider status summary (Antigravity, Codex, Claude, Cursor, Copilot)
-- Shows provider-specific counters and labels without pretending they are a normalized cross-provider score
-
-**Codex Status** (if configured):
-- Shows Codex/ChatGPT quota across 5-hour, 7-day, and code review windows
-- Displays profile name and picture (extracted from OIDC JWT)
 
 **Sessions Timeline:**
 - Shows detected usage sessions with duration, provider, and snapshot count
