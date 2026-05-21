@@ -18,6 +18,7 @@ import (
 
 	"github.com/bhaskarjha-com/niyantra/internal/client"
 	"github.com/bhaskarjha-com/niyantra/internal/mcpserver"
+	"github.com/bhaskarjha-com/niyantra/internal/providers"
 	"github.com/bhaskarjha-com/niyantra/internal/readiness"
 	"github.com/bhaskarjha-com/niyantra/internal/store"
 	"github.com/bhaskarjha-com/niyantra/internal/tracker"
@@ -27,6 +28,8 @@ import (
 var version = "dev"
 
 func main() {
+	providers.RegisterAll()
+
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(0)
