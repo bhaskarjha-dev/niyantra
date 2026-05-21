@@ -1119,6 +1119,15 @@ func (s *Store) migrate() error {
 		}
 	}
 
+	if s.getUserVersion() < 25 {
+		if err := s.migrateToV25(); err != nil {
+			return err
+		}
+		if err := s.setUserVersion(25); err != nil {
+			return err
+		}
+	}
+
 	if _, err := s.db.Exec(`
 		UPDATE codex_snapshots SET owner_account_id = NULL WHERE owner_account_id = 0;
 		UPDATE cursor_snapshots SET account_id = NULL WHERE account_id = 0;

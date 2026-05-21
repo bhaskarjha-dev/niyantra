@@ -357,7 +357,7 @@ func (s *Server) handleExportJSON(w http.ResponseWriter, r *http.Request) {
 	export["subscriptions"] = subs
 
 	// Recent snapshots (last 1000)
-	snapshots, _ := s.store.History(0, 1000)
+	snapshots, _ := s.store.HistoryLegacy(0, 1000)
 	export["snapshots"] = snapshots
 
 	// Claude snapshots (last 500)

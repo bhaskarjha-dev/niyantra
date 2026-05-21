@@ -77,8 +77,8 @@ func (s *Store) LatestPerAccount() ([]*client.Snapshot, error) {
 	return scanSnapshots(rows)
 }
 
-// History returns recent snapshots, optionally filtered by account.
-func (s *Store) History(accountID int64, limit int) ([]*client.Snapshot, error) {
+// HistoryLegacy returns recent snapshots, optionally filtered by account.
+func (s *Store) HistoryLegacy(accountID int64, limit int) ([]*client.Snapshot, error) {
 	if limit <= 0 {
 		limit = 50
 	}
