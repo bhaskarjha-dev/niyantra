@@ -2464,8 +2464,16 @@ body {
   background: var(--green);
   color: #000;
 }
+.toast.warning {
+  background: var(--amber);
+  color: #000;
+}
 .toast.error {
   background: var(--red);
+  color: #000;
+}
+.toast.info {
+  background: var(--accent);
   color: #000;
 }
 .footer {

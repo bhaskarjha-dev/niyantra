@@ -91,46 +91,58 @@ export function snapSource(source: string): void {
 
   if (source === 'claude' || source === 'all') {
     promises.push(
-      fetch('/api/claude/snap', { method: 'POST' }).then(function(r) { return r.json(); })
+      fetch('/api/claude/snap', { method: 'POST' }).then(function(r) {
+        if (!r.ok) {
+          return r.json().then(
+            function(e) { throw new Error(e.error || 'capture failed'); },
+            function() { throw new Error('capture failed'); }
+          );
+        }
+        return r.json();
+      })
       .then(function(d) {
-        if (d.error) return { source: 'Claude Code', error: d.error };
-        var label = 'Claude Code · 5h ' + (d.fiveHourPct || 0).toFixed(0) + '%';
+        var label = 'Claude Code · ' + (d.fiveHourPct || 0).toFixed(0) + '%';
         return { source: 'Claude Code', data: d, label: label };
       })
-      .catch(function() { return { source: 'Claude Code', error: 'capture failed' }; })
+      .catch(function(err) {
+        return { source: 'Claude Code', error: err.message || 'capture failed' };
+      })
     );
   }
 
   if (source === 'codex' || source === 'all') {
     promises.push(
-      fetch('/api/codex/snap', { method: 'POST' }).then(function(r) { return r.json(); })
+      fetch('/api/codex/snap', { method: 'POST' }).then(function(r) {
+        if (!r.ok) {
+          return r.json().then(
+            function(e) { throw new Error(e.error || 'capture failed'); },
+            function() { throw new Error('capture failed'); }
+          );
+        }
+        return r.json();
+      })
       .then(function(d) {
         var label = d.plan ? ('Codex · ' + d.plan) : 'Codex';
         return { source: 'Codex', data: d, label: label };
       })
-      .catch(function() { return { source: 'Codex', error: 'capture failed' }; })
-    );
-  }
-
-  if (source === 'claude' || source === 'all') {
-    promises.push(
-      fetch('/api/claude/snap', { method: 'POST' }).then(function(r) {
-        if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || 'capture failed'); });
-        return r.json();
+      .catch(function(err) {
+        return { source: 'Codex', error: err.message || 'capture failed' };
       })
-      .then(function(d) {
-        var label = 'Claude Code · ' + (d.fiveHourPct || 0).toFixed(0) + '%';
-        return { source: 'Claude', data: d, label: label };
-      })
-      .catch(function(err) { return { source: 'Claude', error: err.message || 'capture failed' }; })
     );
   }
 
   if (source === 'cursor' || source === 'all') {
     promises.push(
-      fetch('/api/cursor/snap', { method: 'POST' }).then(function(r) { return r.json(); })
+      fetch('/api/cursor/snap', { method: 'POST' }).then(function(r) {
+        if (!r.ok) {
+          return r.json().then(
+            function(e) { throw new Error(e.error || 'capture failed'); },
+            function() { throw new Error('capture failed'); }
+          );
+        }
+        return r.json();
+      })
       .then(function(d) {
-        if (d.error) return { source: 'Cursor', error: d.error };
         var label = '';
         if (d.billingModel === 'usd_credit') {
           label = 'Cursor · $' + ((d.usedCents || 0) / 100).toFixed(2) + '/$' + ((d.limitCents || 0) / 100).toFixed(2);
@@ -139,19 +151,30 @@ export function snapSource(source: string): void {
         }
         return { source: 'Cursor', data: d, label: label };
       })
-      .catch(function() { return { source: 'Cursor', error: 'capture failed' }; })
+      .catch(function(err) {
+        return { source: 'Cursor', error: err.message || 'capture failed' };
+      })
     );
   }
 
   if (source === 'copilot' || source === 'all') {
     promises.push(
-      fetch('/api/copilot/snap', { method: 'POST' }).then(function(r) { return r.json(); })
+      fetch('/api/copilot/snap', { method: 'POST' }).then(function(r) {
+        if (!r.ok) {
+          return r.json().then(
+            function(e) { throw new Error(e.error || 'capture failed'); },
+            function() { throw new Error('capture failed'); }
+          );
+        }
+        return r.json();
+      })
       .then(function(d) {
-        if (d.error) return { source: 'Copilot', error: d.error };
         var label = 'Copilot · ' + (d.plan || 'unknown') + ' · ' + (d.premiumPct || 0).toFixed(0) + '%';
         return { source: 'Copilot', data: d, label: label };
       })
-      .catch(function() { return { source: 'Copilot', error: 'capture failed' }; })
+      .catch(function(err) {
+        return { source: 'Copilot', error: err.message || 'capture failed' };
+      })
     );
   }
 

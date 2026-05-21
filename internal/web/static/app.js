@@ -2323,12 +2323,25 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key, value })
     }).then(function(r) {
+      if (!r.ok) {
+        return r.json().then(function(e) {
+          throw new Error(e.error || "Failed to update config");
+        }).catch(function(err) {
+          throw err;
+        });
+      }
       return r.json();
     }).then(function(data) {
       if (data.config) {
+        data.config.forEach(function(c) {
+          serverConfig[c.key] = c.value;
+        });
       }
+      return data;
     }).catch(function(err) {
       console.error("Config update failed:", err);
+      showToast("\u274C " + (err.message || "Config update failed"), "error");
+      throw err;
     });
   }
   function loadConfig() {
@@ -3628,49 +3641,62 @@
     if (source === "claude" || source === "all") {
       promises.push(
         fetch("/api/claude/snap", { method: "POST" }).then(function(r) {
+          if (!r.ok) {
+            return r.json().then(
+              function(e) {
+                throw new Error(e.error || "capture failed");
+              },
+              function() {
+                throw new Error("capture failed");
+              }
+            );
+          }
           return r.json();
         }).then(function(d) {
-          if (d.error) return { source: "Claude Code", error: d.error };
-          var label = "Claude Code \xB7 5h " + (d.fiveHourPct || 0).toFixed(0) + "%";
+          var label = "Claude Code \xB7 " + (d.fiveHourPct || 0).toFixed(0) + "%";
           return { source: "Claude Code", data: d, label };
-        }).catch(function() {
-          return { source: "Claude Code", error: "capture failed" };
+        }).catch(function(err) {
+          return { source: "Claude Code", error: err.message || "capture failed" };
         })
       );
     }
     if (source === "codex" || source === "all") {
       promises.push(
         fetch("/api/codex/snap", { method: "POST" }).then(function(r) {
+          if (!r.ok) {
+            return r.json().then(
+              function(e) {
+                throw new Error(e.error || "capture failed");
+              },
+              function() {
+                throw new Error("capture failed");
+              }
+            );
+          }
           return r.json();
         }).then(function(d) {
           var label = d.plan ? "Codex \xB7 " + d.plan : "Codex";
           return { source: "Codex", data: d, label };
-        }).catch(function() {
-          return { source: "Codex", error: "capture failed" };
-        })
-      );
-    }
-    if (source === "claude" || source === "all") {
-      promises.push(
-        fetch("/api/claude/snap", { method: "POST" }).then(function(r) {
-          if (!r.ok) return r.json().then(function(e) {
-            throw new Error(e.error || "capture failed");
-          });
-          return r.json();
-        }).then(function(d) {
-          var label = "Claude Code \xB7 " + (d.fiveHourPct || 0).toFixed(0) + "%";
-          return { source: "Claude", data: d, label };
         }).catch(function(err) {
-          return { source: "Claude", error: err.message || "capture failed" };
+          return { source: "Codex", error: err.message || "capture failed" };
         })
       );
     }
     if (source === "cursor" || source === "all") {
       promises.push(
         fetch("/api/cursor/snap", { method: "POST" }).then(function(r) {
+          if (!r.ok) {
+            return r.json().then(
+              function(e) {
+                throw new Error(e.error || "capture failed");
+              },
+              function() {
+                throw new Error("capture failed");
+              }
+            );
+          }
           return r.json();
         }).then(function(d) {
-          if (d.error) return { source: "Cursor", error: d.error };
           var label = "";
           if (d.billingModel === "usd_credit") {
             label = "Cursor \xB7 $" + ((d.usedCents || 0) / 100).toFixed(2) + "/$" + ((d.limitCents || 0) / 100).toFixed(2);
@@ -3678,21 +3704,30 @@
             label = "Cursor \xB7 " + (d.requestsUsed || 0) + "/" + (d.requestsMax || "?");
           }
           return { source: "Cursor", data: d, label };
-        }).catch(function() {
-          return { source: "Cursor", error: "capture failed" };
+        }).catch(function(err) {
+          return { source: "Cursor", error: err.message || "capture failed" };
         })
       );
     }
     if (source === "copilot" || source === "all") {
       promises.push(
         fetch("/api/copilot/snap", { method: "POST" }).then(function(r) {
+          if (!r.ok) {
+            return r.json().then(
+              function(e) {
+                throw new Error(e.error || "capture failed");
+              },
+              function() {
+                throw new Error("capture failed");
+              }
+            );
+          }
           return r.json();
         }).then(function(d) {
-          if (d.error) return { source: "Copilot", error: d.error };
           var label = "Copilot \xB7 " + (d.plan || "unknown") + " \xB7 " + (d.premiumPct || 0).toFixed(0) + "%";
           return { source: "Copilot", data: d, label };
-        }).catch(function() {
-          return { source: "Copilot", error: "capture failed" };
+        }).catch(function(err) {
+          return { source: "Copilot", error: err.message || "capture failed" };
         })
       );
     }

@@ -22,12 +22,23 @@ export function updateConfig(key: string, value: string): Promise<any> {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key: key, value: value })
-  }).then(function(r) { return r.json(); })
+  }).then(function(r) {
+    if (!r.ok) {
+      return r.json().then(function(e) { throw new Error(e.error || 'Failed to update config'); })
+        .catch(function(err) { throw err; });
+    }
+    return r.json();
+  })
   .then(function(data) {
     if (data.config) {
-      
+      data.config.forEach(function(c: any) { serverConfig[c.key] = c.value; });
     }
-  }).catch(function(err) { console.error('Config update failed:', err); });
+    return data;
+  }).catch(function(err) {
+    console.error('Config update failed:', err);
+    showToast('❌ ' + (err.message || 'Config update failed'), 'error');
+    throw err;
+  });
 }
 
 export function loadConfig(): Promise<void> {
