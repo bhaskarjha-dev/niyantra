@@ -711,7 +711,8 @@
   }
   function getCursorSoonestResetSec(cs) {
     if (!cs.cycleEnd) return -1;
-    var t = new Date(cs.cycleEnd).getTime() - Date.now();
+    var ts = /^\d+$/.test(cs.cycleEnd) ? parseInt(cs.cycleEnd) : cs.cycleEnd;
+    var t = new Date(ts).getTime() - Date.now();
     return t > 0 ? Math.round(t / 1e3) : -1;
   }
   function sortAccountsArray(accounts) {
@@ -818,12 +819,12 @@
             vb = b.email || "";
             break;
           case "plan":
-            va = a.planType || "";
-            vb = b.planType || "";
+            va = a.planTier || "";
+            vb = b.planTier || "";
             break;
           case "premiumUsed":
-            va = a.premiumUsed || 0;
-            vb = b.premiumUsed || 0;
+            va = a.billingModel === "usd_credit" ? a.usedCents || 0 : a.requestsUsed || 0;
+            vb = b.billingModel === "usd_credit" ? b.usedCents || 0 : b.requestsUsed || 0;
             break;
           case "usage":
             va = a.usagePct || 0;
@@ -1492,7 +1493,8 @@
   }
   function formatResetTime(isoString) {
     if (!isoString) return "";
-    var reset = new Date(isoString);
+    var ts = /^\d+$/.test(isoString) ? parseInt(isoString) : isoString;
+    var reset = new Date(ts);
     var now = /* @__PURE__ */ new Date();
     var diffSec = (reset.getTime() - now.getTime()) / 1e3;
     if (diffSec <= 0) return "now";
@@ -1500,7 +1502,8 @@
   }
   function isResetElapsed(isoString) {
     if (!isoString) return false;
-    return new Date(isoString).getTime() < Date.now();
+    var ts = /^\d+$/.test(isoString) ? parseInt(isoString) : isoString;
+    return new Date(ts).getTime() < Date.now();
   }
   function renderProviderEstBadge(resetElapsed) {
     return "";
@@ -1537,8 +1540,19 @@
       var dotCls = usagePct >= 80 ? "dot-low" : "dot-ready";
       var dotText = dotCls === "dot-ready" ? "Ready" : "Low";
       var displayName = cs.email || "Cursor";
-      var usedStr = cs.premiumUsed !== void 0 ? cs.premiumUsed : String.fromCharCode(8212);
-      var limitStr = cs.premiumLimit !== void 0 ? cs.premiumLimit : String.fromCharCode(8212);
+      var usedStr = String.fromCharCode(8212);
+      var limitStr = String.fromCharCode(8212);
+      if (cs.billingModel === "usd_credit") {
+        if (cs.usedCents !== void 0 && cs.limitCents !== void 0) {
+          usedStr = "$" + (cs.usedCents / 100).toFixed(2);
+          limitStr = "$" + (cs.limitCents / 100).toFixed(2);
+        }
+      } else {
+        if (cs.requestsUsed !== void 0 && cs.requestsMax !== void 0) {
+          usedStr = cs.requestsUsed.toString();
+          limitStr = cs.requestsMax.toString();
+        }
+      }
       var modelRows = "";
       if (cs.modelsJson && cs.modelsJson !== "{}") {
         try {
@@ -1582,7 +1596,7 @@
       if (crStatus === "empty") statusClass = " status-empty";
       else if (crStatus === "low") statusClass = " status-low";
       else statusClass = " status-ready";
-      html += '<div class="account-card' + statusClass + '"><div class="account-row grid-cursor"' + toggleAttr + '><div class="account-info">' + emailHTML + metaHTML + "</div><div>" + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell"><span class="quota-pct ' + cls + '">' + usedStr + " / " + limitStr + "</span>" + renderProviderEstBadge(isResetElapsed(cs.cycleEnd)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div><div class="quota-cell"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF' + (function() {
+      html += '<div class="account-card' + statusClass + '"><div class="account-row grid-cursor"' + toggleAttr + '><div class="account-info">' + emailHTML + metaHTML + "</div><div>" + (cs.planTier ? '<span class="plan-badge">' + esc(cs.planTier) + "</span>" : String.fromCharCode(8212)) + '</div><div class="quota-cell"><span class="quota-pct ' + cls + '">' + usedStr + " / " + limitStr + "</span>" + renderProviderEstBadge(isResetElapsed(cs.cycleEnd)) + '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div><div class="quota-cell"><span class="quota-pct ' + cls + '">' + remaining.toFixed(0) + '% left</span></div><div class="snap-cell"><span class="snap-ago">' + capturedAgo + '</span></div><div class="status-cell"><span class="health-dot ' + dotCls + '">\u25CF' + (function() {
         var rs = getCursorSoonestResetSec(cs);
         return rs > 0 ? " \u21BB " + formatSeconds(rs) : "";
       })() + "</span></div></div>" + actionsHTML + "</div>";
@@ -3649,7 +3663,12 @@
           return r.json();
         }).then(function(d) {
           if (d.error) return { source: "Cursor", error: d.error };
-          var label = "Cursor \xB7 " + (d.premiumUsed || 0) + "/" + (d.premiumLimit || "?");
+          var label = "";
+          if (d.billingModel === "usd_credit") {
+            label = "Cursor \xB7 $" + ((d.usedCents || 0) / 100).toFixed(2) + "/$" + ((d.limitCents || 0) / 100).toFixed(2);
+          } else {
+            label = "Cursor \xB7 " + (d.requestsUsed || 0) + "/" + (d.requestsMax || "?");
+          }
           return { source: "Cursor", data: d, label };
         }).catch(function() {
           return { source: "Cursor", error: "capture failed" };

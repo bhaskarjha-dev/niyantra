@@ -73,7 +73,8 @@ export function getCodexSoonestResetSec(cs: any): number {
 
 export function getCursorSoonestResetSec(cs: any): number {
   if (!cs.cycleEnd) return -1;
-  var t = new Date(cs.cycleEnd).getTime() - Date.now();
+  var ts = /^\d+$/.test(cs.cycleEnd) ? parseInt(cs.cycleEnd) : cs.cycleEnd;
+  var t = new Date(ts).getTime() - Date.now();
   return t > 0 ? Math.round(t / 1000) : -1;
 }
 
@@ -170,12 +171,12 @@ export function sortProviderArray(array: any[], provider: string): any[] {
           vb = b.email || '';
           break;
         case 'plan':
-          va = a.planType || '';
-          vb = b.planType || '';
+          va = a.planTier || '';
+          vb = b.planTier || '';
           break;
         case 'premiumUsed':
-          va = a.premiumUsed || 0;
-          vb = b.premiumUsed || 0;
+          va = a.billingModel === 'usd_credit' ? (a.usedCents || 0) : (a.requestsUsed || 0);
+          vb = b.billingModel === 'usd_credit' ? (b.usedCents || 0) : (b.requestsUsed || 0);
           break;
         case 'usage':
           va = a.usagePct || 0;
@@ -1096,7 +1097,8 @@ export function renderClaudeProviderSection(cl: any): string {
 
 export function formatResetTime(isoString: string | null): string {
   if (!isoString) return '';
-  var reset = new Date(isoString);
+  var ts = /^\d+$/.test(isoString) ? parseInt(isoString) : isoString;
+  var reset = new Date(ts);
   var now = new Date();
   var diffSec = (reset.getTime() - now.getTime()) / 1000;
   if (diffSec <= 0) return 'now';
@@ -1106,7 +1108,8 @@ export function formatResetTime(isoString: string | null): string {
 // Returns true if the given ISO reset timestamp is in the past
 function isResetElapsed(isoString: string | null | undefined): boolean {
   if (!isoString) return false;
-  return new Date(isoString).getTime() < Date.now();
+  var ts = /^\d+$/.test(isoString) ? parseInt(isoString) : isoString;
+  return new Date(ts).getTime() < Date.now();
 }
 
 // Renders estimation indicator for non-Antigravity providers when reset has elapsed
@@ -1169,8 +1172,19 @@ export function renderCursorProviderSection(cursorSnaps: any[], statusFilter: st
     var dotCls = usagePct >= 80 ? 'dot-low' : 'dot-ready';
     var dotText = dotCls === 'dot-ready' ? 'Ready' : 'Low';
     var displayName = cs.email || 'Cursor';
-    var usedStr = cs.premiumUsed !== undefined ? cs.premiumUsed : String.fromCharCode(8212);
-    var limitStr = cs.premiumLimit !== undefined ? cs.premiumLimit : String.fromCharCode(8212);
+    var usedStr = String.fromCharCode(8212);
+    var limitStr = String.fromCharCode(8212);
+    if (cs.billingModel === 'usd_credit') {
+      if (cs.usedCents !== undefined && cs.limitCents !== undefined) {
+        usedStr = '$' + (cs.usedCents / 100).toFixed(2);
+        limitStr = '$' + (cs.limitCents / 100).toFixed(2);
+      }
+    } else {
+      if (cs.requestsUsed !== undefined && cs.requestsMax !== undefined) {
+        usedStr = cs.requestsUsed.toString();
+        limitStr = cs.requestsMax.toString();
+      }
+    }
 
     // Build per-model breakdown rows from modelsJson
     var modelRows = '';
@@ -1232,7 +1246,7 @@ export function renderCursorProviderSection(cursorSnaps: any[], statusFilter: st
 
     html += '<div class="account-card' + statusClass + '"><div class="account-row grid-cursor"' + toggleAttr + '>' +
       '<div class="account-info">' + emailHTML + metaHTML + '</div>' +
-      '<div>' + (cs.planType ? '<span class="plan-badge">' + esc(cs.planType) + '</span>' : String.fromCharCode(8212)) + '</div>' +
+      '<div>' + (cs.planTier ? '<span class="plan-badge">' + esc(cs.planTier) + '</span>' : String.fromCharCode(8212)) + '</div>' +
       '<div class="quota-cell"><span class="quota-pct ' + cls + '">' + usedStr + ' / ' + limitStr + '</span>' +
       renderProviderEstBadge(isResetElapsed(cs.cycleEnd)) +
       '<div class="quota-minibar"><div class="quota-minibar-fill ' + cls + '" style="width:' + remaining + '%"></div></div></div>' +

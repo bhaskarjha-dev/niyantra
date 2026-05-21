@@ -186,6 +186,8 @@ export interface CursorSnapshot {
   email?: string;
   billingModel: string;
   planTier: string;
+  requestsUsed?: number;
+  requestsMax?: number;
   usagePct: number;
   usedCents: number;
   limitCents: number;

@@ -778,13 +778,16 @@ Adds per-provider snapshot tables for Cursor, Gemini CLI, and Copilot.
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | INTEGER PK | Auto-incrementing ID |
+| `account_id` | INTEGER FK | Nullable FK to `accounts(id)` |
+| `email` | TEXT | Email address associated with the Cursor account |
+| `premium_used` | INTEGER | Request count used (legacy request-based billing) |
+| `premium_limit` | INTEGER | Request limit per period (legacy request-based billing) |
+| `usage_pct` | REAL | Overall usage percentage (0-100) |
+| `plan_type` | TEXT | Plan tier (free, pro, pro_plus, ultra) |
+| `start_of_month` | TEXT | Cycle start timestamp |
+| `models_json` | TEXT | JSON blob containing billing details (e.g., `billingModel`, `usedCents`, `limitCents`, `autoPct`, `apiPct`, `cycleEnd`) |
 | `captured_at` | DATETIME | UTC timestamp |
-| `requests_used` | INTEGER | Request count used (legacy billing) |
-| `requests_limit` | INTEGER | Request limit per period |
-| `credits_used` | REAL | USD credits consumed (new billing) |
-| `credits_limit` | REAL | USD credit budget |
-| `plan_type` | TEXT | Plan tier |
-| `capture_method` | TEXT | `manual` or `auto` |
+| `capture_method` | TEXT | `manual`, `auto`, or `plugin` |
 | `capture_source` | TEXT | `ui` or `server` |
 
 ### `gemini_snapshots`

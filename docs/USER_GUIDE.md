@@ -474,9 +474,10 @@ Niyantra parses Claude Code's local JSONL session logs (located under `~/.claude
 
 Niyantra tracks Cursor usage via the `cursor.com/api/usage` endpoint.
 
-1. Detects session token from `~/.cursor-server/` filesystem
-2. Enable in **Settings** tab > Cursor section
-3. Tracks both legacy request-based and new USD credit-based billing models
+1. Detects session token from `~/.cursor-server/` filesystem.
+2. Auto-falls back to reading local state (`state.vscdb`) global storage for `cursorAuth/stripeMembershipType` (e.g., free/pro/pro_plus/ultra) to determine the plan tier when remote checks return unauthorized.
+3. Enable in **Settings** tab > Cursor section.
+4. Tracks both legacy request-based and new USD credit-based billing models. This includes extracting usage and budget limits (total spend cents and display threshold limits) and parsing millisecond-based reset timestamps to correctly display the "Refresh In" countdown timer in the dashboard UI.
 
 ---
 

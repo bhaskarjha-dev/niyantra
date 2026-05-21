@@ -131,7 +131,12 @@ export function snapSource(source: string): void {
       fetch('/api/cursor/snap', { method: 'POST' }).then(function(r) { return r.json(); })
       .then(function(d) {
         if (d.error) return { source: 'Cursor', error: d.error };
-        var label = 'Cursor · ' + (d.premiumUsed || 0) + '/' + (d.premiumLimit || '?');
+        var label = '';
+        if (d.billingModel === 'usd_credit') {
+          label = 'Cursor · $' + ((d.usedCents || 0) / 100).toFixed(2) + '/$' + ((d.limitCents || 0) / 100).toFixed(2);
+        } else {
+          label = 'Cursor · ' + (d.requestsUsed || 0) + '/' + (d.requestsMax || '?');
+        }
         return { source: 'Cursor', data: d, label: label };
       })
       .catch(function() { return { source: 'Cursor', error: 'capture failed' }; })

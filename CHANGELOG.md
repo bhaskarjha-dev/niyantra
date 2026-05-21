@@ -24,6 +24,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Plugin discovery rejects oversized manifests, manifest symlinks, and entry points resolving outside the plugin directory.
 
 ### Fixed
+- **Cursor USD billing and plan fallback** — Overhauled Cursor quota tracking and UI rendering:
+  - Added fallback detection for `stripeMembershipType` (e.g., `free`, `pro`) from local VS Code `state.vscdb` database when the remote Cursor Stripe billing API returns a `401 Unauthorized` response.
+  - Mapped USD billing model fields (`totalSpend` and `displayThreshold`) to `UsedCents` and `LimitCents` in the captured snapshots, fixing the issue where credit-based Cursor accounts displayed `$0.00 / $0.00` in the UI instead of their actual usage (e.g., `$0.16 / $2.00`).
+  - Fixed frontend date parsing helpers (`getCursorSoonestResetSec`, `isResetElapsed`, and `formatResetTime`) to support numeric Unix millisecond timestamps, preventing `Invalid Date` crashes and restoring the "Refresh In" countdown timer display.
+  - Updated Quotas table sorting and the advanced snap UI to use `planTier` instead of `planType` and check USD credits/requests limits dynamically.
 - **Antigravity V2 multi-process detection** — complete overhaul of LS detection for the new Antigravity stack (Main, IDE Hub, IDE Workspace). Three bugs resolved:
   - **Context cancel race condition** — `cancel()` was called after `Do()` but before `ReadAll()`, killing the HTTP connection mid-read. Moved `cancel()` after body is fully consumed.
   - **Port selection/CSRF mismatch** — blind netstat port scanning could connect to the extension server port (which uses `--extension_server_csrf_token`) with the wrong CSRF token (`--csrf_token`). Now uses a 3-strategy prioritized probing: HTTPS port → extension server port (with correct CSRF) → netstat fallback.

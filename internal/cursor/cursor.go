@@ -47,10 +47,11 @@ var (
 
 // Credentials holds Cursor auth state extracted from local files.
 type Credentials struct {
-	UserID      string // user_xxx from sentry/scope_v3.json
-	AccessToken string // JWT from state.vscdb
-	Email       string // from state.vscdb (optional)
-	Source      string // "auto" or "manual"
+	UserID               string // user_xxx from sentry/scope_v3.json
+	AccessToken          string // JWT from state.vscdb
+	Email                string // from state.vscdb (optional)
+	Source               string // "auto" or "manual"
+	StripeMembershipType string // from state.vscdb (optional fallback)
 }
 
 // SessionCookie builds the auth cookie value: userId%3A%3AaccessToken
@@ -81,7 +82,9 @@ type CurrentPeriodUsage struct {
 		TotalPercentUsed *float64 `json:"totalPercentUsed"`
 		AutoPercentUsed  *float64 `json:"autoPercentUsed"`
 		APIPercentUsed   *float64 `json:"apiPercentUsed"`
+		TotalSpend       *int     `json:"totalSpend"`
 	} `json:"planUsage"`
+	DisplayThreshold *int `json:"displayThreshold"`
 }
 
 // StripeStatus is the response from GET /api/auth/stripe.
@@ -177,6 +180,22 @@ func (c *Client) FetchSnapshot(ctx context.Context) (*Snapshot, error) {
 			snap.RequestsUsed = legacy.GPT4.NumRequests
 			snap.RequestsMax = *legacy.GPT4.MaxRequestUsage
 			snap.CycleStart = legacy.StartOfMonth
+			if legacy.StartOfMonth != "" {
+				if t, err := time.Parse(time.RFC3339, legacy.StartOfMonth); err == nil {
+					snap.CycleEnd = t.AddDate(0, 1, 0).Format(time.RFC3339)
+				} else if t, err := time.Parse("2006-01-02T15:04:05Z", legacy.StartOfMonth); err == nil {
+					snap.CycleEnd = t.AddDate(0, 1, 0).Format(time.RFC3339)
+				} else if t, err := time.Parse("2006-01-02", legacy.StartOfMonth); err == nil {
+					snap.CycleEnd = t.AddDate(0, 1, 0).Format(time.RFC3339)
+				} else {
+					now := time.Now()
+					snap.CycleEnd = time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+				}
+			} else {
+				now := time.Now()
+				snap.CycleStart = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+				snap.CycleEnd = time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+			}
 		}
 	} else {
 		c.logger.Debug("Cursor legacy endpoint failed", "error", err)
@@ -187,19 +206,25 @@ func (c *Client) FetchSnapshot(ctx context.Context) (*Snapshot, error) {
 	if err == nil {
 		snap.UsageOK = true
 		pu := usage.PlanUsage
-		hasCredit := (pu.Limit != nil && *pu.Limit > 0) || (pu.TotalPercentUsed != nil)
+		hasCredit := (pu.Limit != nil && *pu.Limit > 0) || (pu.TotalPercentUsed != nil) || (pu.TotalSpend != nil) || (usage.DisplayThreshold != nil)
 		if hasCredit {
 			snap.BillingModel = "usd_credit"
 			if pu.Limit != nil {
 				snap.LimitCents = *pu.Limit
+			} else if usage.DisplayThreshold != nil {
+				snap.LimitCents = *usage.DisplayThreshold
 			}
+
 			if pu.Used != nil {
 				snap.UsedCents = *pu.Used
+			} else if pu.TotalSpend != nil {
+				snap.UsedCents = *pu.TotalSpend
 			} else if pu.Limit != nil && pu.Remaining != nil {
 				snap.UsedCents = *pu.Limit - *pu.Remaining
-			} else if pu.Limit != nil && pu.TotalPercentUsed != nil && *pu.Limit > 0 {
-				snap.UsedCents = int(float64(*pu.Limit) * *pu.TotalPercentUsed / 100)
+			} else if snap.LimitCents > 0 && pu.TotalPercentUsed != nil {
+				snap.UsedCents = int(float64(snap.LimitCents) * *pu.TotalPercentUsed / 100)
 			}
+
 			if pu.TotalPercentUsed != nil {
 				snap.TotalPercentUsed = *pu.TotalPercentUsed
 			} else if snap.LimitCents > 0 {
@@ -214,6 +239,15 @@ func (c *Client) FetchSnapshot(ctx context.Context) (*Snapshot, error) {
 		}
 		snap.CycleStart = usage.BillingCycleStart
 		snap.CycleEnd = usage.BillingCycleEnd
+		if snap.CycleEnd == "" && snap.CycleStart != "" {
+			if t, err := time.Parse(time.RFC3339, snap.CycleStart); err == nil {
+				snap.CycleEnd = t.AddDate(0, 1, 0).Format(time.RFC3339)
+			} else if t, err := time.Parse("2006-01-02T15:04:05Z", snap.CycleStart); err == nil {
+				snap.CycleEnd = t.AddDate(0, 1, 0).Format(time.RFC3339)
+			} else if t, err := time.Parse("2006-01-02", snap.CycleStart); err == nil {
+				snap.CycleEnd = t.AddDate(0, 1, 0).Format(time.RFC3339)
+			}
+		}
 	} else {
 		c.logger.Debug("Cursor usage endpoint failed", "error", err)
 	}
@@ -226,6 +260,22 @@ func (c *Client) FetchSnapshot(ctx context.Context) (*Snapshot, error) {
 		snap.SubscriptionStatus = stripe.SubscriptionStatus
 	} else {
 		c.logger.Debug("Cursor stripe endpoint failed", "error", err)
+	}
+
+	if snap.PlanTier == "" && c.creds.StripeMembershipType != "" {
+		m := strings.ToLower(c.creds.StripeMembershipType)
+		switch m {
+		case "ultra":
+			snap.PlanTier = "ultra"
+		case "pro_plus", "pro+":
+			snap.PlanTier = "pro_plus"
+		case "pro":
+			snap.PlanTier = "pro"
+		case "free", "":
+			snap.PlanTier = "free"
+		default:
+			snap.PlanTier = m
+		}
 	}
 
 	// At least one endpoint must succeed
@@ -382,7 +432,7 @@ func DetectCredentials(logger *slog.Logger, manualToken string) (*Credentials, e
 	dataDir := cursorDataDir()
 
 	// 1) Read accessToken from state.vscdb
-	token, email := readTokenFromStateDB(dataDir, logger)
+	token, email, stripeMembershipType := readTokenFromStateDB(dataDir, logger)
 	if token == "" && manualToken != "" {
 		token = manualToken
 	}
@@ -405,24 +455,25 @@ func DetectCredentials(logger *slog.Logger, manualToken string) (*Credentials, e
 		"userId", userID, "email", email, "source", source, "tokenLen", len(token))
 
 	return &Credentials{
-		UserID:      userID,
-		AccessToken: token,
-		Email:       email,
-		Source:      source,
+		UserID:               userID,
+		AccessToken:          token,
+		Email:                email,
+		Source:               source,
+		StripeMembershipType: stripeMembershipType,
 	}, nil
 }
 
-// readTokenFromStateDB reads accessToken + email from state.vscdb.
-func readTokenFromStateDB(dataDir string, logger *slog.Logger) (string, string) {
+// readTokenFromStateDB reads accessToken + email + stripeMembershipType from state.vscdb.
+func readTokenFromStateDB(dataDir string, logger *slog.Logger) (string, string, string) {
 	dbPath := filepath.Join(dataDir, "User", "globalStorage", "state.vscdb")
 	if _, err := os.Stat(dbPath); err != nil {
-		return "", ""
+		return "", "", ""
 	}
 
 	db, err := sql.Open("sqlite", dbPath+"?mode=ro&immutable=1")
 	if err != nil {
 		logger.Debug("Cannot open state.vscdb", "error", err)
-		return "", ""
+		return "", "", ""
 	}
 	defer db.Close()
 
@@ -432,7 +483,10 @@ func readTokenFromStateDB(dataDir string, logger *slog.Logger) (string, string) 
 	var email string
 	_ = db.QueryRow(`SELECT value FROM ItemTable WHERE key = 'cursorAuth/cachedEmail'`).Scan(&email)
 
-	return token, email
+	var stripeMembershipType string
+	_ = db.QueryRow(`SELECT value FROM ItemTable WHERE key = 'cursorAuth/stripeMembershipType'`).Scan(&stripeMembershipType)
+
+	return token, email, stripeMembershipType
 }
 
 // findUserID searches sentry and storage files for user_xxx pattern.
