@@ -93,11 +93,11 @@ export function snapSource(source: string): void {
     promises.push(
       fetch('/api/claude/snap', { method: 'POST' }).then(function(r) { return r.json(); })
       .then(function(d) {
-        if (d.error) return { source: 'Claude', error: d.error };
-        var label = 'Claude · ' + (d.fiveHourPct || 0).toFixed(0) + '% / ' + (d.sevenDayPct || 0).toFixed(0) + '%';
-        return { source: 'Claude', data: d, label: label };
+        if (d.error) return { source: 'Claude Code', error: d.error };
+        var label = 'Claude Code · 5h ' + (d.fiveHourPct || 0).toFixed(0) + '%';
+        return { source: 'Claude Code', data: d, label: label };
       })
-      .catch(function() { return { source: 'Claude', error: 'capture failed' }; })
+      .catch(function() { return { source: 'Claude Code', error: 'capture failed' }; })
     );
   }
 
@@ -109,6 +109,20 @@ export function snapSource(source: string): void {
         return { source: 'Codex', data: d, label: label };
       })
       .catch(function() { return { source: 'Codex', error: 'capture failed' }; })
+    );
+  }
+
+  if (source === 'claude' || source === 'all') {
+    promises.push(
+      fetch('/api/claude/snap', { method: 'POST' }).then(function(r) {
+        if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || 'capture failed'); });
+        return r.json();
+      })
+      .then(function(d) {
+        var label = 'Claude Code · ' + (d.fiveHourPct || 0).toFixed(0) + '%';
+        return { source: 'Claude', data: d, label: label };
+      })
+      .catch(function(err) { return { source: 'Claude', error: err.message || 'capture failed' }; })
     );
   }
 
