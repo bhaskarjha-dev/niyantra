@@ -28,6 +28,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Plugin discovery rejects oversized manifests, manifest symlinks, and entry points resolving outside the plugin directory.
 
 ### Fixed
+- **API snap error message propagation** — Rewrote promise chains in `internal/web/src/advanced/snap.ts` to use `.then(onFulfilled, onRejected)` instead of chained `.catch().then()`, ensuring descriptive provider errors (such as missing GitHub Copilot PATs) propagate correctly to UI toasts rather than showing a generic `"capture failed"`.
+- **Config update visual errors** — Fixed promise handling in `updateConfig` in `internal/web/src/overview/budget.ts` to re-throw config update errors, preventing invalid/failed config saves from updating input values to masked values in the settings page.
 - **Cursor USD billing and plan fallback** — Overhauled Cursor quota tracking and UI rendering:
   - Added fallback detection for `stripeMembershipType` (e.g., `free`, `pro`) from local VS Code `state.vscdb` database when the remote Cursor Stripe billing API returns a `401 Unauthorized` response.
   - Mapped USD billing model fields (`totalSpend` and `displayThreshold`) to `UsedCents` and `LimitCents` in the captured snapshots, fixing the issue where credit-based Cursor accounts displayed `$0.00 / $0.00` in the UI instead of their actual usage (e.g., `$0.16 / $2.00`).
