@@ -126,7 +126,7 @@ niyantra serve    # Dashboard shows your real data
 
 ### Know Your Quotas
 
-Auto-capture the **Antigravity v2.0 suite** per-model quotas (Claude, Gemini, GPT) with rolling 5-hour reset detection. Track active sessions across **Antigravity 2.0 (Main)**, **Antigravity IDE**, and **Antigravity CLI** (with direct Google PA API fallback) concurrently. Track your native **Google AI Credits** balances continuously. Monitor **Codex/ChatGPT** via OAuth API, track **Claude Code** rate limits + deep JSONL token analytics, track **Cursor** usage via session token API, monitor **Gemini / Antigravity CLI** quotas via OAuth, and track **GitHub Copilot** premium interactions via PAT. **Quick Adjust** lets you fine-tune stale values with +/-5%/+/-10% buttons right on the dashboard. **7 providers** in one unified view. Optional plugins can collect custom local data through the polling agent; manual HTTP plugin execution is disabled.
+Auto-capture the **Antigravity v2.0 suite** per-model quotas (Claude, GPT) with rolling 5-hour reset detection. Track active sessions across **Antigravity 2.0 (Main)** and **Antigravity IDE** concurrently. Track your native **Google AI Credits** balances continuously. Monitor **Codex/ChatGPT** via OAuth API, track **Claude Code** rate limits + deep JSONL token analytics, track **Cursor** usage via session token API, and track **GitHub Copilot** premium interactions via PAT. **Quick Adjust** lets you fine-tune stale values with +/-5%/+/-10% buttons right on the dashboard. **6 providers** in one unified view. Optional plugins can collect custom local data through the polling agent; manual HTTP plugin execution is disabled.
 
 ### Control Your Spending
 
@@ -160,10 +160,10 @@ The dashboard prints a generated tokenized URL on `niyantra serve`; every `/api/
 
 | Tab | What it shows |
 |-----|---------------|
-| **Quotas** | Provider-sectioned layout (Antigravity/Codex/Claude/Cursor/Gemini/Copilot), per-model progress bars with reset timers, Quick Adjust (+/-5%/+/-10%), provider, status and tag filters, split-button snap, twin-axis history chart with event annotations, activity heatmap, AI Credits tracking |
+| **Quotas** | Provider-sectioned layout (Antigravity/Codex/Claude/Cursor/Copilot), per-model progress bars with reset timers, Quick Adjust (+/-5%/+/-10%), provider, status and tag filters, split-button snap, twin-axis history chart with event annotations, activity heatmap, AI Credits tracking |
 | **Subscriptions** | Hybrid card + provider layout with spend summary, search, 26 platform presets, CSV export |
 | **Overview** | Budget headroom against recurring subscriptions, advisor rankings/switch guidance, provider status signals, heuristic cost tracking, heuristic git attribution, observed token analytics, sessions timeline, renewal calendar, shareable PNG report, redacted JSON/CSV export + redacted DB backup |
-| **Settings** | Auto-capture (7 providers), polling interval, notifications (4 channels + digest mode), plugin management, model pricing, Claude bridge, backup/restore, command palette (`Ctrl+K`) |
+| **Settings** | Auto-capture (6 providers), polling interval, notifications (4 channels + digest mode), plugin management, model pricing, Claude bridge, backup/restore, command palette (`Ctrl+K`) |
 
 ---
 
@@ -215,7 +215,7 @@ Then ask: *"What's my quota?"* or *"Which account should I use?"* or *"How much 
 
 | Feature | Niyantra | Quota trackers (onWatch, CodexBar) | Sub trackers (Wallos) | Account managers (Antigravity-Manager) |
 |---------|----------|-------------------------------|---------------------------|-----------|
-| AI quota monitoring | 7 providers (AG Suite [Main/IDE/CLI] + Codex + Claude + Cursor + Gemini + Copilot + Manual) | 9-16+ providers | — | 4+ providers |
+| AI quota monitoring | 6 providers (AG Suite [Main/IDE] + Codex + Claude + Cursor + Copilot + Manual) | 9-16+ providers | — | 4+ providers |
 | Multi-account per provider | ✅ 28+ (passive, safe) | ❌ Single-account | — | ✅ (active switching ⚠️) |
 | Subscription management | 26 AI platforms, renewals, CSV | — | Generic subs | — |
 | Budget forecasting | Monthly budget with projections | — | Basic budget | — |
@@ -238,13 +238,12 @@ Then ask: *"What's my quota?"* or *"Which account should I use?"* or *"How much 
 
 ### "Antigravity not detected"
 
-Niyantra dynamically auto-detects all running tools in the **Antigravity v2.0 suite** (Antigravity 2.0 Main and Antigravity IDE). If neither is active, Niyantra automatically falls back to "CLI Solo Mode" using your local **Antigravity / Gemini CLI** OAuth credentials (`~/.gemini/oauth_creds.json`) and queries Google's Cloud Code PA API directly.
+Niyantra dynamically auto-detects all running tools in the **Antigravity v2.0 suite** (Antigravity 2.0 Main and Antigravity IDE).
 
 If you are experiencing detection issues, make sure:
 1. Either Antigravity 2.0 Main or Antigravity IDE is active (not just installed).
 2. For the IDE, ensure a project/workspace file is open (as the local language server starts lazily).
-3. For CLI Solo Mode, ensure you have logged in via the terminal (`antigravity auth login` or `gemini auth login`) so credentials are cached at `~/.gemini/oauth_creds.json`.
-4. Try `niyantra snap --debug` for verbose process detection logs.
+3. Try `niyantra snap --debug` for verbose process detection logs.
 
 ### "Can I use this without Antigravity?"
 
@@ -252,7 +251,7 @@ Yes! Niyantra's subscription manager, budget tracking, and renewal calendar work
 
 ### "Is my data sent anywhere?"
 
-No. By default, Niyantra makes HTTP calls purely locally to `127.0.0.1` (your local Antigravity Language Server). There is no telemetry or analytics. **Optional provider polling** (Codex, Cursor, Gemini, Copilot) makes HTTPS calls to their respective APIs when explicitly enabled. **Optional notifications** (SMTP, Webhook, WebPush) make outbound calls to configured endpoints. See [SECURITY.md](docs/SECURITY.md) for the full threat model.
+No. By default, Niyantra makes HTTP calls purely locally to `127.0.0.1` (your local Antigravity Language Server). There is no telemetry or analytics. **Optional provider polling** (Codex, Cursor, Copilot) makes HTTPS calls to their respective APIs when explicitly enabled. **Optional notifications** (SMTP, Webhook, WebPush) make outbound calls to configured endpoints. See [SECURITY.md](docs/SECURITY.md) for the full threat model.
 
 ### "How do I update?"
 

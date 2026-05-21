@@ -19,8 +19,8 @@ A modern developer in 2025–2026 subscribes to 5–15 AI services simultaneousl
 | Category | Examples | Billing Model |
 |----------|----------|--------------|
 | AI Coding | Antigravity, Cursor, Copilot, Claude Code, Codex | Monthly with rolling quota windows |
-| AI Chat | ChatGPT, Claude, Gemini, Perplexity | Monthly with message limits |
-| AI API | OpenAI API, Anthropic API, Google AI Studio | Pay-as-you-go (unbounded) |
+| AI Chat | ChatGPT, Claude, Perplexity | Monthly with message limits |
+| AI API | OpenAI API, Anthropic API, DeepSeek | Pay-as-you-go (unbounded) |
 | AI Creative | Midjourney, Runway, ElevenLabs, Suno | Monthly with credit limits |
 | AI Productivity | Notion AI, Grammarly | Per-seat monthly |
 
@@ -179,13 +179,15 @@ Manual snaps are **always** allowed regardless of mode. The auto-capture toggle 
 
 ## Data Sources
 
-### Current (Implemented — 7 Providers)
-- **Antigravity v2.0 Suite** — multi-account concurrent capturing across **Antigravity 2.0 (Main)** and **Antigravity IDE** via local Connect RPC APIs. Features a tiered priority heuristic ranking to isolate real language servers from CLI processes. Handles protobuf `*float64` semantics for `remainingFraction`. Users can fine-tune stale LS cache values post-snap via Quick Adjust (±5%/±10%). Features an **intelligent multi-account snap toast** displaying an elegantly formatted comma-separated email list (with truncation to `and X more` for clean UI rendering). Incorporates **tab-switch and focus-switch auto-resilience** by firing `niyantra:status-refreshed` events to maintain synchronized, complete state across all 6 providers without card vanish or cache degradation.
+### Current (Implemented — 6 Providers)
+- **Antigravity v2.0 Suite** — multi-account concurrent capturing across **Antigravity 2.0 (Main)** and **Antigravity IDE** via local Connect RPC APIs. Features a tiered priority heuristic ranking to isolate real language servers from CLI processes. Handles protobuf `*float64` semantics for `remainingFraction`. Users can fine-tune stale LS cache values post-snap via Quick Adjust (±5%/±10%). Features an **intelligent multi-account snap toast** displaying an elegantly formatted comma-separated email list (with truncation to `and X more` for clean UI rendering). Incorporates **tab-switch and focus-switch auto-resilience** by firing `niyantra:status-refreshed` events to maintain synchronized, complete state across all providers without card vanish or cache degradation.
 - **Claude Code** — real-time rate limit data via statusline file bridge + deep JSONL session parsing for per-turn token analytics (input/output/cache) with model-aware cost estimation. New `internal/claude/` package (refactored from claudebridge).
 - **Codex / ChatGPT** — OAuth API polling with proactive token refresh, multi-quota tracking (5h window, 7d window, code review). Credentials from `~/.codex/auth.json`, account identity via JWT `id_token` parsing with OIDC name + picture extraction.
 - **Cursor** — Session token detection from filesystem, HTTP API polling to `cursor.com/api/usage` for request counts + USD credit balance. Supports legacy request-based and new credit-based billing models.
 - **GitHub Copilot** — GitHub Personal Access Token → billing API for usage tracking. PAT masked in API responses.
 - **Manual Subscriptions** — 26 platform presets with expert-curated notes
+
+> **Note:** Gemini CLI was removed in May 2026 after Google announced the sunsetting of Gemini CLI effective June 18, 2026.
 
 Each source is registered in a `data_sources` table with its own configuration. Adding a new source requires no schema changes — just a new row and a Go handler.
 
@@ -366,7 +368,20 @@ MCP server over stdio (13 tools) for AI agent integration. Uses official Go SDK 
 - **Antigravity Deep Session Audit Logs (Protobuf)**: Parse conversation logs (`.pb` Protobuf streams) under `~/.gemini/antigravity/conversations/` and CLI logs to display step-by-step reasoning tracks and per-turn input/output cost estimates on the Niyantra dashboard.
 - **Real-Time Heartbeats**: Read live window stream and heartbeat log files (`Antigravity.log`) to display when autonomous background agents/subagents are running, showing active session timers and real-time projected quota consumption.
 
-> **Full details:** The internal development roadmap (`draft/roadmap.md`) contains 22 features with quantified scoring across Gap, Value, Effort, and Moat dimensions, plus a 37-feature × 12-tool competitive comparison matrix. Cloud sync architecture documented in 11 internal design documents + ADR-0002.
+> **Full details:** The internal development roadmap (`draft/roadmap.md`) contains 22 features with quantified scoring across Gap, Value, Effort, and Moat dimensions, plus a 37-feature × 12-tool competitive comparison matrix. Cloud sync architecture documented in 11 internal design documents + ADR-0002. Architecture overhaul documented in `draft/overhaul/` (10 phase documents + strategy reference).
+
+### 🔲 Phase 17.5: Architecture Overhaul — planned
+Complete architecture modernization to make Niyantra the ultimate, future-proof AI Operations Command Center:
+- **M0: Agent Infrastructure** — AGENTS.md, doc.go for all packages, .claude/rules/
+- **M1: Core Contract** — Universal `Provider` interface + registry
+- **M2: Unified Schema** — 6 snapshot tables → 1 unified table with `data_json`
+- **M3: Provider Migration** — All 6 providers implement `Provider` interface
+- **M4: Service Layer** — Business logic extracted from handlers to services
+- **M5: Frontend Overhaul** — Vanilla TypeScript + esbuild → Svelte 5 + Vite
+- **M6: Desktop/Tray** — System tray integration for instant access
+- **M7: Provider Expansion** — Rapid addition of 14+ new providers (DeepSeek, OpenRouter, Groq, etc.)
+
+> **Full details:** `draft/overhaul/` contains the complete phase-by-phase playbook with session prompts, verification gates, and strategic context.
 
 ## Real-World Use Cases
 
@@ -425,8 +440,10 @@ Niyantra is successful when:
 5. **< 20 MB** binary size (includes embedded SQLite engine + web assets + Chart.js)
 6. **Zero surprise captures** — auto mode only when explicitly enabled
 7. **Multi-source** — 6 AI coding tools tracked in a unified view ✅
-8. **6 providers** shipped: Antigravity + Codex + Claude deep + Cursor + Copilot + Manual ✅
+8. **6 providers** shipped: Antigravity + Codex + Claude deep + Cursor + Copilot + Manual ✅ (Gemini CLI removed — Google sunset)
 9. **37+ features** shipped across Phases 1-16, closing all competitive gaps vs onWatch ✅
 10. **286 tests** across 14 packages in the current tree ✅
 11. **4 notification channels**: OS + SMTP + Webhook + WebPush ✅
 12. **13 MCP tools** (stdio + token-protected Streamable HTTP) ✅
+13. **Architecture overhaul** — provider registry, unified schema, service layer, Svelte frontend (Phase 17.5)
+14. **20+ providers** after overhaul expansion (Phase M7)

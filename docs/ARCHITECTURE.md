@@ -1,6 +1,7 @@
 # Architecture: Niyantra
 
-> **Updated:** 2026-05-19 · Schema v21 · 18 persistent tables · token-protected REST/MCP surfaces
+> **Updated:** 2026-05-22 · Schema v21 · 18 persistent tables · token-protected REST/MCP surfaces
+> **Note:** Gemini CLI removed (Google sunsetting June 2026). Architecture overhaul planned — see `draft/overhaul/`.
 
 ## System Overview
 
@@ -169,7 +170,7 @@ Uses modernc.org/sqlite (pure Go, no CGo) for true single-binary cross-compilati
 - `subscriptions` — manual subscription tracking (26 presets)
 - `config` — 74 typed key-value settings (bool/int/float/string/json)
 - `activity_log` — structured audit trail
-- `data_sources` — source registry (antigravity, claude_code, codex, cursor, gemini, copilot)
+- `data_sources` — source registry (antigravity, claude_code, codex, cursor, copilot)
 - `antigravity_reset_cycles` — per-model cycle intelligence
 - `claude_snapshots` — rate limit snapshots (5h/7d)
 - `system_alerts` — dismissible alerts with hybrid TTL
@@ -177,7 +178,7 @@ Uses modernc.org/sqlite (pure Go, no CGo) for true single-binary cross-compilati
 - `usage_sessions` — detected sessions per provider
 - `usage_logs` — manual usage tracking
 - `cursor_snapshots` — Cursor quota snapshots (requests/USD credits)
-- `gemini_snapshots` — Gemini CLI quota snapshots
+- `gemini_snapshots` — Gemini CLI quota snapshots *(deprecated — Google sunsetting Gemini CLI June 2026)*
 - `copilot_snapshots` — GitHub Copilot usage snapshots
 - `token_usage` — Claude Code token analytics
 - `webpush_subscriptions` — browser push subscription storage

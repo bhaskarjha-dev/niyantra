@@ -13,7 +13,7 @@ access their quota data, subscription tracking, and analytics from multiple work
 
 The original cloud architecture was designed when the project had 4 tables, 1 provider,
 and a monolithic JavaScript frontend. Since then, the project has grown to 18 persistent local tables,
-7 providers, 40 TypeScript modules, 13 MCP tools, 4 notification channels, and many config
+6 providers, 40 TypeScript modules, 13 MCP tools, 4 notification channels, and many config
 keys (many containing secrets like PATs, SMTP passwords, and VAPID keys).
 
 ### Key Requirements
@@ -47,7 +47,7 @@ security rules, and an admin dashboard.
 
 The exact sync set must be recalculated after the local v21 integrity migration. The intended split remains selective sync:
 
-- **Sync:** accounts, snapshots (all 7 providers), subscriptions, config (non-secret keys only),
+- **Sync:** accounts, snapshots (all 6 providers), subscriptions, config (non-secret keys only),
   activity_log, token_usage, plugin_snapshots
 - **Local-only:** data_sources, system_alerts, usage_sessions, usage_logs,
   antigravity_reset_cycles, webpush_subscriptions, sync_queue
